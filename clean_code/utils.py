@@ -32,7 +32,6 @@ def generate_emission_0_probs(fsm: FiniteStateMachine, seed: int = None) -> np.n
     return fsm.emmision_0_probs
 from numpy import linalg as LA
 
-
 def from_hs(hs_line: str) -> FiniteStateMachine:
     # Remove the first 3 characters and the last character from the encoded FSM
     encoded_fsm = hs_line[3:-1]
@@ -72,7 +71,6 @@ def from_hs(hs_line: str) -> FiniteStateMachine:
 
     return fsm
 
-
 def calculate_rate_distortion_curve(joint_prob_dist, betas = np.linspace(0, 100, 5000)):
     rate = []
     distortion = []
@@ -85,14 +83,14 @@ def calculate_rate_distortion_curve(joint_prob_dist, betas = np.linspace(0, 100,
     rate, distortion = zip(*sorted(zip(rate, distortion)))
     return np.array(rate), np.array(distortion)
 
+def create_history_sequences(binary_string, history_length, fractions=(0.5, 0.2, 0.3)):
 
+    # make sure that the fractions add up to 1
+    assert sum(fractions) == 1
 
-
-def create_history_sequences(binary_string, history_length):
-    # Generate subsequences of binary_string of length history_length
-    train = binary_string[:int(0.5*len(binary_string))]
-    val = binary_string[int(0.5*len(binary_string)):int(0.7*len(binary_string))]
-    test = binary_string[int(0.7*len(binary_string)):]
+    train = binary_string[:int(fractions[0]*len(binary_string))]
+    val = binary_string[int(fractions[0]*len(binary_string)):int((fractions[0]+fractions[1])*len(binary_string))]
+    test = binary_string[int((fractions[0]+fractions[1])*len(binary_string)):]
 
     train_history = np.asarray([train[i:i+history_length] for i in range(len(train) - history_length)])
     train_next = train[history_length:]
@@ -102,6 +100,5 @@ def create_history_sequences(binary_string, history_length):
 
     test_history = np.asarray([test[i:i+history_length] for i in range(len(test) - history_length)])
     test_next = test[history_length:]
+
     return (train_history, train_next), (val_history, val_next), (test_history, test_next)
-
-

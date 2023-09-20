@@ -94,34 +94,6 @@ class TransformerLayer(nn.Module):
         x = x + self.mlp(x)
         return x
 
-    
-class MultilayerTransformer(nn.Module):
-    def __init__(self, d_vocab=2, d_model=16, input_size=3, d_head=4, n_head=4, d_mlp=4*16, n_layers=2):
-        super().__init__()
-        self.input_size = input_size
-        self.embedding = nn.Embedding(d_vocab, d_model)
-        self.pos_embedding = nn.Embedding(input_size, d_model)
-        self.layers = nn.ModuleList([TransformerLayer(d_model, input_size, d_head, n_head, d_mlp) for _ in range(n_layers)])
-        self.unembedding = nn.Linear(d_model, d_vocab)
-
-    def forward(self, x):
-        # x is of size (batch_size, input_size)
-        # embed the input
-        x = self.embedding(x) + self.pos_embedding(torch.arange(self.input_size, device=x.device))
-        # pass through each transformer layer
-        for layer in self.layers:
-            x = layer(x)
-        # unembed the output
-        x = self.unembedding(x)
-        return x
-    
-    def predict_probs(self, x):
-        # pass input through the model
-        logits = self.forward(x)
-        # apply softmax to get probabilities
-        probs = F.softmax(logits, dim=-1)
-        return probs
-
 class MultilayerTransformer(nn.Module):
     def __init__(self, d_vocab=2, d_model=16, input_size=3, d_head=4, n_head=4, d_mlp=4*16, n_layers=2):
         super().__init__()
