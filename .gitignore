@@ -1,6 +1,2 @@
 
-*.hs
-*.json
-*.zip
-*.npz
 *.h5
