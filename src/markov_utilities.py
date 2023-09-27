@@ -246,7 +246,6 @@ def compute_next_distribution(epsilon_machine: np.ndarray, X_current: np.ndarray
     X_next = np.einsum('sd, s -> d', epsilon_machine[output], X_current)
     return X_next / np.sum(X_next) if np.sum(X_next) != 0 else X_next
 
-
 def to_mixed_state_presentation(epsilon_machine: np.ndarray, 
                                 max_depth: int = 50, 
                                 threshold: float = 1e-6) -> np.ndarray:
@@ -268,7 +267,7 @@ def to_mixed_state_presentation(epsilon_machine: np.ndarray,
     tree = [{}]
     X = calculate_steady_state_distribution(epsilon_machine[0] + epsilon_machine[1])
     tree[0]['root'] = np.squeeze(X)
-    seen_distributions = [X]
+    seen_distributions = [tuple(X)]
     state_index_map = {'root': 0}
     next_index = 1
     transition_matrices = np.zeros((n_outputs, max_depth, max_depth))
@@ -282,18 +281,22 @@ def to_mixed_state_presentation(epsilon_machine: np.ndarray,
             for output in range(n_outputs):
                 X_next = compute_next_distribution(epsilon_machine, X_current, output)
 
-                print(np.sum(X_next))
+                if np.sum(X_next) == 0.0:
+                    continue
+
                 new_node_name = f"{node}_{output}"
                 
-                if not is_distribution_close(X_next, seen_distributions, threshold):
+                # If the next mixed state is close to a previously seen state, add a transition back to the previously seen state
+                if is_distribution_close(X_next, seen_distributions, threshold):
+                    to_idx = seen_distributions.index(next(X for X in seen_distributions if np.all(np.linalg.norm(X_next - np.array(X)) < threshold)))
+                else:
                     all_branches_closed = False
                     tree[depth + 1][new_node_name] = X_next
-                    seen_distributions.append(X_next)
+                    seen_distributions.append(tuple(X_next))
                     state_index_map[new_node_name] = next_index
+                    to_idx = next_index
                     next_index += 1
-                elif new_node_name not in state_index_map:
-                    state_index_map[new_node_name] = state_index_map[node]
-                    
+                
                 if next_index > transition_matrices.shape[1]:
                     new_size = 2 * transition_matrices.shape[1]
                     resized_matrices = np.zeros((n_outputs, new_size, new_size))
@@ -301,15 +304,15 @@ def to_mixed_state_presentation(epsilon_machine: np.ndarray,
                     transition_matrices = resized_matrices
                     
                 from_idx = state_index_map[node]
-                to_idx = state_index_map[new_node_name]
-                transition_prob = np.sum(X_current * np.einsum('sd, d -> s', epsilon_machine[output], X_next))
+                transition_prob = np.sum(np.einsum('s,sd->d', X_current, epsilon_machine[output]))
+                
                 transition_matrices[output, from_idx, to_idx] = transition_prob
         
         if all_branches_closed:
             break
     
     # Trim the dimensions
-    return transition_matrices #[:, :next_index, :next_index]
+    return transition_matrices[:, :next_index, :next_index]
 
 
 def epsilon_machine_to_graph(epsilon_machine: np.ndarray, state_names: Optional[Dict[str, int]] = None) -> nx.DiGraph:

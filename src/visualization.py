@@ -16,7 +16,7 @@ def visualize_graph(G: nx.DiGraph) -> None:
     
     plt.show()
 
-def visualize_graph_with_selective_offset(G: nx.DiGraph, layout: str = 'spring') -> None:
+def visualize_graph_with_selective_offset(G: nx.DiGraph, layout: str = 'spring', draw_edge_labels: bool = True) -> None:
     """Visualize the graph with offset only for bidirectional edges."""
     if layout == 'spring':
         pos = nx.spring_layout(G)
@@ -42,8 +42,9 @@ def visualize_graph_with_selective_offset(G: nx.DiGraph, layout: str = 'spring')
     nx.draw_networkx_labels(G, pos)
 
     # Draw edge labels
-    edge_labels = {(i, j): f"{G[i][j]['label']}|{round(G[i][j]['weight']*100)}%" for i, j in G.edges()}
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, label_pos=0.3)
+    if draw_edge_labels:
+        edge_labels = {(i, j): f"{G[i][j]['label']}|{round(G[i][j]['weight']*100)}%" for i, j in G.edges()}
+        nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, label_pos=0.3)
     
     plt.show()
 
