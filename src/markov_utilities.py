@@ -2,6 +2,7 @@ import numpy as np
 import networkx as nx
 from numpy import linalg as LA
 from typing import List, Tuple, Optional, Dict
+from scipy.sparse import lil_matrix
 
 
 def generate_emissions(epsilon_machine: np.ndarray, num_emissions: int) -> List[int]:
@@ -313,6 +314,74 @@ def to_mixed_state_presentation(epsilon_machine: np.ndarray,
     
     # Trim the dimensions
     return transition_matrices[:, :next_index, :next_index]
+
+
+
+def to_mixed_state_presentation_sparse(epsilon_machine: np.ndarray, 
+                                       max_depth: int = 50, 
+                                       threshold: float = 1e-6) -> np.ndarray:
+    """
+    Convert an epsilon machine to its mixed state presentation.
+
+    Parameters:
+    epsilon_machine (np.ndarray): The epsilon machine transition tensor of shape (n_outputs, n_states, n_states).
+    max_depth (int): The maximum depth for the tree exploration.
+    threshold (float): The threshold for the distance between distributions.
+
+    Returns:
+    np.ndarray: The transition matrices for the mixed state presentation.
+    """
+
+    n_outputs = epsilon_machine.shape[0]
+    
+    # Initialization
+    tree = [{}]
+    X = calculate_steady_state_distribution(epsilon_machine[0] + epsilon_machine[1])
+    tree[0]['root'] = np.squeeze(X)
+    seen_distributions = [tuple(X)]
+    state_index_map = {'root': 0}
+    next_index = 1
+    transition_matrices = [lil_matrix((max_depth, max_depth)) for _ in range(n_outputs)]
+    
+    # Tree exploration
+    for depth in range(max_depth):
+        tree.append({})
+        all_branches_closed = True
+        
+        for node, X_current in tree[depth].items():
+            for output in range(n_outputs):
+                X_next = compute_next_distribution(epsilon_machine, X_current, output)
+
+                if np.sum(X_next) == 0.0:
+                    continue
+
+                new_node_name = f"{node}_{output}"
+                
+                # If the next mixed state is close to a previously seen state, add a transition back to the previously seen state
+                if is_distribution_close(X_next, seen_distributions, threshold):
+                    to_idx = seen_distributions.index(next(X for X in seen_distributions if np.all(np.linalg.norm(X_next - np.array(X)) < threshold)))
+                else:
+                    all_branches_closed = False
+                    tree[depth + 1][new_node_name] = X_next
+                    seen_distributions.append(tuple(X_next))
+                    state_index_map[new_node_name] = next_index
+                    to_idx = next_index
+                    next_index += 1
+                
+                if next_index > transition_matrices[output].shape[1]:
+                    new_size = 2 * transition_matrices[output].shape[1]
+                    transition_matrices[output] = transition_matrices[output].resize((new_size, new_size))
+                    
+                from_idx = state_index_map[node]
+                transition_prob = np.sum(np.einsum('s,sd->d', X_current, epsilon_machine[output]))
+                
+                transition_matrices[output][from_idx, to_idx] = transition_prob
+        
+        if all_branches_closed:
+            break
+    
+    # Trim the dimensions
+    return [matrix[:next_index, :next_index] for matrix in transition_matrices]
 
 
 def epsilon_machine_to_graph(epsilon_machine: np.ndarray, state_names: Optional[Dict[str, int]] = None) -> nx.DiGraph:
