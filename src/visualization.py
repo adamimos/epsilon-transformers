@@ -3,83 +3,134 @@ import networkx as nx
 from entropy_analysis import compute_block_entropy, compute_conditional_entropy, compute_empirical_conditional_entropy
 from typing import List
 from matplotlib import colors
+import networkx as nx
+import matplotlib.pyplot as plt
 
 
-def visualize_graph(G: nx.DiGraph) -> None:
-    """Visualize the provided graph."""
-    pos = nx.spring_layout(G)
-    nx.draw_networkx_nodes(G, pos)
-    nx.draw_networkx_edges(G, pos)
-    nx.draw_networkx_labels(G, pos)
+def determine_layout(G, layout_type):
+    """Determine the layout of the graph."""
+    layout_funcs = {
+        'spring': nx.spring_layout,
+        'circular': nx.circular_layout,
+        'random': nx.random_layout,
+        'shell': nx.shell_layout,
+        'spectral': nx.spectral_layout,
+        'hierarchical': hierarchical_layout,
+        'dot': lambda G: nx.nx_agraph.graphviz_layout(G, prog='dot'),
+        'neato': lambda G: nx.nx_agraph.graphviz_layout(G, prog='neato'),
+        'fdp': lambda G: nx.nx_agraph.graphviz_layout(G, prog='fdp'),
+        'sfdp': lambda G: nx.nx_agraph.graphviz_layout(G, prog='sfdp'),
+        'twopi': lambda G: nx.nx_agraph.graphviz_layout(G, prog='twopi'),
+        'circo': lambda G: nx.nx_agraph.graphviz_layout(G, prog='circo')
+    }
 
-    # Draw edge labels
-    edge_labels = {(i, j): G[i][j]['label'] for i, j in G.edges()}
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels)
-    
-    plt.show()
+    layout_func = layout_funcs.get(layout_type)
+    if layout_func is None:
+        raise ValueError(f"Invalid layout type: {layout_type}")
 
-def visualize_graph_with_selective_offset(G: nx.DiGraph, layout: str = 'spring', draw_edge_labels: bool = True, draw_color: bool = False, draw_mixed_state: bool = False) -> None:
-    """Visualize the graph with offset only for bidirectional edges."""
-    if layout == 'spring':
-        pos = nx.spring_layout(G)
-    elif layout == 'circular':
-        pos = nx.circular_layout(G)
-    elif layout == 'random':
-        pos = nx.random_layout(G)
-    elif layout == 'shell':
-        pos = nx.shell_layout(G)
-    elif layout == 'spectral':
-        pos = nx.spectral_layout(G)
-    else:
-        raise ValueError(f"Invalid layout type: {layout}")
+    return layout_func(G)
 
-    # Compute the strongly connected components
-    sccs = list(nx.strongly_connected_components(G))
-    recurrent_edges = [(u, v) for scc in sccs for u in scc for v in G.successors(u) if v in scc]
-    transitory_edges = [edge for edge in G.edges() if edge not in recurrent_edges]
-    transitory_states = [node for node in G.nodes() if node not in [edge[0] for edge in recurrent_edges]]
+def hierarchical_layout(G):
+    """Generate a hierarchical layout for the graph."""
+    # This is a simple hierarchical layout and might need adjustments based on the exact graph structure
+    levels = {}
+    for node in G.nodes():
+        if node not in levels:
+            levels[node] = 0
+        for child in G.successors(node):
+            levels[child] = levels[node] + 1
 
-    # Draw nodes with double outline for the first state if draw_mixed_state is True
+    max_level = max(levels.values())
+    pos = {}
+    for node, level in levels.items():
+        # Distribute nodes evenly across the level
+        level_nodes = [n for n, l in levels.items() if l == level]
+        level_width = len(level_nodes)
+        idx = level_nodes.index(node)
+        x = idx - level_width / 2
+        y = max_level - level
+        pos[node] = (x, y)
+
+    return pos
+
+def get_colors():
+    """Return the colors used in the graph."""
+    return {
+        'transitory': '#A1D4C0', 
+        'recurrent': '#B2C9F2',
+        'observation_induced': '#D4B2E2',
+        'edge_standard': 'black'
+    }
+
+def draw_nodes(G, pos, transitory_states, colors, draw_mixed_state):
+    """Draw nodes on the graph."""
     for node in G.nodes():
         if draw_mixed_state:
-            node_color = 'green' if node in transitory_states else 'purple'
+            node_color = colors['transitory'] if node in transitory_states else colors['recurrent']
             if node == 0:  # Check if the node is the first state
-                nx.draw_networkx_nodes(G, pos, nodelist=[node], node_color=node_color, edgecolors='black', linewidths=5)
+                nx.draw_networkx_nodes(G, pos, nodelist=[node], node_color=node_color, edgecolors='black', linewidths=2)  # Primary circle with thicker outline
+                nx.draw_networkx_nodes(G, pos, nodelist=[node], node_color=node_color, edgecolors='black', linewidths=0.5, node_size=325)  # Secondary circle
             else:
-                nx.draw_networkx_nodes(G, pos, nodelist=[node], node_color=node_color)
+                nx.draw_networkx_nodes(G, pos, nodelist=[node], node_color=node_color, edgecolors='black')
         else:
-            node_color = 'black'
-            nx.draw_networkx_nodes(G, pos, nodelist=[node], node_color=node_color)
+            node_color = colors['edge_standard']
+            nx.draw_networkx_nodes(G, pos, nodelist=[node], node_color=node_color, edgecolors='black')
 
+def draw_edges(G, pos, transitory_edges, colors, draw_color, draw_mixed_state):
+    """Draw edges on the graph."""
     for edge in G.edges(data=True):
+        edge_color = colors['edge_standard']
         if draw_color:
             edge_color = 'blue' if edge[2]['label'] == '0' else 'red'
-            edge_alpha = edge[2]['weight']
-        else:
-            edge_color = 'black'
-            edge_alpha = 1
-        if (edge[1], edge[0]) in G.edges():  # Check for reverse edge
+        edge_alpha = edge[2]['weight']
+        
+        if (edge[1], edge[0]) in G.edges():
             nx.draw_networkx_edges(G, pos, edgelist=[(edge[0], edge[1])], connectionstyle="arc3,rad=0.1", edge_color=edge_color, alpha=edge_alpha)
         else:
             if draw_mixed_state and ((edge[0], edge[1]) in transitory_edges):
                 nx.draw_networkx_edges(G, pos, edgelist=[(edge[0], edge[1])], edge_color=edge_color, alpha=edge_alpha, style='dotted')
             else:
                 nx.draw_networkx_edges(G, pos, edgelist=[(edge[0], edge[1])], edge_color=edge_color, alpha=edge_alpha)
+
+def identify_recurrent_states(G):
+    """Identify the recurrent states of the graph."""
+    sccs = list(nx.strongly_connected_components(G))
     
-    nx.draw_networkx_labels(G, pos)
+    recurrent_states = set()
+    for scc in sccs:
+        is_recurrent = True
+        for node in scc:
+            for successor in G.successors(node):
+                if successor not in scc:
+                    is_recurrent = False
+                    break
+            if not is_recurrent:
+                break
+        if is_recurrent:
+            recurrent_states.update(scc)
+            
+    return recurrent_states
+def visualize_graph_with_selective_offset(G, layout='spring', draw_edge_labels=True, draw_color=False, draw_mixed_state=False):
+    pos = determine_layout(G, layout)
 
-    # Draw edge labels
+    recurrent_states = identify_recurrent_states(G)
+    transitory_states = [node for node in G.nodes() if node not in recurrent_states]
+   # Identify recurrent edges
+    recurrent_edges = [(u, v) for u in recurrent_states for v in recurrent_states if G.has_edge(u, v)]
+    transitory_edges = [edge for edge in G.edges() if edge not in recurrent_edges]
+
+    colors = get_colors()
+
+    draw_nodes(G, pos, transitory_states, colors, draw_mixed_state)
+    draw_edges(G, pos, transitory_edges, colors, draw_color, draw_mixed_state)
+    nx.draw_networkx_labels(G, pos, font_color='black')  # Adjusted font color to red
+
     if draw_edge_labels:
-        edge_labels = {(i, j): f"{G[i][j]['label']}|{round(G[i][j]['weight']*100)}%" for i, j in G.edges()}
-        nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, label_pos=0.3)
-
-    # Draw color legend if draw_color is True
-    if draw_color:
-        plt.plot([], [], color='blue', label='0')
-        plt.plot([], [], color='red', label='1')
-        plt.legend(title='Emission', loc='upper right')
+        edge_labels = {(i, j): f"$\mathbf{{{G[i][j]['label']}}}$:{round(G[i][j]['weight']*100)}%" for i, j in G.edges()}
+        nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, label_pos=0.5, font_size=8)
 
     plt.show()
+
 
 
 def plot_block_entropy_diagram(sequence: List[int], max_block_length: int):

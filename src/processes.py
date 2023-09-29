@@ -42,20 +42,22 @@ class Process:
         """
         # randomly select state from steady state distribution
         num_states = self.T.shape[1]
-        current_state = np.random.choice(num_states, p=self.steady_state)
+        # flip keys and vals for state names
+        state_names = {v: k for k, v in self.state_names.items()}
+        current_state_ind = np.random.choice(num_states, p=self.steady_state)
 
         sequence = []
         positions = []
         for _ in range(total_length):
             if with_positions:
-                positions.append(self.state_names[current_state])
+                positions.append(state_names[current_state_ind])
             # randomly select output based on transition matrix
-            p = self.T[:, current_state, :].sum(axis=1)
+            p = self.T[:, current_state_ind, :].sum(axis=1)
             emission = np.random.choice(2, p=p)
-            # make transition
-            next_state = np.random.choice(num_states, p=self.T[emission, current_state, :])
-            sequence.append(next_state)
-            current_state = next_state
+            # make transition. given the current state and the emission, the next state is determined
+            next_state_ind = self.T[emission, current_state_ind, :].argmax()
+            sequence.append(emission)
+            current_state_ind = next_state_ind
 
         if with_positions:
             return sequence, positions
@@ -153,11 +155,13 @@ class RRXORProcess(Process):
         Generate the epsilon machine for the RRXOR process.
 
         Parameters:
-        with_state_names (bool): If True, also return a dictionary mapping state names to indices.
+        with_state_names (bool): If True, also return a dictionary mapping
+                                state names to indices.
 
         Returns:
         numpy.ndarray: The transition tensor for the epsilon machine.
-        dict: A dictionary mapping state names to indices. Only returned if with_state_names is True.
+        dict: A dictionary mapping state names to indices. Only returned if
+              with_state_names is True.
         """
         T = np.zeros((2, 5, 5))
         state_names = {'S': 0, '0': 1, '1': 2, 'T': 3, 'F': 4}
@@ -175,7 +179,7 @@ class RRXORProcess(Process):
         else:
             return T
 
-    def generate(total_length, with_positions=False):
+    def generate_without_epsilon_machine(total_length, with_positions=False):
         """
         Generate a sequence of Random-Random-XOR (RRXOR) data.
 
@@ -292,6 +296,39 @@ class ZeroOneRProcess(Process):
         T[1, state_names['1'], state_names['R']] = 1.0
         T[0, state_names['R'], state_names['0']] = self.p
         T[1, state_names['R'], state_names['0']] = 1-self.p
+
+        if with_state_names:
+            return T, state_names
+        else:
+            return T
+        
+
+class EvenProcess(Process):
+    """
+    Class for generating EvenProcess data.
+    """
+
+    def __init__(self, p=2/3):
+        self.p = p
+        super().__init__()
+
+    def _get_epsilon_machine(self, with_state_names=False):
+        """
+        Generate the epsilon machine for the EvenProcess.
+
+        Parameters:
+        with_state_names (bool): If True, also return a dictionary mapping state names to indices.
+
+        Returns:
+        numpy.ndarray: The transition tensor for the epsilon machine.
+        dict: A dictionary mapping state names to indices. Only returned if with_state_names is True.
+        """
+        T = np.zeros((2, 2, 2))
+        state_names = {'E': 0, 'O': 1}
+        T[1, state_names['E'], state_names['O']] = 1-self.p
+        T[0, state_names['E'], state_names['E']] = self.p
+        T[1, state_names['O'], state_names['E']] = 1.0
+
 
         if with_state_names:
             return T, state_names

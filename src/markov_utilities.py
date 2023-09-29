@@ -3,6 +3,8 @@ import networkx as nx
 from numpy import linalg as LA
 from typing import List, Tuple, Optional, Dict
 from scipy.sparse import lil_matrix
+from collections import defaultdict, deque
+from collections import Counter
 
 
 def generate_emissions(epsilon_machine: np.ndarray, num_emissions: int) -> List[int]:
@@ -425,3 +427,129 @@ def epsilon_machine_to_graph(epsilon_machine: np.ndarray, state_names: Optional[
                     G.add_edge(from_node, to_node, label=str(i), weight=epsilon_machine[i, j, k])
 
     return G
+
+def entropy(prob_dist, base=2):
+
+    # 0*log(0) = 0
+    prob_dist[prob_dist == 0] = 1
+
+    return -np.sum(prob_dist * np.log(prob_dist) / np.log(base))
+
+def compute_myopic_entropy_from_MSP(MSP_T, max_length=10):
+    """
+    Compute the myopic entropy from a Mixed State Presentation tensor.
+
+    Parameters:
+    MSP_T (np.ndarray): The Mixed State Presentation transition matrix tensor. (emissions, from_states, to_states)
+    max_length (int, optional): The maximum length for the entropy computation. Defaults to 10.
+
+    Returns:
+    np.ndarray: The computed myopic entropy.
+    """
+    # Get the number of states
+    n_states = MSP_T.shape[1]
+
+    # Compute the entropy of the emissions from each mixed state
+    mixed_state_entropy = np.zeros(n_states)
+    for i in range(n_states):
+        emission_dist = MSP_T[:, i, :].sum(axis=1)
+        mixed_state_entropy[i] = entropy(emission_dist)
+
+    # Compute the sum over the zeroth axis of the MSP_T tensor
+    transition_matrix = MSP_T.sum(axis=0)
+
+    # Initialize the list for the myopic entropy
+    hmu_L = []
+    for L in range(max_length):
+        # Compute the power of W_L, considering that Python indexing starts at 0
+        transition_power = np.linalg.matrix_power(transition_matrix, L)
+        # Compute the myopic entropy
+        hmu = np.einsum('ij, j->i', transition_power, mixed_state_entropy)
+        hmu_L.append(hmu[0])
+
+    return np.array(hmu_L)
+
+
+
+def calculate_sequence_probabilities(matrix, max_length: int):
+    num_states = matrix.shape[1]
+    all_sequence_probs = defaultdict(lambda: defaultdict(float))
+    queue = deque()
+
+    steady_state_distribution = calculate_steady_state_distribution(matrix)
+
+    for j in range(num_states):
+        for i in [0, 1]:
+            for k in range(num_states):
+                if matrix[i][j][k] > 0:
+                    sequence = str(i)
+                    transition_prob = matrix[i][j][k]
+                    initial_prob = steady_state_distribution[j] * transition_prob
+                    queue.append((sequence, k, initial_prob))
+                    all_sequence_probs[1][sequence] += initial_prob
+
+    while queue:
+        sequence, curr_state, prob = queue.popleft()
+        if len(sequence) < max_length:
+            for i in [0, 1]:
+                for k in range(num_states):
+                    if matrix[i][curr_state][k] > 0:
+                        new_sequence = sequence + str(i)
+                        transition_prob = matrix[i][curr_state][k]
+                        new_prob = prob * transition_prob
+                        queue.append((new_sequence, k, new_prob))
+                        all_sequence_probs[len(new_sequence)][new_sequence] += new_prob
+
+    return dict(all_sequence_probs)
+
+
+
+def calculate_empirical_sequence_probabilities(sequence, max_length: int):
+    sequence_length = len(sequence)
+    all_sequence_probs = {}
+
+    for length in range(1, max_length + 1):
+        sequence_counts = Counter([sequence[i:i+length] for i in range(sequence_length - length + 1)])
+        total_count = sum(sequence_counts.values())
+        sequence_probs = {seq: count / total_count for seq, count in sequence_counts.items()}
+        all_sequence_probs[length] = sequence_probs
+
+    return all_sequence_probs
+    
+
+def create_transition_matrix(sequence_probs, N):
+    # Get all length N sequences and their probabilities
+    states = list(sequence_probs[N].keys())
+    num_states = len(states)
+
+    # Initialize the transition matrix and emission probabilities
+    transition_matrix = np.zeros((2, num_states, num_states))
+    emission_probs = np.zeros((2, num_states))
+
+    # Create a mapping from sequences to state indices
+    state_indices = {state: i for i, state in enumerate(states)}
+
+    # Calculate the emission probabilities and transition probabilities
+    for sequence, prob in sequence_probs[N+1].items():
+        # The current state is the first N characters of the sequence
+        current_state = sequence[:-1]
+        # The next state is the last N characters of the sequence
+        next_state = sequence[1:]
+        # The emission is the last character of the sequence
+        emission = int(sequence[-1])
+
+        # Get the indices of the current state and next state
+        current_state_index = state_indices[current_state]
+        next_state_index = state_indices[next_state]
+
+        # Update the transition matrix and emission probabilities
+        transition_matrix[emission, current_state_index, next_state_index] += prob
+        emission_probs[emission, current_state_index] += prob
+
+    # Normalize the transition matrix and emission probabilities
+    transition_matrix /= transition_matrix.sum(axis=(0, 2), keepdims=True)
+    emission_probs /= emission_probs.sum(axis=0, keepdims=True)
+
+    return states, transition_matrix, emission_probs
+
+        
