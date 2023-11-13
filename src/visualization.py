@@ -78,20 +78,29 @@ def draw_nodes(G, pos, transitory_states, colors, draw_mixed_state):
 
 def draw_edges(G, pos, transitory_edges, colors, draw_color, draw_mixed_state):
     """Draw edges on the graph."""
-    for edge in G.edges(data=True):
+    for idx, edge in enumerate(G.edges(data=True)):
         edge_color = colors['edge_standard']
         if draw_color:
             edge_color = 'blue' if edge[2]['label'] == '0' else 'red'
         edge_alpha = edge[2]['weight']
         
         if (edge[1], edge[0]) in G.edges():
-            nx.draw_networkx_edges(G, pos, edgelist=[(edge[0], edge[1])], connectionstyle="arc3,rad=0.1", edge_color=edge_color, alpha=edge_alpha)
+            # If there are multiple edges, adjust the radian value to separate the arcs
+            num_edges = G.number_of_edges(edge[0], edge[1])
+            rad = 0.3
+            nx.draw_networkx_edges(G, pos, edgelist=[(edge[0], edge[1])], connectionstyle=f"arc3,rad={rad}", edge_color=edge_color, alpha=edge_alpha)
+        elif G.number_of_edges(edge[0], edge[1]) > 1:
+            # If there are multiple edges, adjust the radian value to separate the arcs
+            num_edges = G.number_of_edges(edge[0], edge[1])
+            rad = 0.3 * ((idx % num_edges) - (num_edges - 1) / num_edges)
+            nx.draw_networkx_edges(G, pos, edgelist=[(edge[0], edge[1])], connectionstyle=f"arc3,rad={rad}", edge_color=edge_color, alpha=edge_alpha)
         else:
             if draw_mixed_state and ((edge[0], edge[1]) in transitory_edges):
                 nx.draw_networkx_edges(G, pos, edgelist=[(edge[0], edge[1])], edge_color=edge_color, alpha=edge_alpha, style='dotted')
             else:
                 nx.draw_networkx_edges(G, pos, edgelist=[(edge[0], edge[1])], edge_color=edge_color, alpha=edge_alpha)
 
+            
 def identify_recurrent_states(G):
     """Identify the recurrent states of the graph."""
     sccs = list(nx.strongly_connected_components(G))
@@ -110,7 +119,8 @@ def identify_recurrent_states(G):
             recurrent_states.update(scc)
             
     return recurrent_states
-def visualize_graph_with_selective_offset(G, layout='spring', draw_edge_labels=True, draw_color=False, draw_mixed_state=False):
+    
+def visualize_graph(G, layout='spring', draw_edge_labels=True, draw_color=False, draw_mixed_state=False, pdf=None):
     pos = determine_layout(G, layout)
 
     recurrent_states = identify_recurrent_states(G)
@@ -126,10 +136,18 @@ def visualize_graph_with_selective_offset(G, layout='spring', draw_edge_labels=T
     nx.draw_networkx_labels(G, pos, font_color='black')  # Adjusted font color to red
 
     if draw_edge_labels:
-        edge_labels = {(i, j): f"$\mathbf{{{G[i][j]['label']}}}$:{round(G[i][j]['weight']*100)}%" for i, j in G.edges()}
+        edge_labels = {}
+        for i, j, data in G.edges(data=True):
+            edge_labels[(i, j)] = f"$\mathbf{{{data['label']}}}$:{round(data['weight']*100)}%"
+
         nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, label_pos=0.5, font_size=8)
 
-    plt.show()
+    if pdf is not None:
+        with plt.rc_context({'pdf.fonttype': 42}):
+            plt.savefig(pdf, format='pdf')
+            plt.show()
+    else:
+        plt.show()
 
 
 

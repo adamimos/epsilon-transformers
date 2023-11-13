@@ -5,7 +5,7 @@ from markov_utilities import calculate_steady_state_distribution
 
 NUM_SYMBOLS = 2
 
-def compute_minimum_error(epsilon_machine: List[np.ndarray]) -> float:
+def compute_minimum_error(epsilon_machine: np.ndarray) -> float:
     """Compute the minimum error for predicting the next symbol based on the epsilon machine."""
     # Compute the steady state distribution for the epsilon machine
     steady_state_distribution = calculate_steady_state_distribution(sum(epsilon_machine))
@@ -26,7 +26,7 @@ def binary_entropy(p: float) -> float:
     """Compute the binary entropy for a given probability p."""
     if p == 0 or p == 1:
         return 0
-    return -p * np.log(p) - (1 - p) * np.log(1 - p)
+    return -p * np.log2(p) - (1 - p) * np.log2(1 - p)
 
 def inverse_binary_entropy(target_entropy: float) -> float:
     """Find the probability p corresponding to a given binary entropy value."""

@@ -85,17 +85,25 @@ class MultilayerTransformer(nn.Module):
         self.pos_embedding = nn.Embedding(input_size, d_model)
         self.layers = nn.ModuleList([TransformerLayer(d_model, input_size, d_head, n_head, d_mlp, use_layernorm) for _ in range(n_layers)])
         self.unembedding = nn.Linear(d_model, d_vocab)
+        self.hooks = {}
+        self.current_batch = 0
 
-    def forward(self, x):
+    def forward(self, x, return_activations=False):
         # x is of size (batch_size, input_size)
         # embed the input
         x = self.embedding(x) + self.pos_embedding(torch.arange(self.input_size, device=x.device))
+        activations = []
         # pass through each transformer layer
         for layer in self.layers:
             x = layer(x)
+            if return_activations:
+                activations.append(x.detach())
         # unembed the output
         x = self.unembedding(x)
-        return x
+        if return_activations:
+            return x, activations
+        else:
+            return x
     
     def predict_probs(self, x):
         # pass input through the model

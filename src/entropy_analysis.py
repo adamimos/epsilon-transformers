@@ -1,6 +1,8 @@
 import numpy as np
 from typing import List, Tuple
 from collections import Counter
+import matplotlib.pyplot as plt
+from scipy.optimize import minimize_scalar
 
 def compute_block_entropy(sequence: List[int], max_block_length: int) -> np.ndarray:
     """Compute the block entropy for blocks of varying lengths."""
@@ -57,8 +59,25 @@ def compute_empirical_conditional_entropy(sequence: List[int], max_block_length:
                 # Empirical conditional probability p(symbol | block)
                 conditional_prob = block_followed_by_symbol_counts.get((block, symbol), 0) / block_count
                 if conditional_prob > 0:
-                    entropy -= (block_count / len(sequence)) * conditional_prob * np.log(conditional_prob)
+                    entropy -= (block_count / len(sequence)) * conditional_prob * np.log2(conditional_prob)
         
         conditional_entropies.append(entropy)
 
     return conditional_entropies
+
+
+def binary_entropy(p: float) -> float:
+    """Compute the binary entropy for a given probability p."""
+    if p == 0 or p == 1:
+        return 0
+    return -p * np.log2(p) - (1 - p) * np.log2(1 - p)
+
+def inverse_binary_entropy(target_entropy: float) -> float:
+    """Find the probability p corresponding to a given binary entropy value."""
+    # Objective function: the difference between target entropy and binary entropy of p
+    objective = lambda p: (binary_entropy(p) - target_entropy)**2
+    
+    # Minimize the objective function to find p
+    result = minimize_scalar(objective, bounds=(0, 0.5), method='bounded')
+    
+    return result.x

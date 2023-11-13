@@ -404,7 +404,7 @@ def epsilon_machine_to_graph(epsilon_machine: np.ndarray, state_names: Optional[
     n_outputs, n_states, _ = epsilon_machine.shape
 
     # Create an empty directed graph
-    G = nx.DiGraph()
+    G = nx.MultiDiGraph()
 
     # Invert the state_names dictionary if it's provided
     if state_names:
@@ -433,7 +433,7 @@ def entropy(prob_dist, base=2):
     # 0*log(0) = 0
     prob_dist[prob_dist == 0] = 1
 
-    return -np.sum(prob_dist * np.log(prob_dist) / np.log(base))
+    return -np.sum(prob_dist * np.log2(prob_dist) / np.log2(base))
 
 def compute_myopic_entropy_from_MSP(MSP_T, max_length=10):
     """
