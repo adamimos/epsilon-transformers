@@ -194,3 +194,66 @@ def train_model(model, train_loader, test_loader, criterion, optimizer, schedule
     return model
 
 
+
+def train_hooked_model(model, train_loader, test_loader, criterion, optimizer, scheduler, num_epochs, verbose=True):
+    d_vocab = model.cfg.d_vocab
+    for epoch in range(num_epochs):
+        model.train()
+        running_acc = 0.0
+        num_batches = 0
+
+        for batch_inputs, batch_targets in train_loader:
+            if torch.cuda.is_available():
+                batch_inputs, batch_targets = batch_inputs.cuda(), batch_targets.cuda()
+
+            optimizer.zero_grad()
+            outputs = model(batch_inputs)
+            loss = criterion(outputs.view(-1, d_vocab), batch_targets.view(-1))
+            loss.backward()
+            optimizer.step()
+            scheduler.step(loss)
+
+            running_acc += compute_accuracy(torch.argmax(outputs, dim=-1)[:,-1], batch_targets[:,-1])
+            num_batches += 1
+
+        # Calculate training results after each epoch
+        avg_training_acc = running_acc / num_batches
+        
+        # Evaluation on test set after each epoch
+        model.eval()  # set the model to evaluation mode
+        with torch.no_grad():  # no gradients needed for evaluation
+            overall_accuracies = []
+            last_bit_accuracies = []
+
+            # Iterate over test batches
+            for idx, (batch_inputs, batch_targets) in enumerate(test_loader):
+                if torch.cuda.is_available():
+                    batch_inputs, batch_targets = batch_inputs.cuda(), batch_targets.cuda()
+
+                # Get model predictions
+                outputs = model(batch_inputs)
+                predicted_classes = torch.argmax(outputs, dim=-1)
+
+                # Compute overall accuracy
+                overall_accuracy = compute_accuracy(predicted_classes, batch_targets)
+                overall_accuracies.append(overall_accuracy)
+
+                # Compute accuracy for the last bit
+                last_bit_accuracy = compute_accuracy(predicted_classes[:, -1], batch_targets[:, -1])
+                last_bit_accuracies.append(last_bit_accuracy)
+
+            # Calculate average accuracies for the entire test set after each epoch
+            avg_overall_accuracy = sum(overall_accuracies) / len(overall_accuracies)
+            avg_last_bit_accuracy = sum(last_bit_accuracies) / len(last_bit_accuracies)
+        
+        # Print the results in a tabulated format
+        if verbose:
+            if epoch == 0:
+                header = "| Epoch | Training Acc. | Loss | Overall Acc. | Last Bit Acc. |"
+                print(header)
+            row = f"| {epoch+1:^5} | {avg_training_acc:^12.2%} | {loss.item():^13.4f} | {avg_overall_accuracy:^17.2%} | {avg_last_bit_accuracy:^16.2%} |"
+            print(row)
+
+    return model
+
+

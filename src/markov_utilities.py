@@ -385,6 +385,57 @@ def to_mixed_state_presentation_sparse(epsilon_machine: np.ndarray,
     # Trim the dimensions
     return [matrix[:next_index, :next_index] for matrix in transition_matrices]
 
+def to_probability_distributions(epsilon_machine: np.ndarray, 
+                                 max_depth: int = 50, 
+                                 threshold: float = 1e-6) -> List[np.ndarray]:
+    """
+    Convert an epsilon machine to a list of probability distributions over the states.
+
+    Parameters:
+    epsilon_machine (np.ndarray): The epsilon machine transition tensor.
+    max_depth (int): The maximum depth for the tree exploration.
+    threshold (float): The threshold for the distance between distributions.
+
+    Returns:
+    List[np.ndarray]: A list of probability distributions over the states.
+    """
+
+    n_outputs = epsilon_machine.shape[0]
+    
+    # Initialization
+    tree = [{}]
+    X = calculate_steady_state_distribution(epsilon_machine[0] + epsilon_machine[1])
+    distributions_list = [np.squeeze(X)]
+    tree[0]['root'] = distributions_list[0]
+    seen_distributions = [tuple(distributions_list[0])]
+    state_index_map = {'root': 0}
+    
+    # Tree exploration
+    for depth in range(max_depth):
+        tree.append({})
+        all_branches_closed = True
+        
+        for node, X_current in tree[depth].items():
+            for output in range(n_outputs):
+                X_next = compute_next_distribution(epsilon_machine, X_current, output)
+
+                if np.sum(X_next) == 0.0:
+                    continue
+
+                new_node_name = f"{node}_{output}"
+
+                # If the next mixed state is close to a previously seen state, skip adding it again
+                if not is_distribution_close(X_next, seen_distributions, threshold):
+                    all_branches_closed = False
+                    tree[depth + 1][new_node_name] = X_next
+                    seen_distributions.append(tuple(X_next))
+                    distributions_list.append(X_next)
+                
+        if all_branches_closed:
+            break
+
+    return distributions_list
+
 
 def epsilon_machine_to_graph(epsilon_machine: np.ndarray, state_names: Optional[Dict[str, int]] = None) -> nx.DiGraph:
     """
