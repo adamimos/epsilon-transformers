@@ -25,3 +25,10 @@ config: {}
 2024-01-30 13:33:55,982 INFO    Thread-102 (_run_job):95609 [wandb_run.py:_redirect():2153] Wrapping output streams.
 2024-01-30 13:33:55,982 INFO    Thread-102 (_run_job):95609 [wandb_run.py:_redirect():2178] Redirects installed.
 2024-01-30 13:33:55,982 INFO    Thread-102 (_run_job):95609 [wandb_init.py:init():847] run started, returning control to user process
+2024-01-30 13:46:46,625 INFO    Thread-102 (_run_job):95609 [wandb_run.py:_finish():1962] finishing run adamimos/RRXOR_initial_sweep/960xd5zp
+2024-01-30 13:46:46,625 INFO    Thread-102 (_run_job):95609 [wandb_run.py:_atexit_cleanup():2202] got exitcode: 0
+2024-01-30 13:46:46,625 INFO    Thread-102 (_run_job):95609 [wandb_run.py:_restore():2185] restore
+2024-01-30 13:46:46,625 INFO    Thread-102 (_run_job):95609 [wandb_run.py:_restore():2191] restore done
+2024-01-30 13:46:57,524 INFO    Thread-102 (_run_job):95609 [wandb_run.py:_footer_history_summary_info():3857] rendering history
+2024-01-30 13:46:57,525 INFO    Thread-102 (_run_job):95609 [wandb_run.py:_footer_history_summary_info():3889] rendering summary
+2024-01-30 13:46:57,535 INFO    Thread-102 (_run_job):95609 [wandb_run.py:_footer_sync_info():3816] logging synced files
