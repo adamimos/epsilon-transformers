@@ -1,0 +1,10 @@
+torch
+numpy
+pandas
+seaborn
+matplotlib
+wandb
+scikit-learn
+plotly
+transformer_lens
+pytest

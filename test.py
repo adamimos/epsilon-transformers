@@ -10,7 +10,6 @@ import torch.optim as optim
 import torch.nn as nn
 import numpy as np
 
-
 # Load the config file
 with open("./RRXOR_sweep_cfg.yaml", "r") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
@@ -181,7 +180,6 @@ def build_optimizer(network, optimizer_type, weight_decay, learning_rate):
         optimizer = optim.SGD(network.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
     return optimizer
-
 
 def train_epoch(model, optimizer, X, Y, train_weights , test_weights, d_vocab):
     model.train()

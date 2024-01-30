@@ -11,4 +11,5 @@ epsilon_transformers/visualization.py
 epsilon_transformers.egg-info/PKG-INFO
 epsilon_transformers.egg-info/SOURCES.txt
 epsilon_transformers.egg-info/dependency_links.txt
+epsilon_transformers.egg-info/requires.txt
 epsilon_transformers.egg-info/top_level.txt
