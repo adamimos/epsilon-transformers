@@ -534,12 +534,12 @@ def epsilon_machine_to_graph(epsilon_machine: np.ndarray, state_names: Optional[
 
     return G
 
-def entropy(prob_dist, base=2):
+def entropy(prob_dist, base=None):
 
     # 0*log(0) = 0
     prob_dist[prob_dist == 0] = 1
 
-    return -np.sum(prob_dist * np.log2(prob_dist) / np.log2(base))
+    return -np.sum(prob_dist * np.log(prob_dist))
 
 def compute_myopic_entropy_from_MSP2(MSP_T, max_length=10):
   n_states = MSP_T.shape[1]
@@ -606,14 +606,35 @@ def compute_myopic_entropy_from_MSP(MSP_T, max_length=10):
 
 
 def calculate_sequence_probabilities(matrix, max_length: int):
+    """
+    Calculate the probabilities of all possible sequences up to a given length.
+
+    This function uses a breadth-first search to traverse the state space of the
+    Markov chain defined by the given transition matrix. It calculates the probability
+    of each sequence by multiplying the probabilities of the transitions that make up
+    the sequence.
+
+    Parameters:
+    matrix (np.ndarray): The transition matrix of the Markov chain. The matrix should
+        be a 3D array where the element at index (i, j, k) is the probability of
+        transitioning from state j to state k with emission i.
+    max_length (int): The maximum length of the sequences for which to calculate
+        probabilities.
+
+    Returns:
+    dict: A dictionary where the keys are sequence lengths and the values are
+        dictionaries mapping sequences of that length to their probabilities.
+        e.g. {1: {'0': 0.5, '1': 0.5}, 2: {'00': 0.25, '01': 0.25, '10': 0.25, '11': 0.25}}
+    """
     num_states = matrix.shape[1]
+    num_emissions = matrix.shape[0]
     all_sequence_probs = defaultdict(lambda: defaultdict(float))
     queue = deque()
 
     steady_state_distribution = calculate_steady_state_distribution(matrix)
 
     for j in range(num_states):
-        for i in [0, 1]:
+        for i in range(num_emissions):
             for k in range(num_states):
                 if matrix[i][j][k] > 0:
                     sequence = str(i)
@@ -625,7 +646,7 @@ def calculate_sequence_probabilities(matrix, max_length: int):
     while queue:
         sequence, curr_state, prob = queue.popleft()
         if len(sequence) < max_length:
-            for i in [0, 1]:
+            for i in range(num_emissions):
                 for k in range(num_states):
                     if matrix[i][curr_state][k] > 0:
                         new_sequence = sequence + str(i)

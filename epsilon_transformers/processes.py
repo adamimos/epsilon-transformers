@@ -258,6 +258,23 @@ class Presentation:
             return train_loader, test_loader, positions
         else:
             return train_loader, test_loader
+        
+    def prepare_data_weighted(self, L, n_epochs):
+        """
+        create a dataset with a weighted distribution of sequences
+        this should be more efficient for cases where there are not many permitted sequences
+        """
+
+        # compute all length L sequences and their associated probabilities
+
+        # for a given epoch we want to simulate batches for SGD
+        distributions = np.random.multinomial(n_epochs, probs)
+
+        
+
+
+
+
     
     def create_train_test_data(self, sequences, input_size, split_ratio=0.8):
         """

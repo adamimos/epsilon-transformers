@@ -269,7 +269,7 @@ def train_hooked_model(model_config, train_loader, test_loader, criterion, num_e
                 batch_targets = batch_targets.to(device)
 
                 # Get model predictions
-                outputs = model(batch_inputs)
+                outputs = model(batch_inputs) # outputs is of size (batch_size, input_size, d_vocab)
                 predicted_classes = torch.argmax(outputs, dim=-1)
 
                 # Compute overall accuracy

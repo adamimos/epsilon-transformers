@@ -33,7 +33,6 @@ from entropy_analysis import (
     compute_conditional_entropy,
     compute_empirical_conditional_entropy,
     inverse_binary_entropy,
-
 )
 
 from error_analysis import (
@@ -87,8 +86,6 @@ train_config = {
     'num_epochs': 200,
     'learning_rate': 1.5e-2,
     'weight_decay': 0,
-    'patience': 500,
-    'factor': 0.5
 }
 
 # Generate sequence data with positions
@@ -102,9 +99,8 @@ print(f"The number of batches in the training set is {len(train_loader)}")
 # Loss and optimizer
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=train_config['patience'], factor=train_config['factor'], verbose=True)
 
-model = train_hooked_model(model, train_loader, test_loader, criterion, optimizer, scheduler, num_epochs=train_config['num_epochs'], verbose=True)
+model = train_hooked_model(model, train_loader, test_loader, criterion, optimizer, num_epochs=train_config['num_epochs'], verbose=True)
 # %%
 import pandas as pd
 import seaborn as sns

@@ -18,7 +18,7 @@ def compute_block_entropy(sequence: List[int], max_block_length: int) -> np.ndar
         block_probs = {block: count / total_blocks for block, count in block_counts.items()}
         
         # Compute the block entropy H(L)
-        entropy_L = -sum(p * np.log2(p) for p in block_probs.values())
+        entropy_L = -sum(p * np.log(p) for p in block_probs.values())
         block_entropies.append(entropy_L)
     
     return np.array(block_entropies)
@@ -59,7 +59,7 @@ def compute_empirical_conditional_entropy(sequence: List[int], max_block_length:
                 # Empirical conditional probability p(symbol | block)
                 conditional_prob = block_followed_by_symbol_counts.get((block, symbol), 0) / block_count
                 if conditional_prob > 0:
-                    entropy -= (block_count / len(sequence)) * conditional_prob * np.log2(conditional_prob)
+                    entropy -= (block_count / len(sequence)) * conditional_prob * np.log(conditional_prob)
         
         conditional_entropies.append(entropy)
 
@@ -70,7 +70,7 @@ def binary_entropy(p: float) -> float:
     """Compute the binary entropy for a given probability p."""
     if p == 0 or p == 1:
         return 0
-    return -p * np.log2(p) - (1 - p) * np.log2(1 - p)
+    return -p * np.log(p) - (1 - p) * np.log(1 - p)
 
 def inverse_binary_entropy(target_entropy: float) -> float:
     """Find the probability p corresponding to a given binary entropy value."""

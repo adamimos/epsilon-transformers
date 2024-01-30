@@ -258,3 +258,4 @@ Traceback (most recent call last):
   File "zmq/backend/cython/socket.pyx", line 783, in zmq.backend.cython.socket.Socket.send
   File "zmq/backend/cython/socket.pyx", line 138, in zmq.backend.cython.socket._check_closed
 zmq.error.ZMQError: Socket operation on non-socket
+2024-01-18 21:35:51,815 INFO    MainThread:60865 [pyagent.py:run():314] Starting sweep agent: entity=None, project=None, count=None

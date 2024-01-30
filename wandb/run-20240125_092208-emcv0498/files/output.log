@@ -1,0 +1,4 @@
+
+2048
+torch.Size([2048, 10])
+[34m[1mwandb[39m[22m: Ctrl + C detected. Stopping sweep.
