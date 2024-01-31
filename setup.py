@@ -14,7 +14,8 @@ setup(
         'scikit-learn',
         'plotly',
         'transformer_lens',
-        'pytest'
+        'pytest',
+        'PyDrive',
     ],
 
 )
