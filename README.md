@@ -4,11 +4,13 @@ This project contains Python code for generating process data and training trans
 
 ## Codebase Structure
 
-- `src/processes.py`: Contains the [Process](file:///c%3A/Users/adamimos/Documents/GitHub/epsilon-transformers/src/processes.py#9%2C7-9%2C7) parent class for generating process data, and several child classes for specific processes like [RRXORProcess](file:///c%3A/Users/adamimos/Documents/GitHub/epsilon-transformers/src/processes.py#144%2C7-144%2C7).
-- `src/simple_transformer.py`: Contains the implementation of a simple transformer model.
-- `src/markov_utilities.py`: Contains utility functions for working with Markov processes and epsilon machines.
-- `notebooks/RRXOR_process.ipynb`: A Jupyter notebook for generating RRXOR process data and training a transformer on it.
+### Folders
+- `epsilon_transformers`: source code for this repository.
+
+### Code
+- `run_sweeps.py`: run sweeps on wandb
 
 ## Usage
 
-First, import the necessary classes from `processes.py`:
+To install, alongside all dependencies, run `pip install .` from the repository folder
+
