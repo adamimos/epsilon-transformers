@@ -32,7 +32,7 @@ parameters:
   init_weights:
     value: true
   batch_size:
-    values: [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384]
+    values: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384]
   num_epochs:
     value: 10000
   learning_rate:
