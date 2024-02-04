@@ -2,13 +2,11 @@
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[metadata]
+[project]
 name = "epsilon_transformers"
 version = "0.1"
 description = "Computational Mechanics of Transformer Models"
-
-[options]
-install_requires =
+dependencies = [
     "torch",
     "numpy",
     "pandas",
@@ -20,3 +18,4 @@ install_requires =
     "transformer_lens",
     "pytest",
     "PyDrive"
+]
