@@ -1,23 +1,33 @@
-import random
 import numpy as np
 import torch
 import torch.utils.data
-from .markov_utilities import calculate_steady_state_distribution
 import networkx as nx
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Dict
+from abc import ABC, abstractmethod
+
+from epsilon_transformers.markov_utilities import calculate_steady_state_distribution
 
 NUM_STATES = 5
 NUM_SYMBOLS = 2
 ALPHA = 1.0
 
+# TODO: Turn an epsilon machine into a class of it's own ??
+# TODO: Turn check_if_valid into validator and use it to validate
+# TODO: Use jaxtyping
+# TODO: Decouple the visualization (networkx) from the 
 
-class Presentation:
+class Presentation(ABC):
     """
     This is the parent class for presentations of a process. It is responsible for initializing the transition matrix,
     calculating the steady state distribution, and setting the number of symbols and states.
     """
+    transition_matrix: np.ndarray
+    state_names: Dict[str, int]
+    num_symbols: int
+    num_states: int
+    steady_state: np.ndarray
 
-    def __init__(self, transition_matrix: np.ndarray = None, state_names: dict = None):
+    def __init__(self, transition_matrix: Optional[np.ndarray] = None, state_names: Optional[Dict[str, int]] = None):
         """
         Initialize the Presentation object.
 
@@ -29,15 +39,14 @@ class Presentation:
         state_names (dict, optional): A dictionary mapping state names (strings) to indices (ints). If not provided, 
         state names will be generated based on the shape of the transition matrix or the epsilon machine.
         """
-
         if transition_matrix is not None:
             self.transition_matrix = transition_matrix
-            self.state_names = state_names if state_names is not None else {str(i): i for i in range(self.transition_matrix.shape[1])}
-            # have another property which is the reverse of state_names
-            self.state_inds = {v: k for k, v in self.state_names.items()}
+            if state_names is not None:
+                self.state_names = state_names  
+            else:
+                self.state_names = {str(i): i for i in range(self.transition_matrix.shape[1])} # ???
         else:
             self.transition_matrix, self.state_names = self._get_epsilon_machine(with_state_names=True)
-            self.state_inds = {v: k for k, v in self.state_names.items()}
 
         # Calculate the steady state distribution of the transition matrix
         self.steady_state = calculate_steady_state_distribution(self.transition_matrix)
@@ -50,7 +59,7 @@ class Presentation:
         if len(self.transition_matrix.shape) != 3 or self.transition_matrix.shape[1] != self.transition_matrix.shape[2]:
             raise ValueError("Transition matrix should have 3 axes and the final two dims shoulds be square")
 
-    def is_unifilar(self):
+    def is_unifilar(self) -> bool:
         """
         A presentation is unifilar if for every state and symbol, there is at most one transition to another state.
         """
@@ -62,10 +71,7 @@ class Presentation:
                     return False
         return True
 
-        
-
-    @staticmethod
-    def check_if_valid(self):
+    def check_if_valid(self) -> bool:
         """
         Check if the transition matrix is valid.
         """
@@ -80,6 +86,7 @@ class Presentation:
         transition = self.transition_matrix.sum(axis=0)
         if not np.allclose(transition.sum(axis=1), 1.0):
             raise ValueError("Transition matrix should be stochastic and sum to 1")
+        return True
 
     @staticmethod
     def random_markov_chain(num_states: int, num_symbols: int, alpha: float = 1.0) -> Tuple[np.ndarray, np.ndarray]:
@@ -146,8 +153,8 @@ class Presentation:
 
         return cls(recurrent_trans_matrices)
     
-    
-    def _get_epsilon_machine(self, with_state_names=False):
+    @abstractmethod
+    def _get_epsilon_machine(self, with_state_names=False) -> Tuple[np.ndarray, Dict[str,int]]:
         """
         Generate the epsilon machine for the presentation.
 
@@ -158,7 +165,7 @@ class Presentation:
         numpy.ndarray: The transition tensor for the epsilon machine.
         dict: A dictionary mapping state names to indices. Only returned if with_state_names is True.
         """
-        raise NotImplementedError("This method should be overridden by child class")
+        ...
 
     def generate_single_sequence(self, total_length, with_positions=False):
         """
@@ -270,12 +277,6 @@ class Presentation:
         # for a given epoch we want to simulate batches for SGD
         distributions = np.random.multinomial(n_epochs, probs)
 
-        
-
-
-
-
-    
     def create_train_test_data(self, sequences, input_size, split_ratio=0.8):
         """
         Create training and testing data from a list of sequences.
@@ -322,275 +323,3 @@ class Presentation:
         data = torch.utils.data.TensorDataset(data_inputs, data_targets)
         data_loader = torch.utils.data.DataLoader(data, batch_size=batch_size, shuffle=True)
         return data_loader
-
-class RRXOR(Presentation):
-
-    def __init__(self, pR1=0.5, pR2=0.5):
-        self.pR1 = pR1
-        self.pR2 = pR2
-        super().__init__()
-
-    def _get_epsilon_machine(self, with_state_names=False):
-        """
-        Generate the epsilon machine for the RRXOR process.
-
-        Parameters:
-        with_state_names (bool): If True, also return a dictionary mapping
-                                state names to indices.
-
-        Returns:
-        numpy.ndarray: The transition tensor for the epsilon machine.
-        dict: A dictionary mapping state names to indices. Only returned if
-              with_state_names is True.
-        """
-        T = np.zeros((2, 5, 5))
-        state_names = {'S': 0, '0': 1, '1': 2, 'T': 3, 'F': 4}
-        T[0, state_names['S'], state_names['0']] = self.pR1
-        T[1, state_names['S'], state_names['1']] = 1 - self.pR1
-        T[0, state_names['0'], state_names['F']] = self.pR2
-        T[1, state_names['0'], state_names['T']] = 1 - self.pR2
-        T[0, state_names['1'], state_names['T']] = self.pR2
-        T[1, state_names['1'], state_names['F']] = 1 - self.pR2
-        T[1, state_names['T'], state_names['S']] = 1.0
-        T[0, state_names['F'], state_names['S']] = 1.0
-
-        if with_state_names:
-            return T, state_names
-        else:
-            return T
-
-    def generate_without_epsilon_machine(total_length, with_positions=False):
-        """
-        Generate a sequence of Random-Random-XOR (RRXOR) data.
-
-        Parameters:
-        total_length (int): The total length of the sequence to generate.
-        with_positions (bool): If True, also return a list of positions ("R1", "R2", "XOR").
-
-        Returns:
-        list: The generated RRXOR sequence. If with_positions is True, also return a list of positions.
-        """
-        output = []
-        positions = []
-        
-        while len(output) < total_length+3:
-            bit1 = random.randint(0, 1)
-            bit2 = random.randint(0, 1)
-            xor_result = bit1 ^ bit2
-            output.extend([str(bit1), str(bit2), str(xor_result)])
-            positions.extend(["R1", "R2", "XOR"])
-        
-        # Start the sequence randomly at bit 1,2 r 3
-        start_index = random.randint(0, 2)
-        output = output[start_index:]
-        positions = positions[start_index:]
-
-        # Return the sequence up to the desired total length along with positions
-        if with_positions:
-            return output[:total_length], positions[:total_length]
-        else:
-            return output[:total_length]
-
-class GoldenMean(Presentation):
-    """
-    Class for generating RKGoldenMean data.
-    """
-    def __init__(self, R, k, p):
-        """
-        Initialize the GoldenMeanProcess with R, k, p parameters.
-
-        Parameters:
-        R (int): The number of states that output 1.
-        k (int): The number of states that output 0.
-        p (float): The probability of outputting 1 in the final state.
-        """
-        self.R = R
-        self.k = k
-        self.p = p
-
-        super().__init__()
-
-    def _get_epsilon_machine(self, with_state_names=False):
-        """
-        Generate the epsilon machine for the RKGoldenMean process.
-
-        Parameters:
-        with_state_names (bool): If True, also return a dictionary mapping state names to indices.
-
-        Returns:
-        numpy.ndarray: The transition tensor for the epsilon machine.
-        dict: A dictionary mapping state names to indices. Only returned if with_state_names is True.
-        """
-        assert self.k <= self.R, "k should be less than or equal to R"
-
-        n_states = self.R + self.k
-        T = np.zeros((2, n_states, n_states))
-
-        # State names
-        state_names = {chr(65 + i): i for i in range(n_states)}  # chr(65) is 'A'
-
-        # First state
-        T[1, state_names['A'], state_names['B']] = self.p
-        T[0, state_names['A'], state_names['A']] = 1 - self.p
-
-        # States that output 1
-        for i in range(1, self.R):
-            T[1, state_names[chr(65 + i)], state_names[chr(65 + i + 1)]] = 1.0
-
-        # States that output 0
-        for i in range(self.R, self.R+self.k-1):
-            T[0, state_names[chr(65 + i)], state_names[chr(65 + i + 1)]] = 1.0
-
-        # Last state
-        T[0, state_names[chr(65 + n_states - 1)], state_names['A']] = 1.0
-
-        if with_state_names:
-            return T, state_names
-        else:
-            return T
-        
-    
-class ZeroOneR(Presentation):
-    """
-    Class for generating 01R data.
-    """
-
-    def __init__(self, p=0.5):
-        self.p = p # probability of emitting 0 from the R state
-        super().__init__()
-
-    def _get_epsilon_machine(self, with_state_names=False):
-        """
-        Generate the epsilon machine for the 01R process.
-
-        Parameters:
-        with_state_names (bool): If True, also return a dictionary mapping state names to indices.
-
-        Returns:
-        numpy.ndarray: The transition tensor for the epsilon machine.
-        dict: A dictionary mapping state names to indices. Only returned if with_state_names is True.
-        """
-        T = np.zeros((2, 3, 3))
-        state_names = {'0': 0, '1': 1, 'R': 2}
-        T[0, state_names['0'], state_names['1']] = 1.0
-        T[1, state_names['1'], state_names['R']] = 1.0
-        T[0, state_names['R'], state_names['0']] = self.p
-        T[1, state_names['R'], state_names['0']] = 1-self.p
-
-        if with_state_names:
-            return T, state_names
-        else:
-            return T
-        
-
-class Even(Presentation):
-    """
-    Class for generating EvenProcess data.
-    """
-
-    def __init__(self, p=2/3):
-        self.p = p
-        super().__init__()
-
-    def _get_epsilon_machine(self, with_state_names=False):
-        """
-        Generate the epsilon machine for the EvenProcess.
-
-        Parameters:
-        with_state_names (bool): If True, also return a dictionary mapping state names to indices.
-
-        Returns:
-        numpy.ndarray: The transition tensor for the epsilon machine.
-        dict: A dictionary mapping state names to indices. Only returned if with_state_names is True.
-        """
-        T = np.zeros((2, 2, 2))
-        state_names = {'E': 0, 'O': 1}
-        T[1, state_names['E'], state_names['O']] = 1-self.p
-        T[0, state_names['E'], state_names['E']] = self.p
-        T[1, state_names['O'], state_names['E']] = 1.0
-
-
-        if with_state_names:
-            return T, state_names
-        else:
-            return T
-        
-
-
-class Nond(Presentation):
-    """
-    Class for generating the nond process, as defined in
-    """
-
-    def __init__(self):
-        super().__init__()
-
-    def _get_epsilon_machine(self, with_state_names=False):
-        """
-        Generate the epsilon machine for the nond process.
-
-        Parameters:
-        with_state_names (bool): If True, also return a dictionary mapping state names to indices.
-
-        Returns:
-        numpy.ndarray: The transition tensor for the epsilon machine.
-        dict: A dictionary mapping state names to indices. Only returned if with_state_names is True.
-        """
-        T = np.zeros((2, 3, 3))
-        state_names = {'0': 0, '1': 1, '2': 2}
-        T[0, 2, 0] = 1.0
-        T[1, 0, 1] = 0.5
-        T[1, 1, 1] = 0.5
-        T[1, :, 2] = 1./3.
-
-        if with_state_names:
-            return T, state_names
-        else:
-            return T
-        
-class Mess3(Presentation):
-    """
-    Class for generating the Mess3 process, as defined in
-    """
-
-    def __init__(self, x=0.15, a=0.6):
-        self.x = x
-        self.a = a
-        super().__init__()
-
-    def _get_epsilon_machine(self, with_state_names=False):
-        """
-        Generate the epsilon machine for the Mess3 process.
-
-        Parameters:
-        with_state_names (bool): If True, also return a dictionary mapping state names to indices.
-
-        Returns:
-        numpy.ndarray: The transition tensor for the epsilon machine.
-        dict: A dictionary mapping state names to indices. Only returned if with_state_names is True.
-        """
-        T = np.zeros((3, 3, 3))
-        state_names = {'A': 0, 'B': 1, 'C': 2}
-        b = (1-self.a)/2
-        y = 1-2*self.x
-
-        ay = self.a*y
-        bx = b*self.x
-        by = b*y
-        ax = self.a*self.x
-
-        T[0, :, :] = [[ay, bx, bx],
-                      [ax, by, bx],
-                      [ax, bx, by]]
-        T[1, :, :] = [[by, ax, bx],
-                      [bx, ay, bx],
-                      [bx, ax, by]]
-        T[2, :, :] = [[by, bx, ax],
-                      [bx, by, ax],
-                      [bx, bx, ay]]
-
-
-        if with_state_names:
-            return T, state_names
-        else:
-            return T
