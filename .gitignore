@@ -1,3 +1,4 @@
 .vscode/
 *.h5
 wandb/
+__pycahe__/
