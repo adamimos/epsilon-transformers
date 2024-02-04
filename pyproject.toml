@@ -17,5 +17,7 @@ dependencies = [
     "plotly",
     "transformer_lens",
     "pytest",
-    "PyDrive"
+    "PyDrive",
+    "black",
+    "black[jupyter]"
 ]
