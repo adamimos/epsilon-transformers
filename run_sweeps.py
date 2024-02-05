@@ -21,7 +21,7 @@ from pydrive.drive import GoogleDrive
 import os
 
 # Load the config file
-with open("./epsilon_transformers/configs/RRXOR_sweep_cfg.yaml", "r") as f:
+with open("./experiments/RRXOR_sweep/RRXOR_sweep_cfg.yaml", "r") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
 try:
@@ -344,5 +344,5 @@ def create_or_get_drive_folder(drive, folder_name):
     return folder_id
 
 
-sweep_id = wandb.sweep(config, project=config["sweep_name"])
-wandb.agent(sweep_id, function=sweep_train, count=100)
+sweep_id = wandb.sweep(config, project=config["sweep_name"])  # type: ignore
+wandb.agent(sweep_id, function=sweep_train, count=100)  # type: ignore
