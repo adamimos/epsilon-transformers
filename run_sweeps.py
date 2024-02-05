@@ -6,6 +6,9 @@ from epsilon_transformers.markov_utilities import (
     compute_myopic_entropy_from_MSP,
     to_mixed_state_presentation,
 )
+
+from epsilon_transformers.configs.sweep_models import SweepConfig
+
 import wandb
 import yaml
 from transformer_lens import HookedTransformer, HookedTransformerConfig
@@ -18,17 +21,25 @@ from pydrive.drive import GoogleDrive
 import os
 
 # Load the config file
-with open("./RRXOR_sweep_cfg.yaml", "r") as f:
+with open("./epsilon_transformers/configs/RRXOR_sweep_cfg.yaml", "r") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
+
+try: 
+    validated_config = SweepConfig(**config)
+    print(f"Validated config")
+except Exception as e:
+    print(f"Invalid config: {e}")
 
 if config["process"] == "RRXOR":
     process = RRXOR()
 
+"""
 gauth = GoogleAuth()
 # Creates local webserver and auto handles authentication.
 gauth.LocalWebserverAuth()
 drive = GoogleDrive(gauth)
 
+"""
 
 # Sweep over the config file
 device = torch.device(
@@ -132,9 +143,11 @@ def sweep_train(config=None):
             if torch.isnan(train_loss_mean):
                 break
 
+            """
             # save the model to drive
             if epoch % 100 == 0:
                 save_model_to_drive(network, drive, epoch, sweep_name)
+            """
 
 
 def build_dataset(process, batch_size, num_epochs, n_ctx):
