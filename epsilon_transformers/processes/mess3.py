@@ -1,8 +1,8 @@
 import numpy as np
 
-from epsilon_transformers.processes.process import Presentation
+from epsilon_transformers.processes.process import Process
 
-class Mess3(Presentation):
+class Mess3(Process):
     """
     Class for generating the Mess3 process, as defined in
     """
@@ -12,7 +12,7 @@ class Mess3(Presentation):
         self.a = a
         super().__init__()
 
-    def _get_epsilon_machine(self, with_state_names=False):
+    def _create_hmm(self, with_state_names=False):
         """
         Generate the epsilon machine for the Mess3 process.
 

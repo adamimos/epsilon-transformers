@@ -1,8 +1,8 @@
 import numpy as np
 
-from epsilon_transformers.processes.process import Presentation
+from epsilon_transformers.processes.process import Process
 
-class Nond(Presentation):
+class Nond(Process):
     """
     Class for generating the nond process, as defined in
     """
@@ -10,7 +10,7 @@ class Nond(Presentation):
     def __init__(self):
         super().__init__()
 
-    def _get_epsilon_machine(self, with_state_names=False):
+    def _create_hmm(self, with_state_names=False):
         """
         Generate the epsilon machine for the nond process.
 

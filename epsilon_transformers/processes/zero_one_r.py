@@ -1,18 +1,17 @@
 import numpy as np
 
-from epsilon_transformers.processes.process import Presentation
+from epsilon_transformers.processes.process import Process
 
 
-class ZeroOneR(Presentation):
+class ZeroOneR(Process):
     """
     Class for generating 01R data.
     """
-
-    def __init__(self, p=0.5):
-        self.p = p # probability of emitting 0 from the R state
+    def __init__(self, prob_of_zero_from_r_state: float=0.5):
+        self.p = prob_of_zero_from_r_state
         super().__init__()
 
-    def _get_epsilon_machine(self, with_state_names:bool=False):
+    def _create_hmm(self):
         """
         Generate the epsilon machine for the 01R process.
 
@@ -30,7 +29,4 @@ class ZeroOneR(Presentation):
         T[0, state_names['R'], state_names['0']] = self.p
         T[1, state_names['R'], state_names['0']] = 1-self.p
 
-        if with_state_names:
-            return T, state_names
-        else:
-            return T
+        return T, state_names

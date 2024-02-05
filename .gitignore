@@ -1,4 +1,4 @@
 .vscode/
 *.h5
 wandb/
-__pycahe__/
+__pycache__/

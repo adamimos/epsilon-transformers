@@ -1,16 +1,16 @@
 import numpy as np
 import random
 
-from epsilon_transformers.processes.process import Presentation
+from epsilon_transformers.processes.process import Process
 
-class RRXOR(Presentation):
+class RRXOR(Process):
 
     def __init__(self, pR1=0.5, pR2=0.5):
         self.pR1 = pR1
         self.pR2 = pR2
         super().__init__()
 
-    def _get_epsilon_machine(self, with_state_names=False):
+    def _create_hmm(self, with_state_names=False):
         """
         Generate the epsilon machine for the RRXOR process.
 

@@ -1,9 +1,9 @@
 import numpy as np
 
-from epsilon_transformers.processes.process import Presentation
+from epsilon_transformers.processes.process import Process
 
 
-class Even(Presentation):
+class Even(Process):
     """
     Class for generating EvenProcess data.
     """
@@ -12,7 +12,7 @@ class Even(Presentation):
         self.p = p
         super().__init__()
 
-    def _get_epsilon_machine(self, with_state_names=False):
+    def _create_hmm(self, with_state_names=False):
         """
         Generate the epsilon machine for the EvenProcess.
 
