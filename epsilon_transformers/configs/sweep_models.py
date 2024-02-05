@@ -1,8 +1,10 @@
 from pydantic import BaseModel, Field, validator, root_validator
 from typing import List, Union, Optional, Any, Dict
 
+
 class ListParameter(BaseModel):
     values: Optional[List[Union[int, float, str]]] = None
+
 
 class DirectParameter(BaseModel):
     value: Optional[Union[int, float, str, bool]] = None
@@ -10,9 +12,10 @@ class DirectParameter(BaseModel):
     # Adding a root validator to automatically extract value if it's a dict
     @root_validator(pre=True)
     def extract_value(cls, values):
-        if 'value' in values:
-            return {'value': values['value']}
+        if "value" in values:
+            return {"value": values["value"]}
         return values
+
 
 class Metric(BaseModel):
     goal: str

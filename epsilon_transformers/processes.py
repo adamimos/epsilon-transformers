@@ -17,7 +17,9 @@ class Presentation:
     calculating the steady state distribution, and setting the number of symbols and states.
     """
 
-    def __init__(self, transition_matrix: np.ndarray = np.array([]), state_names: dict = {}):
+    def __init__(
+        self, transition_matrix: np.ndarray = np.array([]), state_names: dict = {}
+    ):
         """
         Initialize the Presentation object.
 

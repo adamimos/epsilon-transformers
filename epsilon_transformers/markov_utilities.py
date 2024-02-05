@@ -45,8 +45,12 @@ def generate_emissions(epsilon_machine: np.ndarray, num_emissions: int) -> List[
         # Correctly update the current state considering transition probabilities
         # This involves choosing the next state based on the transition matrix for the chosen emission
         transition_probs = epsilon_machine[chosen_emission, current_state, :]
-        next_state = np.random.choice(n_states, p=transition_probs / np.sum(transition_probs))
-        current_state = int(next_state)  # Ensure the next_state is treated as an integer
+        next_state = np.random.choice(
+            n_states, p=transition_probs / np.sum(transition_probs)
+        )
+        current_state = int(
+            next_state
+        )  # Ensure the next_state is treated as an integer
 
         emissions.append(chosen_emission)
 
@@ -229,7 +233,9 @@ def calculate_steady_state_distribution(transition_matrix: np.ndarray) -> np.nda
 
 
 def is_distribution_close(
-    distribution: np.ndarray, known_distributions: List[Tuple[np.ndarray]], threshold: float
+    distribution: np.ndarray,
+    known_distributions: List[Tuple[np.ndarray]],
+    threshold: float,
 ) -> bool:
     """
     Check if the distribution is close to any of the known distributions.
@@ -264,7 +270,6 @@ def compute_next_distribution(
     """
     X_next = np.einsum("sd, s -> d", epsilon_machine[output], X_current)
     return X_next / np.sum(X_next) if np.sum(X_next) != 0 else X_next
-
 
 
 def to_mixed_state_presentation(
@@ -426,7 +431,9 @@ def to_mixed_state_presentation_sparse(
             break
 
     # Trim the dimensions
-    return np.array([matrix[:next_index, :next_index] for matrix in transition_matrices])
+    return np.array(
+        [matrix[:next_index, :next_index] for matrix in transition_matrices]
+    )
 
 
 def to_probability_distributions(
@@ -505,10 +512,10 @@ def epsilon_machine_to_graph(
 
     # Invert the state_names dictionary if it's provided
     if state_names:
-        state_names_inv = {v: k for k, v in state_names.items()} 
+        state_names_inv = {v: k for k, v in state_names.items()}
     else:
         state_names_inv = {i: str(i) for i in range(n_states)}
-        
+
     # Add nodes to the graph
     for i in range(n_states):
         node_label = state_names_inv[i] if state_names else i
@@ -625,7 +632,9 @@ def calculate_sequence_probabilities(matrix, max_length: int):
     """
     num_states = matrix.shape[1]
     num_emissions = matrix.shape[0]
-    all_sequence_probs: Dict[int, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    all_sequence_probs: Dict[int, Dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
     queue: Deque[Tuple[str, int, float]] = deque()
 
     steady_state_distribution = calculate_steady_state_distribution(matrix)

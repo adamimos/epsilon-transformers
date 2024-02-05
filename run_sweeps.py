@@ -24,7 +24,7 @@ import os
 with open("./epsilon_transformers/configs/RRXOR_sweep_cfg.yaml", "r") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
-try: 
+try:
     validated_config = SweepConfig(**config)
     print(f"Validated config")
 except Exception as e:
