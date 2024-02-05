@@ -19,5 +19,6 @@ dependencies = [
     "pytest",
     "PyDrive",
     "black",
-    "black[jupyter]"
+    "black[jupyter]",
+    "mypy"
 ]

@@ -69,7 +69,7 @@ def compute_empirical_conditional_entropy(
         )
 
         # Conditional entropy computation
-        entropy = 0
+        entropy = 0.0
         for block, block_count in block_counts.items():
             for symbol in range(NUM_SYMBOLS):
                 # Empirical conditional probability p(symbol | block)

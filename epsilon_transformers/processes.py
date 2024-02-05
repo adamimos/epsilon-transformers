@@ -17,7 +17,7 @@ class Presentation:
     calculating the steady state distribution, and setting the number of symbols and states.
     """
 
-    def __init__(self, transition_matrix: np.ndarray = None, state_names: dict = None):
+    def __init__(self, transition_matrix: np.ndarray = np.array([]), state_names: dict = {}):
         """
         Initialize the Presentation object.
 
@@ -30,11 +30,11 @@ class Presentation:
         state names will be generated based on the shape of the transition matrix or the epsilon machine.
         """
 
-        if transition_matrix is not None:
+        if transition_matrix.size != 0:
             self.transition_matrix = transition_matrix
             self.state_names = (
                 state_names
-                if state_names is not None
+                if state_names != {}
                 else {str(i): i for i in range(self.transition_matrix.shape[1])}
             )
             # have another property which is the reverse of state_names

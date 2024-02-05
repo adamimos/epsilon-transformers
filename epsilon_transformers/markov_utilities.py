@@ -1,7 +1,7 @@
 import numpy as np
 import networkx as nx
 from numpy import linalg as LA
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Optional, Dict, Deque
 from scipy.sparse import lil_matrix
 from collections import defaultdict, deque
 from collections import Counter
@@ -40,12 +40,14 @@ def generate_emissions(epsilon_machine: np.ndarray, num_emissions: int) -> List[
     for _ in range(num_emissions):
         # Randomly choose an emission based on available outputs and transition probabilities
         p = emission_probs[:, current_state]
-        chosen_emission = np.random.choice(n_outputs, p=p / np.sum(p))
+        chosen_emission = int(np.random.choice(n_outputs, p=p / np.sum(p)))
 
-        # Update the current state based on the chosen emission
-        current_state = np.argmax(epsilon_machine[chosen_emission, current_state, :])
+        # Correctly update the current state considering transition probabilities
+        # This involves choosing the next state based on the transition matrix for the chosen emission
+        transition_probs = epsilon_machine[chosen_emission, current_state, :]
+        next_state = np.random.choice(n_states, p=transition_probs / np.sum(transition_probs))
+        current_state = int(next_state)  # Ensure the next_state is treated as an integer
 
-        # Record the emission
         emissions.append(chosen_emission)
 
     return emissions
@@ -227,14 +229,14 @@ def calculate_steady_state_distribution(transition_matrix: np.ndarray) -> np.nda
 
 
 def is_distribution_close(
-    distribution: np.ndarray, known_distributions: List[np.ndarray], threshold: float
+    distribution: np.ndarray, known_distributions: List[Tuple[np.ndarray]], threshold: float
 ) -> bool:
     """
     Check if the distribution is close to any of the known distributions.
 
     Parameters:
     distribution (np.ndarray): The distribution to check.
-    known_distributions (List[np.ndarray]): The list of known distributions.
+    known_distributions (List[Tuple[np.ndarray]]): The list of known distributions.
     threshold (float): The threshold for the distance between distributions.
 
     Returns:
@@ -264,69 +266,6 @@ def compute_next_distribution(
     return X_next / np.sum(X_next) if np.sum(X_next) != 0 else X_next
 
 
-def to_mixed_state_presentation2(
-    epsilon_machine: np.ndarray, max_depth: int = 50, threshold: float = 1e-6
-) -> np.ndarray:
-    n_outputs = epsilon_machine.shape[0]
-    tree = [{}]
-    X = calculate_steady_state_distribution(epsilon_machine.sum(axis=0))
-    tree[0]["root"] = np.squeeze(X)
-    seen_distributions = {tuple(X)}
-    state_index_map = {"root": 0}
-    next_index = 1
-    transition_matrices = np.zeros((n_outputs, max_depth, max_depth))
-
-    for depth in range(max_depth):
-        tree.append({})
-        all_branches_closed = True
-
-        for node, X_current in tree[depth].items():
-            for output in range(n_outputs):
-                X_next = compute_next_distribution(epsilon_machine, X_current, output)
-
-                if np.sum(X_next) == 0.0:
-                    continue
-
-                new_node_name = f"{node}_{output}"
-
-                if tuple(X_next) in seen_distributions:
-                    to_idx = next(
-                        i
-                        for i, d in enumerate(seen_distributions)
-                        if np.all(np.linalg.norm(X_next - np.array(d)) < threshold)
-                    )
-                else:
-                    all_branches_closed = False
-                    tree[depth + 1][new_node_name] = X_next
-                    seen_distributions.add(tuple(X_next))
-                    state_index_map[new_node_name] = next_index
-                    to_idx = next_index
-                    next_index += 1
-
-                if next_index > transition_matrices.shape[1]:
-                    print("resizing")
-                    print(tree)
-                    new_size = 2 * transition_matrices.shape[1]
-                    resized_matrices = np.zeros((n_outputs, new_size, new_size))
-                    resized_matrices[
-                        :,
-                        : transition_matrices.shape[1],
-                        : transition_matrices.shape[1],
-                    ] = transition_matrices
-                    transition_matrices = resized_matrices
-
-                from_idx = state_index_map[node]
-                transition_prob = np.sum(
-                    np.einsum("s,sd->d", X_current, epsilon_machine[output])
-                )
-
-                transition_matrices[output, from_idx, to_idx] = transition_prob
-
-        if all_branches_closed:
-            break
-
-    return transition_matrices[:, :next_index, :next_index]
-
 
 def to_mixed_state_presentation(
     epsilon_machine: np.ndarray, max_depth: int = 50, threshold: float = 1e-6
@@ -346,7 +285,7 @@ def to_mixed_state_presentation(
     n_outputs = epsilon_machine.shape[0]
 
     # Initialization
-    tree = [{}]
+    tree: List[Dict[str, np.ndarray]] = [{}]
     X = calculate_steady_state_distribution(epsilon_machine.sum(axis=0))
     tree[0]["root"] = np.squeeze(X)
     seen_distributions = [tuple(X)]
@@ -430,7 +369,7 @@ def to_mixed_state_presentation_sparse(
     assert epsilon_machine.ndim == 3
 
     # Initialization
-    tree = [{}]
+    tree: List[Dict[str, np.ndarray]] = [{}]
     X = calculate_steady_state_distribution(epsilon_machine.sum(axis=0))
     print(X)
     tree[0]["root"] = np.squeeze(X)
@@ -487,7 +426,7 @@ def to_mixed_state_presentation_sparse(
             break
 
     # Trim the dimensions
-    return [matrix[:next_index, :next_index] for matrix in transition_matrices]
+    return np.array([matrix[:next_index, :next_index] for matrix in transition_matrices])
 
 
 def to_probability_distributions(
@@ -508,7 +447,7 @@ def to_probability_distributions(
     n_outputs = epsilon_machine.shape[0]
 
     # Initialization
-    tree = [{}]
+    tree: List[Dict[str, np.ndarray]] = [{}]
     X = calculate_steady_state_distribution(epsilon_machine.sum(axis=0))
     distributions_list = [np.squeeze(X)]
     tree[0]["root"] = distributions_list[0]
@@ -566,11 +505,13 @@ def epsilon_machine_to_graph(
 
     # Invert the state_names dictionary if it's provided
     if state_names:
-        state_names = {v: k for k, v in state_names.items()}
-
+        state_names_inv = {v: k for k, v in state_names.items()} 
+    else:
+        state_names_inv = {i: str(i) for i in range(n_states)}
+        
     # Add nodes to the graph
     for i in range(n_states):
-        node_label = state_names[i] if state_names else i
+        node_label = state_names_inv[i] if state_names else i
         G.add_node(node_label)
 
     # Add edges to the graph for each transition in the epsilon machine
@@ -580,8 +521,8 @@ def epsilon_machine_to_graph(
                 # Add an edge from state j to state k with label i and weight equal to the transition probability
                 # only if the transition probability is not zero
                 if epsilon_machine[i, j, k] != 0:
-                    from_node = state_names[j] if state_names else j
-                    to_node = state_names[k] if state_names else k
+                    from_node = state_names_inv[j] if state_names else j
+                    to_node = state_names_inv[k] if state_names else k
                     G.add_edge(
                         from_node,
                         to_node,
@@ -684,8 +625,8 @@ def calculate_sequence_probabilities(matrix, max_length: int):
     """
     num_states = matrix.shape[1]
     num_emissions = matrix.shape[0]
-    all_sequence_probs = defaultdict(lambda: defaultdict(float))
-    queue = deque()
+    all_sequence_probs: Dict[int, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    queue: Deque[Tuple[str, int, float]] = deque()
 
     steady_state_distribution = calculate_steady_state_distribution(matrix)
 
