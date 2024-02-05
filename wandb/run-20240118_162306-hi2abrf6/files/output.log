@@ -1,6 +1,0 @@
-| Epoch | Training Acc. | Loss | Overall Acc. | Last Bit Acc. |
-|   1   |    66.17%    |    0.5998     |      64.91%       |      66.44%      |
-|   2   |    65.72%    |    0.6502     |      64.99%       |      66.59%      |
-|   3   |    55.67%    |    0.6818     |      56.77%       |      53.11%      |
-|   4   |    55.70%    |    0.7096     |      51.66%       |      49.59%      |
-The number of batches in the training set is 613

@@ -1,1 +1,0 @@
-{"train_loss_per_position": [NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN], "train_loss_mean": NaN, "test_loss_per_position": [NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN], "test_loss_mean": NaN, "test_loss_initial": NaN, "test_loss_end": NaN, "_timestamp": 1706576259.3465269, "_runtime": 101.3222267627716, "_step": 199, "_wandb": {"runtime": 100}}
