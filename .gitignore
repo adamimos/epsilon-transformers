@@ -2,3 +2,5 @@
 *.h5
 wandb/
 __pycache__/
+poetry.lock
+.venv/

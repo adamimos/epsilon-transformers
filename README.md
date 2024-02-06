@@ -12,5 +12,19 @@ This project contains Python code for generating process data and training trans
 
 ## Usage
 
-To install, alongside all dependencies, run `pip install .` from the repository folder
+We use poetry as our dependency management.
+
+First, [follow the following instructions](https://python-poetry.org/docs/#installation) to make sure that you have poetry installed
+
+Second, you can install all dependencies by running
+```poetry install```
+
+Third, activate the approriate venv by running
+```poetry shell```
+
+and you should be good to go.
+
+If you want to run one of the jupyter notebooks in `examples/` you'll have to make sure you are pointing to the python interpreter which corresponds to your venv. You check the path of the python interpreter by running
+```which python```
+while you are correct shell activated
 
