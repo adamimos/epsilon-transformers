@@ -2,3 +2,4 @@
 *.egg-info/
 build/
 wandb/
+**/__pycache__/
