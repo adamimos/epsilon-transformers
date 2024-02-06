@@ -4,5 +4,7 @@ from .comp_mech import (
     entropy_by_path_length,
     collect_emit_probs,
     collect_path_probs,
-    generate_sequences
+    generate_sequences,
+    block_entropy,
+    myopic_entropy,
 )

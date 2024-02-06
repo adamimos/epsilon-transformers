@@ -8,7 +8,7 @@ class Mixed_State_Tree:
         state_vector: np.ndarray,
         path_prob: float,
         emit_prob: float,
-        path: Tuple[int] = (),
+        path: Tuple[int, ...] = (),
     ):
         self.state_vector = state_vector  # The mixed state vector at this node
         self.path_prob = path_prob  # Probability of the path leading to this state

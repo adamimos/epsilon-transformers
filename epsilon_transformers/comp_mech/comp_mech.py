@@ -3,6 +3,7 @@ import numpy as np
 from typing import Tuple, Dict, List, Optional, Union
 from .Mixed_State_Tree import Mixed_State_Tree
 
+
 def compute_next_distribution(
     epsilon_machine: np.ndarray, X_current: np.ndarray, output: int
 ) -> np.ndarray:
@@ -21,10 +22,9 @@ def compute_next_distribution(
     return X_next / np.sum(X_next) if np.sum(X_next) != 0 else X_next
 
 
-
 def generate_sequences(
     hmm: HMM, num_sequences: int, sequence_length: int, return_states: bool = False
-) -> np.ndarray:
+) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
     """
     Generate sequences from the given HMM.
 
@@ -97,7 +97,7 @@ def explore_mixed_state_tree(
     hmm: HMM,
     mixed_state: np.ndarray,
     depth: int,
-    current_path: Tuple[int] = (),
+    current_path: Tuple[int, ...] = (),
     current_depth: int = 0,
     path_prob: float = 1.0,
     emit_prob: float = 1.0,
@@ -140,22 +140,27 @@ def mixed_state_tree(hmm: HMM, tree_depth: int = 10) -> Mixed_State_Tree:
     return explore_mixed_state_tree(hmm, mixed_state, tree_depth)
 
 
-def entropy_by_path_length(tree: Mixed_State_Tree) -> List[float]:
+def entropy_by_path_length(tree: Mixed_State_Tree, max_length: Optional[int] = None) -> List[float]:
     """
     Finds all path probabilities associated with paths of length N for N from 0 to max,
-    and computes the entropy of that distribution at every N.
+    and computes the entropy of that distribution at every N. If max_length is provided,
+    computes entropies up to that length; otherwise, computes for all lengths.
     """
     # Determine the maximum depth of the tree
     max_depth = tree.max_depth()
+    if max_length is not None:
+        max_depth = min(max_depth, max_length+1)
 
     entropies = []
     for depth in range(max_depth + 1):
         path_probs = collect_path_probs(tree, depth)
-        entropy = compute_entropy(path_probs)
-        entropies.append(entropy)
+        if isinstance(path_probs, list) and all(isinstance(item, float) for item in path_probs):
+            entropy = compute_entropy(path_probs)
+            entropies.append(entropy)
+        else:
+            raise ValueError("Path probabilities must be a list of floats.")
 
     return entropies
-
 
 def compute_entropy(probs: List[float]) -> float:
     """
@@ -164,25 +169,39 @@ def compute_entropy(probs: List[float]) -> float:
     return -sum(p * np.log(p) for p in probs if p > 0)
 
 
-def collect_path_probs(
-    tree: Mixed_State_Tree, target_depth: int, return_paths: bool = False
-) -> Union[List[float], List[Tuple[Tuple[int], float]]]:
+def collect_path_probs(tree: Mixed_State_Tree, target_depth: int) -> List[float]:
     """
-    Collects all path probabilities at a specific target depth. Optionally returns paths along with probabilities.
+    Collects all path probabilities at a specific target depth.
 
     :param tree: The root of the Mixed_State_Tree.
     :param target_depth: The target depth to collect path probabilities from.
-    :param return_paths: If True, returns a list of tuples with each path and its probability. Otherwise, returns a list of probabilities.
-    :return: List of probabilities or list of tuples (path, probability) depending on return_paths.
+    :return: List of probabilities.
     """
     results = []
 
     def traverse(node: Mixed_State_Tree, current_depth: int):
         if current_depth == target_depth:
-            if return_paths:
-                results.append((node.path, node.path_prob))
-            else:
-                results.append(node.path_prob)
+            results.append(node.path_prob)
+        for child in node.children:
+            traverse(child, current_depth + 1)
+
+    traverse(tree, 0)
+
+    return results
+
+def collect_path_probs_with_paths(tree: Mixed_State_Tree, target_depth: int) -> List[Tuple[Tuple[int, ...], float]]:
+    """
+    Collects all path probabilities along with their paths at a specific target depth.
+
+    :param tree: The root of the Mixed_State_Tree.
+    :param target_depth: The target depth to collect path probabilities and their paths from.
+    :return: List of tuples (path, probability).
+    """
+    results = []
+
+    def traverse(node: Mixed_State_Tree, current_depth: int):
+        if current_depth == target_depth:
+            results.append((node.path, node.path_prob))
         for child in node.children:
             traverse(child, current_depth + 1)
 
@@ -205,3 +224,17 @@ def collect_emit_probs(tree: Mixed_State_Tree, target_depth: int) -> List[float]
 
     traverse(tree, 0)
     return emit_probs
+
+def block_entropy(tree: Mixed_State_Tree, max_depth: Optional[int] = None) -> np.ndarray:
+    """
+    Compute the block entropy of the given mixed state tree.
+    """
+    return np.array(entropy_by_path_length(tree, max_depth))
+
+def myopic_entropy(tree: Mixed_State_Tree, max_depth: Optional[int] = None) -> np.ndarray:
+    """
+    Compute the myopic entropy of the given mixed state tree.
+    """
+
+    block_entropy = entropy_by_path_length(tree, max_depth)
+    return np.diff(block_entropy)
