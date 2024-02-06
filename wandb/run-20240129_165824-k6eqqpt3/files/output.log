@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "/Users/adamimos/Documents/GitHub/epsilon-transformers/./test.py", line 51, in sweep_train
-    first_position_optimal_loss = torch.tensor(first_position_optimal_loss).to(device)
-                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-TypeError: Cannot convert a MPS Tensor to float64 dtype as the MPS framework doesn't support float64. Please use float32 instead.
