@@ -128,7 +128,7 @@ class Process(ABC):
 
         return ProcessHistory(symbols=symbols, states=states if return_states else None)
         
-    def generate_multiple_sequences(self, total_length: int, num_sequences: int, with_positions=False) -> List[ProcessHistory]:
+    def generate_multiple_sequences(self, num_sequences: int, total_length: int, return_states: bool) -> List[ProcessHistory]:
         """
         Generate multiple sequences of states based on the transition matrix.
 
@@ -141,4 +141,4 @@ class Process(ABC):
         list: A list containing multiple sequences.
         list: A list of lists containing state names for each sequence. Only returned if with_positions is True.
         """
-        return [self.generate_single_sequence(total_length, with_positions) for _ in range(num_sequences)]
+        return [self.generate_single_sequence(total_length, return_states) for _ in range(num_sequences)]
