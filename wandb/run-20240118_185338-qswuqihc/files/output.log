@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "/Users/adamimos/Documents/GitHub/epsilon-transformers/epsilon_transformers/simple_transformer.py", line 299, in sweep_train
-    model_config['n_ctx'],
-    ~~~~~~~~~~~~^^^^^^^^^
-TypeError: 'HookedTransformerConfig' object is not subscriptable

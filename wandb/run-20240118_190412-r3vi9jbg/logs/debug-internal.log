@@ -1,4 +1,0 @@
-2024-01-18 19:04:12,689 INFO    StreamThr :56473 [internal.py:wandb_internal():86] W&B internal server running at pid: 56473, started at: 2024-01-18 19:04:12.688002
-2024-01-18 19:04:12,690 DEBUG   HandlerThread:56473 [handler.py:handle_request():146] handle_request: status
-2024-01-18 19:04:12,701 INFO    WriterThread:56473 [datastore.py:open_for_write():85] open: /Users/adamimos/Documents/GitHub/epsilon-transformers/wandb/run-20240118_190412-r3vi9jbg/run-r3vi9jbg.wandb
-2024-01-18 19:04:12,701 DEBUG   SenderThread:56473 [sender.py:send():382] send: header

@@ -1,7 +1,0 @@
-Traceback (most recent call last):
-  File "/Users/adamimos/Documents/GitHub/epsilon-transformers/epsilon_transformers/simple_transformer.py", line 309, in sweep_train
-    train_hooked_model(model_config, train_loader, test_loader, criterion, num_epochs)
-  File "/Users/adamimos/Documents/GitHub/epsilon-transformers/epsilon_transformers/simple_transformer.py", line 236, in train_hooked_model
-    loss = criterion(outputs.view(-1, d_vocab), batch_targets.view(-1))
-                                      ^^^^^^^
-NameError: name 'd_vocab' is not defined
