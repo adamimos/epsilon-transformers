@@ -1,10 +1,10 @@
 import matplotlib.pyplot as plt
 import networkx as nx
-from .entropy_analysis import compute_block_entropy, compute_conditional_entropy, compute_empirical_conditional_entropy
 from typing import List
-from matplotlib import colors
 import networkx as nx
 import matplotlib.pyplot as plt
+
+from epsilon_transformers.analysis.entropy_analysis import compute_block_entropy, compute_conditional_entropy, compute_empirical_conditional_entropy
 
 def determine_layout(G, layout_type):
     """Determine the layout of the graph."""

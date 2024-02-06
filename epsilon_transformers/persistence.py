@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import torch
 from typing import List, Tuple
 
 def save_epsilon_machine_to_file(epsilon_machine: np.ndarray, num_states: int, repeat_index: int) -> str:

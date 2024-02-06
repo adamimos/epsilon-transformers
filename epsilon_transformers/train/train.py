@@ -5,7 +5,7 @@ import numpy as np
 import wandb
 
 # TODO: Include the typing information
-# TODO: Generalize the training loop so that it's 
+# TODO: Generalize the training loop so that it's used for both hooked and non-hooked model
 
 def set_random_seed(seed: int):
     random.seed(seed)
@@ -224,3 +224,21 @@ def sweep_train(process, model_config, train_config):
 
         # Call the training function with the model config
         train_hooked_model(model_config, train_loader, test_loader, criterion, num_epochs, device=device)
+
+import pathlib
+
+from epsilon_transformers.train.configs import TrainConfig
+
+def _train_model(config: TrainConfig):
+    set_random_seed(config.seed)
+
+def main(config_path: pathlib.Path):
+    print('Hello World!')
+    config = TrainConfig.from_yaml(config_path)
+    return 
+    print(config)
+    _train_model(config)
+
+if __name__ == "__main__":
+    import fire
+    fire.Fire(main)

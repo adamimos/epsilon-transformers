@@ -6,15 +6,16 @@ from jaxtyping import Float
 
 from epsilon_transformers.markov_utilities import calculate_steady_state_distribution
 
-# TODO: Turn check_if_valid into validator and use it to validate
-# TODO: Use jaxtyping
-# TODO: Decouple the visualization (networkx) from the 
-# TODO: change _create_hmm so that it doesn't create an output. And change it's name as well
+# TODO: Add ProcessName to validator
+# TODO: Write validator for ProcessHistory (same length)
+# TODO: Test _sample_emission
+# TODO: Check if is_unifilar is actually ever used
+# TODO: Add derive_msp() to processes
 
 @dataclass
 class ProcessHistory:
-    symbols: List
-    states: Optional[List] = None
+    symbols: List[int]
+    states: Optional[List[str]] = None
 
 class Process(ABC):
     """
@@ -22,10 +23,10 @@ class Process(ABC):
     calculating the steady state distribution, and setting the number of symbols and states.
     """
     transition_matrix: Float[np.ndarray, 'vocab_len num_states num_states']
-    state_names: Dict[str, int]
+    state_names_dict: Dict[str, int]
     vocab_len: int
     num_states: int
-    steady_state: np.ndarray
+    steady_state: Float[np.ndarray, 'num_states']
 
     def __init__(self):
         """
@@ -39,7 +40,7 @@ class Process(ABC):
         state_names (dict, optional): A dictionary mapping state names (strings) to indices (ints). If not provided, 
         state names will be generated based on the shape of the transition matrix or the epsilon machine.
         """
-        self.transition_matrix, self.state_names = self._create_hmm()
+        self.transition_matrix, self.state_names_dict = self._create_hmm()
 
         # Check that transition matrix has 3 axes and that the first and second dim are the same size
         if len(self.transition_matrix.shape) != 3 or self.transition_matrix.shape[1] != self.transition_matrix.shape[2]:
@@ -89,6 +90,10 @@ class Process(ABC):
                     return False
         return True
 
+    def _sample_emission(self, current_state_index: int) -> int:
+        p = self.transition_matrix[:, current_state_index, :].sum(axis=1)
+        emission = np.random.choice(self.vocab_len, p=p)
+        return emission
 
     def generate_single_sequence(self, total_length: int, return_states: bool) -> ProcessHistory:
         """
@@ -101,44 +106,26 @@ class Process(ABC):
         Returns:
         list: The generated sequence of states.
         list: The state names. Only returned if with_positions is True.
-        """
+        """        
+        index_to_state_names_dict = {v: k for k, v in self.state_names_dict.items()}
+
         # randomly select state from steady state distribution
-        num_states = self.num_states
-        num_symbols = self.vocab_len
-        transition_matrix = self.transition_matrix
-        
-        # flip keys and vals for state names
-        state_names = {v: k for k, v in self.state_names.items()}
-        current_state_ind = np.random.choice(num_states, p=self.steady_state)
+        # LUCAS Q: Why do we have to start our selection from the steady state distribution??
+        # Is it because this is what we expect the distribution to be at it's limit and we want to sample according to this limit?? If so is this the correct way of doing it??
+        current_state_ind = np.random.choice(self.num_states, p=self.steady_state)
 
         symbols = []
         states = []
         for _ in range(total_length):
-            states.append(state_names[current_state_ind])
+            states.append(index_to_state_names_dict[current_state_ind])
            
-            # randomly select output based on transition matrix
-            p = self.transition_matrix[:, current_state_ind, :].sum(axis=1)
-            emission = np.random.choice(num_symbols, p=p)
-           
-            # make transition. given the current state and the emission, the next state is determined
-            next_state_ind = np.argmax(transition_matrix[emission, current_state_ind, :])
+            emission = self._sample_emission(current_state_ind)
             symbols.append(emission)
            
+            # make transition. given the current state and the emission, the next state is determined
+            next_state_ind = np.argmax(self.transition_matrix[emission, current_state_ind, :])
             current_state_ind = next_state_ind
-
         return ProcessHistory(symbols=symbols, states=states if return_states else None)
         
     def generate_multiple_sequences(self, num_sequences: int, total_length: int, return_states: bool) -> List[ProcessHistory]:
-        """
-        Generate multiple sequences of states based on the transition matrix.
-
-        Parameters:
-        total_length (int): The total length of each sequence to generate.
-        num_sequences (int): The number of sequences to generate.
-        with_positions (bool): If True, also return lists of state names.
-
-        Returns:
-        list: A list containing multiple sequences.
-        list: A list of lists containing state names for each sequence. Only returned if with_positions is True.
-        """
         return [self.generate_single_sequence(total_length, return_states) for _ in range(num_sequences)]

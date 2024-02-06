@@ -6,48 +6,8 @@ from scipy.sparse import lil_matrix
 from collections import defaultdict, deque
 from collections import Counter
 import numpy as np
-from scipy.linalg import null_space
 
-def generate_emissions(epsilon_machine: np.ndarray, num_emissions: int) -> List[int]:
-    """
-    Generate a sequence of emissions from an epsilon machine.
-
-    Parameters:
-    epsilon_machine (np.ndarray): The epsilon machine transition tensor of shape (n_outputs, n_states, n_states).
-                                  n_outputs is the number of possible outputs (emissions).
-                                  n_states is the number of states in the machine.
-                                  epsilon_machine[i, j, k] is the probability of transitioning from state j to state k and emitting output i.
-    num_emissions (int): The number of emissions to generate.
-
-    Returns:
-    List[int]: The generated sequence of emissions.
-    """
-
-    # Get the number of outputs and states
-    n_outputs, n_states, _ = epsilon_machine.shape
-    
-    # Calculate the steady-state distribution and use it to choose the initial state
-    steady_state = calculate_steady_state_distribution(epsilon_machine.sum(axis=0))
-    steady_state = steady_state / np.sum(steady_state)
-    current_state = np.random.choice(n_states, p=steady_state)
-    
-    emissions = []
-    
-    # Pre-compute emission probabilities for each state
-    emission_probs = np.sum(epsilon_machine, axis=2)
-    
-    for _ in range(num_emissions):
-        # Randomly choose an emission based on available outputs and transition probabilities
-        p = emission_probs[:, current_state]
-        chosen_emission = np.random.choice(n_outputs, p=p / np.sum(p))
-        
-        # Update the current state based on the chosen emission
-        current_state = np.argmax(epsilon_machine[chosen_emission, current_state, :])
-        
-        # Record the emission
-        emissions.append(chosen_emission)
-    
-    return emissions
+# TODO: Verify (or better yet write a test) that the calculate_steady_state_distribution function is correct
 
 def create_markov_chain(num_states: int, num_symbols: int, alpha: float = 1.0) -> Tuple[np.ndarray, np.ndarray]:
     """
@@ -199,6 +159,7 @@ def calculate_steady_state_distribution(transition_matrix: np.ndarray) -> np.nda
         transition_matrix = np.sum(transition_matrix, axis=0)
 
     # Compute the eigenvalues and eigenvectors
+    # LUCAS Q: Why are we taking the eig of the transpose, rather than the matrix??
     eigenvalues, eigenvectors = np.linalg.eig(transition_matrix.T)
 
     # Find the eigenvector corresponding to the eigenvalue 1
