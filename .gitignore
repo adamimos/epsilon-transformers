@@ -1,2 +1,6 @@
-
+__pycache__/
+.venv/
+.vscode/
+build/
+poetry.lock
 *.h5
