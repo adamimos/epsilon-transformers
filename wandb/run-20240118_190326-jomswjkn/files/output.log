@@ -1,6 +1,0 @@
-Traceback (most recent call last):
-  File "/Users/adamimos/Documents/GitHub/epsilon-transformers/epsilon_transformers/simple_transformer.py", line 309, in sweep_train
-    # Call the training function with the model config
-  File "/Users/adamimos/Documents/GitHub/epsilon-transformers/epsilon_transformers/simple_transformer.py", line 236, in train_hooked_model
-    outputs = model(batch_inputs)
-NameError: name 'd_vocab' is not defined

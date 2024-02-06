@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "/Users/adamimos/Documents/GitHub/epsilon-transformers/./test.py", line 39, in sweep_train
-    test_weights = torch.tensor(test_weights).to(device)
-                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-TypeError: Cannot convert a MPS Tensor to float64 dtype as the MPS framework doesn't support float64. Please use float32 instead.

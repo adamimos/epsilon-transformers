@@ -1,7 +1,0 @@
-
-16
-Traceback (most recent call last):
-  File "/Users/adamimos/Documents/GitHub/epsilon-transformers/./test.py", line 54, in sweep_train
-    avg_loss = train_epoch(network, loader, optimizer)
-                                    ^^^^^^
-NameError: name 'loader' is not defined

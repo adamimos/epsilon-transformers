@@ -1,1 +1,0 @@
-{"epoch": 199, "training loss": 0.5855681666781456, "overall accuracy": 0.6490906501096472, "last bit accuracy": 0.6666673466213067, "last bit loss": 0.5237338255419743, "_timestamp": 1706243572.306068, "_runtime": 36817.94527888298, "_step": 199, "_wandb": {"runtime": 36817}}

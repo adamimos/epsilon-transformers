@@ -1,7 +1,0 @@
-Traceback (most recent call last):
-  File "/Users/adamimos/Documents/GitHub/epsilon-transformers/epsilon_transformers/simple_transformer.py", line 310, in sweep_train
-    train_hooked_model(model_config, train_loader, test_loader, criterion, num_epochs)
-  File "/Users/adamimos/Documents/GitHub/epsilon-transformers/epsilon_transformers/simple_transformer.py", line 215, in train_hooked_model
-    d_vocab = model_config.n_vocab
-              ^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'HookedTransformerConfig' object has no attribute 'n_vocab'

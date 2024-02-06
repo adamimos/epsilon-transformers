@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "/Users/adamimos/Documents/GitHub/epsilon-transformers/./test.py", line 79, in sweep_train
-    test_loss_initial = train_loss_per_position[0].item()
-                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Exception

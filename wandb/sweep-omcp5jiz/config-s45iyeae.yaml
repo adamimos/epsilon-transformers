@@ -1,6 +1,0 @@
-wandb_version: 1
-
-learning_rate:
-  value: 3.0114492482564773e-05
-weight_decay:
-  value: 0.0760349020948862
