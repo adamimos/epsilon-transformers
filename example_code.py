@@ -40,10 +40,12 @@ def main():
     H_mu_L = myopic_entropy(MSP_tree)
 
     from matplotlib import pyplot as plt
+
     plt.plot(H_mu_L, "o-")
     plt.show()
 
-#%%
+
+# %%
 if __name__ == "__main__":
     main()
 
