@@ -12,7 +12,7 @@ class Mess3(Process):
         self.a = a
         super().__init__()
 
-    def _create_hmm(self, with_state_names=False):
+    def _create_hmm(self):
         """
         Generate the epsilon machine for the Mess3 process.
 

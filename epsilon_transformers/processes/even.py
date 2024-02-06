@@ -12,7 +12,7 @@ class Even(Process):
         self.p = p
         super().__init__()
 
-    def _create_hmm(self, with_state_names=False):
+    def _create_hmm(self):
         """
         Generate the epsilon machine for the EvenProcess.
 

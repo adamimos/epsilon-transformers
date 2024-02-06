@@ -39,7 +39,7 @@ class Process(ABC):
         state_names (dict, optional): A dictionary mapping state names (strings) to indices (ints). If not provided, 
         state names will be generated based on the shape of the transition matrix or the epsilon machine.
         """
-        self.transition_matrix, self.state_names = self._create_hmm(with_state_names=True)
+        self.transition_matrix, self.state_names = self._create_hmm()
 
         # Check that transition matrix has 3 axes and that the first and second dim are the same size
         if len(self.transition_matrix.shape) != 3 or self.transition_matrix.shape[1] != self.transition_matrix.shape[2]:
