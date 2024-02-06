@@ -29,9 +29,4 @@ class Even(Process):
         T[0, state_names['E'], state_names['E']] = self.p
         T[1, state_names['O'], state_names['E']] = 1.0
 
-
-        if with_state_names:
-            return T, state_names
-        else:
-            return T
-        
+        return T, state_names

@@ -56,7 +56,4 @@ class GoldenMean(Process):
         # Last state
         T[0, state_names[chr(65 + n_states - 1)], state_names['A']] = 1.0
 
-        if with_state_names:
-            return T, state_names
-        else:
-            return T
+        return T, state_names

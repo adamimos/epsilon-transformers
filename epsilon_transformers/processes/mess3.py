@@ -43,8 +43,4 @@ class Mess3(Process):
                       [bx, by, ax],
                       [bx, bx, ay]]
 
-
-        if with_state_names:
-            return T, state_names
-        else:
-            return T
+        return T, state_names

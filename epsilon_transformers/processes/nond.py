@@ -28,8 +28,4 @@ class Nond(Process):
         T[1, 1, 1] = 0.5
         T[1, :, 2] = 1./3.
 
-        if with_state_names:
-            return T, state_names
-        else:
-            return T
-        
+        return T, state_names

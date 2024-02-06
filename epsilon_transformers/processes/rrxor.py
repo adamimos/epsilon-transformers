@@ -34,10 +34,7 @@ class RRXOR(Process):
         T[1, state_names['T'], state_names['S']] = 1.0
         T[0, state_names['F'], state_names['S']] = 1.0
 
-        if with_state_names:
-            return T, state_names
-        else:
-            return T
+        return T, state_names
 
     def generate_without_epsilon_machine(self, total_length: int, with_positions=False):
         """
