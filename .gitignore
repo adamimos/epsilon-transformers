@@ -4,3 +4,4 @@ __pycache__/
 build/
 poetry.lock
 *.h5
+**.egg-info/
