@@ -22,5 +22,6 @@ dependencies = [
     "transformer_lens",
     "pytest",
     "PyDrive",
-    "black"
+    "black",
+    "mypy"
 ]
