@@ -12,5 +12,5 @@ This project contains Python code for generating process data and training trans
 
 ## Usage
 
-To install, alongside all dependencies, run `pip install .` from the repository folder
+To install, alongside all dependencies, run `pip install -e .` from the repository folder
 
