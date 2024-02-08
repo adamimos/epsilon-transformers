@@ -71,4 +71,3 @@ class Mixed_State_Tree:
             belief_states.extend(child.get_belief_states())
 
         return belief_states
-       

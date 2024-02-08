@@ -6,7 +6,10 @@ from transformer_lens import HookedTransformer, HookedTransformerConfig
 from torch.utils.data import DataLoader, Dataset
 from torch import optim
 from typing import Dict, Tuple
-from epsilon_transformers.comp_mech import generate_sequences, collect_path_probs_with_paths
+from epsilon_transformers.comp_mech import (
+    generate_sequences,
+    collect_path_probs_with_paths,
+)
 from epsilon_transformers.comp_mech import HMM, Mixed_State_Tree
 
 
@@ -77,7 +80,7 @@ def create_validation_set(
     which can be used as weights for the loss function.
     """
 
-    path_probs = collect_path_probs_with_paths(MSP_tree, sequence_length+1)
+    path_probs = collect_path_probs_with_paths(MSP_tree, sequence_length + 1)
     seqs = np.array([path[0] for path in path_probs])  # *(num_paths, sequence_length)
     probs = np.array([path[1] for path in path_probs])  # *(num_paths)
 
@@ -88,7 +91,7 @@ def create_validation_set(
     return X, Y, probs
 
 
-def build_dataset(config: Dict, process: HMM) -> np.ndarray:
+def build_dataset(config: Dict, process: HMM.HMM) -> np.ndarray:
     data = generate_sequences(
         process,
         num_sequences=config["num_sequences"],
@@ -101,14 +104,16 @@ def build_dataset(config: Dict, process: HMM) -> np.ndarray:
 
     return data
 
-def build_probabilistic_dataset(true_probs: np.ndarray,
-                                batch_size: int,
-                                num_iters: int) -> np.ndarray:
 
+def build_probabilistic_dataset(
+    true_probs: np.ndarray, batch_size: int, num_iters: int
+) -> np.ndarray:
     # multinomial sampling
-    train_weights = np.random.multinomial(batch_size, true_probs, size=num_iters) # *(num_iters, num_paths)
+    train_weights = np.random.multinomial(
+        batch_size, true_probs, size=num_iters
+    )  # *(num_iters, num_paths)
     # normalize by batch size for each iteration
-    train_weights = train_weights / batch_size # *(num_iters, num_paths)
+    train_weights = train_weights / batch_size  # *(num_iters, num_paths)
 
     return train_weights
 

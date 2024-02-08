@@ -2,7 +2,11 @@
 from typing import List, Dict, Optional, Tuple
 import yaml
 from pydantic import BaseModel
-from epsilon_transformers.comp_mech.processes import random_random_xor, zero_one_random, mess3
+from epsilon_transformers.comp_mech.processes import (
+    random_random_xor,
+    zero_one_random,
+    mess3,
+)
 from epsilon_transformers.configs import SweepConfig
 import torch
 import torch.nn.functional as F
@@ -25,7 +29,9 @@ from epsilon_transformers.comp_mech import (
 
 # %%
 
-with open("./experiments/zero_one_random_sweep/zero_one_random_sweep_cfg.yaml", "r") as f:
+with open(
+    "./experiments/zero_one_random_sweep/zero_one_random_sweep_cfg.yaml", "r"
+) as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
 try:
@@ -53,7 +59,7 @@ device = torch.device(
     if torch.backends.mps.is_available()
     else ("cuda" if torch.cuda.is_available() else "cpu")
 )
-#device = torch.device("cpu")
+# device = torch.device("cpu")
 print(f"Using device: {device}")
 
 minimum_cross_entropy = torch.tensor(minimum_cross_entropy, dtype=torch.float32).to(
@@ -77,8 +83,6 @@ def sweep_train(config: Optional[Dict] = None):
         val_weights = torch.tensor(val_weights, dtype=torch.float32).to(device)
         Y_val = torch.tensor(Y_val, dtype=torch.long).to(device)
 
-        
-
         # Build model
         model = build_network(config, device)
 
@@ -95,7 +99,9 @@ def sweep_train(config: Optional[Dict] = None):
 
         # Train model
         for epoch in range(config.num_epochs):
-            train_weights = build_probabilistic_dataset(val_weights.cpu().numpy(), config.batch_size, config.n_iters)
+            train_weights = build_probabilistic_dataset(
+                val_weights.cpu().numpy(), config.batch_size, config.n_iters
+            )
             train_weights = torch.tensor(train_weights, dtype=torch.float32).to(device)
             train_epoch_prob(
                 model,
@@ -109,6 +115,7 @@ def sweep_train(config: Optional[Dict] = None):
                 epoch,
             )
 
+
 def train_epoch_prob(
     model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
@@ -118,10 +125,10 @@ def train_epoch_prob(
     train_weights: torch.Tensor,
     criterion: torch.nn.Module,
     minimum_cross_entropy: torch.Tensor,
-    epcoh_ind: int
+    epcoh_ind: int,
 ):
     model.train()
-    for  weights in train_weights:
+    for weights in train_weights:
         optimizer.zero_grad()
         Y = model(val_data)  # Forward pass
         loss = criterion(Y.view(-1, model.cfg.d_vocab), val_output.view(-1))
@@ -133,8 +140,10 @@ def train_epoch_prob(
 
         mean_loss.backward()
         optimizer.step()
-        log_data = {"loss": mean_loss.item(),
-                    "relative_loss": relative_loss.mean().item()}
+        log_data = {
+            "loss": mean_loss.item(),
+            "relative_loss": relative_loss.mean().item(),
+        }
         for i, rel_loss in enumerate(relative_loss):
             log_data[f"relative_loss_{i}"] = rel_loss.item()
         wandb.log(log_data)
@@ -145,17 +154,20 @@ def train_epoch_prob(
         mean_loss, relative_loss = compute_val_losses(
             loss, minimum_cross_entropy, val_weights
         )
-        log_data = {"val_loss": mean_loss.item(),
-                    "val_relative_loss": relative_loss.mean().item()}
+        log_data = {
+            "val_loss": mean_loss.item(),
+            "val_relative_loss": relative_loss.mean().item(),
+        }
         for i, rel_loss in enumerate(relative_loss):
             log_data[f"val_relative_loss_{i}"] = rel_loss.item()
         wandb.log(log_data)
 
     model_state_dict = model.state_dict()
     artifact = wandb.Artifact(f"model_epoch_{epcoh_ind}", type="model")
-    with artifact.new_file(f'model_epoch_{epcoh_ind}.pt', mode="wb") as fa:
+    with artifact.new_file(f"model_epoch_{epcoh_ind}.pt", mode="wb") as fa:
         torch.save(model_state_dict, fa)
     wandb.log_artifact(artifact)
+
 
 def train_epoch(
     model: torch.nn.Module,
@@ -176,8 +188,10 @@ def train_epoch(
         mean_loss, relative_loss = compute_losses(loss, minimum_cross_entropy)
         mean_loss.backward()
         optimizer.step()
-        log_data = {"loss": mean_loss.item(),
-                    "relative_loss": relative_loss.mean().item()}
+        log_data = {
+            "loss": mean_loss.item(),
+            "relative_loss": relative_loss.mean().item(),
+        }
         for i, rel_loss in enumerate(relative_loss):
             log_data[f"relative_loss_{i}"] = rel_loss.item()
         wandb.log(log_data)
@@ -191,8 +205,10 @@ def train_epoch(
         mean_loss, relative_loss = compute_val_losses(
             loss, minimum_cross_entropy, val_weights
         )
-        log_data = {"val_loss": mean_loss.item(),
-                    "val_relative_loss": relative_loss.mean().item()}
+        log_data = {
+            "val_loss": mean_loss.item(),
+            "val_relative_loss": relative_loss.mean().item(),
+        }
         for i, rel_loss in enumerate(relative_loss):
             log_data[f"val_relative_loss_{i}"] = rel_loss.item()
         wandb.log(log_data)
