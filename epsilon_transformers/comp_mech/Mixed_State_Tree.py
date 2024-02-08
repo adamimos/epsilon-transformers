@@ -58,3 +58,17 @@ class Mixed_State_Tree:
                     return result
         # Return None if the path was not found in the current subtree
         return None
+
+    def get_belief_states(self) -> List[np.ndarray]:
+        """
+        Returns a list of belief states for all nodes in the tree.
+        The belief states are the state vectors.
+        """
+        belief_states = [self.state_vector]  # Include the current node's state vector
+
+        # Recursively collect belief states from children
+        for child in self.children:
+            belief_states.extend(child.get_belief_states())
+
+        return belief_states
+       

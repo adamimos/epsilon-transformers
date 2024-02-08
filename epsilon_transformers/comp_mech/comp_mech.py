@@ -22,57 +22,86 @@ def compute_next_distribution(
     return X_next / np.sum(X_next) if np.sum(X_next) != 0 else X_next
 
 
-def generate_sequences(
-    hmm: HMM, num_sequences: int, sequence_length: int, return_states: bool = False
-) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+def generate_sequences_with_states(
+    hmm: HMM, num_sequences: int, sequence_length: int
+) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Generate sequences from the given HMM.
+    Generate sequences and their states from the given HMM.
 
     Parameters:
     hmm (HMM): The HMM to generate sequences from.
     num_sequences (int): The number of sequences to generate.
     sequence_length (int): The length of each sequence.
-    return_states (bool): Whether to return the states as well as the emissions.
 
     Returns:
-        np.ndarray: The generated sequences. If return_states is True, the states are also returned.
+    Tuple[np.ndarray, np.ndarray]: The generated sequences and their states.
     """
+    emissions, next_states, initial_state = _generate_sequences_base(
+        hmm, num_sequences, sequence_length
+    )
 
-    # get the transition probabilities, stationary distribution, and number of states
+    # append initial states to left of next_states
+    next_states = np.concatenate([initial_state[:, None], next_states], axis=1)
+    return emissions, next_states
+
+
+def generate_sequences(
+    hmm: HMM, num_sequences: int, sequence_length: int
+) -> np.ndarray:
+    """
+    Generate sequences from the given HMM without returning the states.
+
+    Parameters:
+    hmm (HMM): The HMM to generate sequences from.
+    num_sequences (int): The number of sequences to generate.
+    sequence_length (int): The length of each sequence.
+
+    Returns:
+    np.ndarray: The generated sequences.
+    """
+    emissions, _, _ = _generate_sequences_base(hmm, num_sequences, sequence_length)
+    return emissions
+
+
+def _generate_sequences_base(
+    hmm: HMM, num_sequences: int, sequence_length: int
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Base function to generate sequences and states from the given HMM.
+
+    Parameters:
+    hmm (HMM): The HMM to generate sequences from.
+    num_sequences (int): The number of sequences to generate.
+    sequence_length (int): The length of each sequence.
+
+    Returns:
+    Tuple[np.ndarray, np.ndarray, np.ndarray]: The generated sequences, next states, and initial states.
+    """
     T = hmm.transition_probs
     ss = hmm.stationary_distribution
     num_states = T.shape[1]
 
-    # choose the initial state for each sequence
     initial_state = np.random.choice(num_states, num_sequences, p=ss, replace=True)
 
-    # initialize the sequences
     emissions = np.zeros((num_sequences, sequence_length), dtype=int)
     next_states = np.zeros((num_sequences, sequence_length), dtype=int)
 
-    # generate the sequences
     for i in range(num_sequences):
         state = initial_state[i]
         for j in range(sequence_length):
-            # get the emission probabilities for the current state
-            probs = T[:, state, :]  # emission, to state
+            probs = T[:, state, :]
             probs_flat = probs.flatten()
 
-            # choose the next state according to probs
             choice_ind_flat = np.random.choice(len(probs_flat), 1, p=probs_flat)
             choice_ind = np.unravel_index(choice_ind_flat, probs.shape)
             emission = choice_ind[0][0]
             to_state = choice_ind[1][0]
+
             emissions[i, j] = emission
             next_states[i, j] = to_state
             state = to_state
 
-    if return_states:
-        # append initial states to left of next_states
-        next_states = np.concatenate([initial_state[:, None], next_states], axis=1)
-        return emissions, next_states
-    else:
-        return emissions
+    return emissions, next_states, initial_state
 
 
 def compute_emission_probabilities(hmm: HMM, mixed_state: np.ndarray) -> np.ndarray:

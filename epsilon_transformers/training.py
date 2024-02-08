@@ -1,10 +1,13 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
 import random
 import wandb
-from transformer_lens import HookedTransformer
+from transformer_lens import HookedTransformer, HookedTransformerConfig
+from torch.utils.data import DataLoader, Dataset
+from torch import optim
+from typing import Dict, Tuple
+from epsilon_transformers.comp_mech import generate_sequences, collect_path_probs_with_paths
+from epsilon_transformers.comp_mech import HMM, Mixed_State_Tree
 
 
 def set_random_seed(seed):
@@ -14,143 +17,6 @@ def set_random_seed(seed):
     torch.cuda.manual_seed_all(seed)
 
 
-class Head(nn.Module):
-    def __init__(self, input_size, d_model, d_head):
-        super().__init__()
-        self.d_head = d_head
-        self.W_Q = nn.Linear(d_model, d_head, bias=False)
-        self.W_K = nn.Linear(d_model, d_head, bias=False)
-        self.W_V = nn.Linear(d_model, d_head, bias=False)
-        self.register_buffer("mask", torch.tril(torch.ones(input_size, input_size)))
-
-    def forward(self, x):
-        # x is of size (batch_size, input_size, d_model)
-        # get the query, key, and value
-        Q = self.W_Q(x)  # (batch_size, input_size, d_head)
-        K = self.W_K(x)  # (batch_size, input_size, d_head)
-        V = self.W_V(x)  # (batch_size, input_size, d_head)
-        # get the attention weights
-        A = torch.einsum("bid,bjd->bij", Q, K) / (self.d_head**0.5)
-        A = A.masked_fill(self.mask == 0, float("-inf"))
-        A = F.softmax(A, dim=-1)  # the rows of A sum to 1
-        # apply the attention weights
-        O = torch.einsum(
-            "bij,bjd->bid", A, V
-        )  # this is the output of the attention head, we weight the values by the attention weights
-        return O
-
-
-class MLP(nn.Module):
-    def __init__(self, d_model, d_mlp):
-        super().__init__()
-        self.W_in = nn.Linear(d_model, d_mlp)
-        self.W_out = nn.Linear(d_mlp, d_model)
-
-    def forward(self, x):
-        # x is of size (batch_size, input_size, d_model)
-        x = self.W_in(x)  # (batch_size, input_size, d_mlp)
-        x = F.relu(x)
-        x = self.W_out(x)  # (batch_size, input_size, d_model)
-        return x
-
-
-class TransformerLayer(nn.Module):
-    def __init__(self, d_model, input_size, d_head, n_head, d_mlp, use_layernorm=True):
-        super().__init__()
-        self.use_layernorm = use_layernorm
-        self.heads = nn.ModuleList(
-            [Head(input_size, d_model, d_head) for _ in range(n_head)]
-        )
-        self.mlp = MLP(d_model, d_mlp)
-        self.W_O = nn.Linear(n_head * d_head, d_model, bias=False)
-
-        # Add Layer Normalization layers
-        if self.use_layernorm:
-            self.norm1 = nn.LayerNorm(d_model)
-            self.norm2 = nn.LayerNorm(d_model)
-
-    def forward(self, x):
-        # apply the attention heads, stack them
-        head_output = torch.cat([head(x) for head in self.heads], dim=-1)
-
-        # Apply normalization and residual connection
-        if self.use_layernorm:
-            x = x + self.norm1(self.W_O(head_output))
-        else:
-            x = x + self.W_O(head_output)
-
-        # apply the MLP
-        if self.use_layernorm:
-            x = x + self.norm2(self.mlp(x))
-        else:
-            x = x + self.mlp(x)
-
-        return x
-
-
-class MultilayerTransformer(nn.Module):
-    def __init__(
-        self,
-        d_vocab=2,
-        d_model=16,
-        input_size=3,
-        d_head=4,
-        n_head=4,
-        d_mlp=4 * 16,
-        n_layers=2,
-        use_layernorm=True,
-    ):
-        super().__init__()
-        self.input_size = input_size
-        self.embedding = nn.Embedding(d_vocab, d_model)
-        self.pos_embedding = nn.Embedding(input_size, d_model)
-        self.layers = nn.ModuleList(
-            [
-                TransformerLayer(
-                    d_model, input_size, d_head, n_head, d_mlp, use_layernorm
-                )
-                for _ in range(n_layers)
-            ]
-        )
-        self.unembedding = nn.Linear(d_model, d_vocab)
-        self.hooks = {}
-        self.current_batch = 0
-
-    def forward(self, x, return_activations=False):
-        # x is of size (batch_size, input_size)
-        # embed the input
-        x = self.embedding(x) + self.pos_embedding(
-            torch.arange(self.input_size, device=x.device)
-        )
-        activations = []
-        # pass through each transformer layer
-        for layer in self.layers:
-            x = layer(x)
-            if return_activations:
-                activations.append(x.detach())
-        # unembed the output
-        x = self.unembedding(x)
-        if return_activations:
-            return x, activations
-        else:
-            return x
-
-    def predict_probs(self, x):
-        # pass input through the model
-        logits = self.forward(x)
-        # apply softmax to get probabilities
-        probs = F.softmax(logits, dim=-1)
-        return probs
-
-
-def initialize_weights(module):
-    """Initialize the weights of the Transformer as per the original paper."""
-    if isinstance(module, (nn.Linear, nn.Embedding)):
-        module.weight.data.normal_(mean=0.0, std=0.02)
-        if isinstance(module, nn.Linear) and module.bias is not None:
-            module.bias.data.zero_()
-
-
 def compute_accuracy(predictions, targets):
     """
     Compute accuracy for predictions against targets.
@@ -158,6 +24,138 @@ def compute_accuracy(predictions, targets):
     correct_preds = (predictions == targets).float()
     accuracy = correct_preds.mean().item()
     return accuracy
+
+
+class SequenceDataset(Dataset):
+    def __init__(self, data: np.ndarray, n_ctx: int):
+        self.data = data
+        self.n_ctx = n_ctx
+
+    def __len__(self):
+        return self.data.shape[0] * (self.data.shape[1] - self.n_ctx)
+
+    def __getitem__(self, idx):
+        sequence_idx = idx // (self.data.shape[1] - self.n_ctx)
+        token_idx = idx % (self.data.shape[1] - self.n_ctx)
+        X = self.data[sequence_idx, token_idx : token_idx + self.n_ctx]
+        Y = self.data[sequence_idx, token_idx + 1 : token_idx + self.n_ctx + 1]
+        return torch.tensor(X, dtype=torch.long), torch.tensor(Y, dtype=torch.long)
+
+
+def create_train_loader(
+    data: np.ndarray, n_ctx: int, batch_size: int = 32, shuffle: bool = True
+) -> DataLoader:
+    """
+    Create a DataLoader for training data.
+
+    Parameters:
+    data (np.ndarray): The training data. Of shape (num_sequences, sequence_length).
+    n_ctx (int): The context length.
+    batch_size (int): The size of each batch.
+    shuffle (bool): Whether to shuffle the data.
+
+    Returns:
+    DataLoader: The DataLoader for training data.
+    """
+    dataset = SequenceDataset(data, n_ctx)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+
+
+def create_validation_set(
+    MSP_tree: Mixed_State_Tree.Mixed_State_Tree,
+    sequence_length: int,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Create a validation set for the given mixed state tree.
+
+    Parameters:
+    MSP_tree (Mixed_State_Tree): The mixed state tree to create a validation set for.
+    sequence_length (int): The length of the sequences in the validation set.
+
+    Returns:
+    Tuple[np.ndarray, np.ndarray]: A tuple containing the validation sequences and their probabilities.
+    which can be used as weights for the loss function.
+    """
+
+    path_probs = collect_path_probs_with_paths(MSP_tree, sequence_length+1)
+    seqs = np.array([path[0] for path in path_probs])  # *(num_paths, sequence_length)
+    probs = np.array([path[1] for path in path_probs])  # *(num_paths)
+
+    # the X and Ys are one token shifted
+    X = seqs[:, :-1]
+    Y = seqs[:, 1:]
+
+    return X, Y, probs
+
+
+def build_dataset(config: Dict, process: HMM) -> np.ndarray:
+    data = generate_sequences(
+        process,
+        num_sequences=config["num_sequences"],
+        sequence_length=config["sequence_length"],
+    )
+
+    data = create_train_loader(
+        data, batch_size=config["batch_size"], n_ctx=config["n_ctx"]
+    )
+
+    return data
+
+def build_probabilistic_dataset(true_probs: np.ndarray,
+                                batch_size: int,
+                                num_iters: int) -> np.ndarray:
+
+    # multinomial sampling
+    train_weights = np.random.multinomial(batch_size, true_probs, size=num_iters) # *(num_iters, num_paths)
+    # normalize by batch size for each iteration
+    train_weights = train_weights / batch_size # *(num_iters, num_paths)
+
+    return train_weights
+
+
+def build_network(s_config: Dict, device: torch.device) -> HookedTransformer:
+    config = HookedTransformerConfig(
+        d_model=s_config["d_model"],
+        d_head=s_config["d_head"],
+        n_layers=s_config["n_layers"],
+        n_ctx=s_config["n_ctx"],
+        n_heads=s_config["n_heads"],
+        d_mlp=4 * s_config["d_model"],
+        d_vocab=s_config["d_vocab"],
+        act_fn=s_config["act_fn"],
+        use_attn_scale=s_config["use_attn_scale"],
+        normalization_type=s_config["normalization_type"],
+        attention_dir=s_config["attention_dir"],
+        attn_only=s_config["attn_only"],
+        seed=s_config["seed"],
+        init_weights=s_config["init_weights"],
+        device=device,
+    )
+
+    model = HookedTransformer(config)
+
+    return model
+
+
+def build_optimizer(
+    network: torch.nn.Module, sweep_config: Dict
+) -> torch.optim.Optimizer:
+    optimizer_type = sweep_config["optimizer"]
+    learning_rate = sweep_config["learning_rate"]
+    weight_decay = sweep_config["weight_decay"]
+
+    if optimizer_type == "adam":
+        optimizer = optim.Adam(
+            network.parameters(), lr=learning_rate, weight_decay=weight_decay
+        )
+    elif optimizer_type == "sgd":
+        optimizer = optim.SGD(
+            network.parameters(), lr=learning_rate, weight_decay=weight_decay
+        )
+    else:
+        raise ValueError(f"Unsupported optimizer type: {optimizer_type}")
+
+    return optimizer
 
 
 def train_model(

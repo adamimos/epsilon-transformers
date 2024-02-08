@@ -21,4 +21,9 @@ def mess3(x: float = 0.15, a: float = 0.6) -> HMM:
     T[1, :, :] = [[by, ax, bx], [bx, ay, bx], [bx, ax, by]]
     T[2, :, :] = [[by, bx, ax], [bx, by, ax], [bx, bx, ay]]
 
+
+    #[0] = T[0].T
+    #T[1] = T[1].T
+    #T[2] = T[2].T
+
     return HMM(T)

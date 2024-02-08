@@ -7,4 +7,5 @@ from .comp_mech import (
     generate_sequences,
     block_entropy,
     myopic_entropy,
+    collect_path_probs_with_paths,
 )

@@ -1,6 +1,6 @@
 from epsilon_transformers.processes import RRXOR
 from epsilon_transformers.visualization import visualize_graph
-from epsilon_transformers.simple_transformer import train_hooked_model
+from epsilon_transformers.training import train_hooked_model
 from epsilon_transformers.markov_utilities import (
     calculate_sequence_probabilities,
     compute_myopic_entropy_from_MSP,
