@@ -115,9 +115,9 @@ def build_probabilistic_dataset(
     # normalize by batch size for each iteration
     # convert batch_size to float to avoid integer division
     batch_size_float = float(batch_size)
-    train_weights = train_weights / batch_size_float  # *(num_iters, num_paths)
+    train_probs = train_weights / batch_size_float  # *(num_iters, num_paths)
 
-    return train_weights
+    return train_probs
 
 
 def build_network(s_config: Dict, device: torch.device) -> HookedTransformer:
