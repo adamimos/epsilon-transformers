@@ -113,7 +113,9 @@ def build_probabilistic_dataset(
         batch_size, true_probs, size=num_iters
     )  # *(num_iters, num_paths)
     # normalize by batch size for each iteration
-    train_weights = train_weights / batch_size  # *(num_iters, num_paths)
+    # convert batch_size to float to avoid integer division
+    batch_size_float = float(batch_size)
+    train_weights = train_weights / batch_size_float  # *(num_iters, num_paths)
 
     return train_weights
 
