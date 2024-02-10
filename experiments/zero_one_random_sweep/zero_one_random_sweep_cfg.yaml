@@ -1,7 +1,7 @@
 method: random
 metric:
   goal: minimize
-  name: val_loss
+  name: val_relative_loss
 sweep_name: zero_one_random_initial_sweep
 process: zero_one_random
 parameters:
@@ -12,11 +12,11 @@ parameters:
   n_layers:
     values: [1, 2, 4]
   n_ctx:
-    value: 7
+    value: 10
   n_heads:
     values: [1, 2, 4]
   d_vocab:
-    value: 3
+    value: 2
   act_fn:
     value: 'relu'
   use_attn_scale:
@@ -36,7 +36,7 @@ parameters:
   n_iters:
     value: 50
   num_epochs:
-    value: 50
+    value: 150
   learning_rate:
     values: [1e-5, 1e-4, 1e-3, 1e-2, 1e-1]
   weight_decay:
