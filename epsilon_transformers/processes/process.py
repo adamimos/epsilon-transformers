@@ -16,8 +16,6 @@ from epsilon_transformers.markov_utilities import calculate_steady_state_distrib
 # TODO: Test generate single sequence
 # TODO: Test generate multiple sequences
 
-# TODO: Write validator for ProcessHistory (same length)
-
 # TODO: Add jaxtyping to steady_state 
 # TODO: Check if is_unifilar is actually ever used
 
@@ -28,6 +26,10 @@ from epsilon_transformers.markov_utilities import calculate_steady_state_distrib
 class ProcessHistory:
     symbols: List[int]
     states: Optional[List[str]] = None
+
+    def __post_init__(self):
+        if self.states is not None:
+            assert len(self.symbols) == len(self.states), 'length of symbols & states must be the same'
 
 class Process(ABC):
     transition_matrix: Float[np.ndarray, 'vocab_len num_states num_states']
