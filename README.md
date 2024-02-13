@@ -16,5 +16,4 @@ To install, alongside all dependencies, run `pip install -e .` from the reposito
 
 ## Dev
 
-For formatting, run `bash scripts/format.sh` from repository folder
-
+For formatting, type checking, and testing you can run the corresponding script in `scripts/`
