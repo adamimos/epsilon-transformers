@@ -25,12 +25,21 @@ class Process(ABC):
     state_names_dict: Dict[str, int]
     vocab_len: int
     num_states: int
-    steady_state: Float[np.ndarray, 'num_states']
+    steady_state_vector: Float[np.ndarray, 'num_states']
 
     @property
-    def steady_state(self) -> Float[np.ndarray, 'num_states']:
-        return calculate_steady_state_distribution(self.transition_matrix)
+    def steady_state_vector(self) -> Float[np.ndarray, 'num_states']:
+        state_transition_matrix = np.sum(self.transition_matrix, axis=0)
 
+        eigenvalues, eigenvectors = np.linalg.eig(state_transition_matrix.T)
+        steady_state_vector = eigenvectors[:, np.isclose(eigenvalues, 1)].real
+        normalized_steady_state_vector = steady_state_vector / steady_state_vector.sum()
+        out: np.ndarray = normalized_steady_state_vector[:, 0]
+
+        assert out.ndim == 1
+        assert len(out) == self.num_states
+        return out
+        
     @property
     def is_unifilar(self) -> bool:
         # For each state, check if there are multiple transitions for each symbol
@@ -80,7 +89,7 @@ class Process(ABC):
         Generate a sequence of states based on the transition matrix.
         """        
         if current_state_idx is None:
-            current_state_ind = np.random.choice(self.num_states, p=self.steady_state)
+            current_state_ind = np.random.choice(self.num_states, p=self.steady_state_vector)
 
         index_to_state_names_dict = {v: k for k, v in self.state_names_dict.items()}
 
