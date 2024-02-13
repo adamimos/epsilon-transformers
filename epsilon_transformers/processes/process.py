@@ -12,7 +12,6 @@ from epsilon_transformers.markov_utilities import calculate_steady_state_distrib
 # Is it because this is what we expect the distribution to be at it's limit and we want to sample according to this limit?? If so is this the correct way of doing it??
 
 # TODO: Test if steady state is calculated at init or if it's done lazily
-# TODO: Test _sample_emission
 # TODO: Test generate single sequence
 # TODO: Test generate multiple sequences
 
