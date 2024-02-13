@@ -1,7 +1,7 @@
 from scipy.optimize import minimize_scalar
 from typing import List
 import numpy as np
-from .markov_utilities import calculate_steady_state_distribution
+from epsilon_transformers.markov_utilities import calculate_steady_state_distribution
 
 NUM_SYMBOLS = 2
 
