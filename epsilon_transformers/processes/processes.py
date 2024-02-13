@@ -2,7 +2,7 @@ import random
 import numpy as np
 import torch
 import torch.utils.data
-from .markov_utilities import calculate_steady_state_distribution
+from epsilon_transformers.analysis.markov_utilities import calculate_steady_state_distribution
 import networkx as nx
 from typing import List, Tuple
 
