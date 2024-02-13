@@ -65,7 +65,6 @@ class Process(ABC):
         if not np.allclose(transition.sum(axis=1), 1.0):
             raise ValueError("Transition matrix should be stochastic and sum to 1")
 
-        # Set the number of symbols and states based on the shape of the transition matrix
         self.vocab_len = self.transition_matrix.shape[0]
         self.num_states = self.transition_matrix.shape[1]
 
@@ -81,6 +80,8 @@ class Process(ABC):
         ...
 
     def _sample_emission(self, current_state_index: int) -> int:
+        assert 0 <= current_state_index <= self.vocab_len, "current_state_index must be positive & less than vocab_len"
+        
         p = self.transition_matrix[:, current_state_index, :].sum(axis=1)
         emission = np.random.choice(self.vocab_len, p=p)
         return emission
