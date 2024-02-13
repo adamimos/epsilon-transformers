@@ -7,6 +7,7 @@ from epsilon_transformers.comp_mech.processes import (
     zero_one_random,
     golden_mean,
     random_random_xor,
+    serpinski,
 )
 
 from epsilon_transformers import create_train_loader
@@ -31,11 +32,12 @@ def main():
     golden_mean_hmm = golden_mean(1, 1, 0.5)
     zero_one_random_hmm = zero_one_random(0.5)
     random_random_xor_hmm = random_random_xor(0.5, 0.5)
+    serpinski_hmm = serpinski()
     print(mess3_hmm)
     print(even_process_hmm)
     print(nond_hmm)
     print(golden_mean_hmm)
-    process = mess3_hmm
+    process = serpinski_hmm
     generate_sequences(process, 5, 10000)
 
     n_ctx = 7

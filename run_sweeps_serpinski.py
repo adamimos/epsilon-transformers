@@ -7,6 +7,7 @@ from epsilon_transformers.comp_mech.processes import (
     random_random_xor,
     zero_one_random,
     mess3,
+    serpinski
 )
 from epsilon_transformers.configs import SweepConfig
 import torch
@@ -31,7 +32,7 @@ from epsilon_transformers.comp_mech import (
 # %%
 
 with open(
-    "./experiments/mess3_sweep/mess3_sweep_cfg.yaml", "r"
+    "./experiments/serpinski_sweep/serpinski_sweep_cfg.yaml", "r"
 ) as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
@@ -44,9 +45,11 @@ except Exception as e:
 if config["process"] == "RRXOR":
     process = random_random_xor()
 elif config["process"] == "mess3":
-    process = mess3(.05, .85)
+    process = mess3()
 elif config["process"] == "zero_one_random":
     process = zero_one_random()
+elif config["process"] == "serpinski":
+    process = serpinski()
 
 print(config["parameters"]["n_ctx"])
 MSP_tree = mixed_state_tree(process, config["parameters"]["n_ctx"]["value"] + 1)
@@ -158,7 +161,7 @@ def train_epoch_prob(
     # validation
     model.eval()
     with torch.no_grad():
-
+        
         # run the whole validation set
         Y = model(val_data)
         loss = criterion(Y.view(-1, model.cfg.d_vocab), val_output.view(-1))

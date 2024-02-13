@@ -3,7 +3,7 @@ metric:
   goal: minimize
   name: val_relative_loss
 sweep_name: transformer-MSPs
-process: mess3
+process: serpinski
 method: random
 parameters:
   d_model:
