@@ -6,13 +6,6 @@ from jaxtyping import Float
 
 from epsilon_transformers.markov_utilities import calculate_steady_state_distribution
 
-# TODO: Bring up question in PR
-
-# LUCAS Q: Why do we have to start our selection from the steady state distribution??
-# Is it because this is what we expect the distribution to be at it's limit and we want to sample according to this limit?? If so is this the correct way of doing it??
-
-# TODO: Check if is_unifilar is actually ever used
-
 # TODO: Add Processes Registry
 # TODO: Add derive_msp() to processes
 
