@@ -11,11 +11,9 @@ from epsilon_transformers.markov_utilities import calculate_steady_state_distrib
 # LUCAS Q: Why do we have to start our selection from the steady state distribution??
 # Is it because this is what we expect the distribution to be at it's limit and we want to sample according to this limit?? If so is this the correct way of doing it??
 
-# TODO: Test if steady state is calculated at init or if it's done lazily
 # TODO: Test generate single sequence
 # TODO: Test generate multiple sequences
 
-# TODO: Add jaxtyping to steady_state 
 # TODO: Check if is_unifilar is actually ever used
 
 # TODO: Add Processes Registry
@@ -38,7 +36,7 @@ class Process(ABC):
     steady_state: Float[np.ndarray, 'num_states']
 
     @property
-    def steady_state(self):
+    def steady_state(self) -> Float[np.ndarray, 'num_states']:
         return calculate_steady_state_distribution(self.transition_matrix)
 
     @property
