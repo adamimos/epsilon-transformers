@@ -75,7 +75,7 @@ class Process(ABC):
         emission = np.random.choice(self.vocab_len, p=p)
         return emission
 
-    def generate_single_sequence(self, total_length: int, current_state_idx: Optional[int] = None) -> ProcessHistory:
+    def generate_process_history(self, total_length: int, current_state_idx: Optional[int] = None) -> ProcessHistory:
         """
         Generate a sequence of states based on the transition matrix.
         """        
@@ -96,6 +96,3 @@ class Process(ABC):
             next_state_ind = np.argmax(self.transition_matrix[emission, current_state_ind, :])
             current_state_ind = next_state_ind
         return ProcessHistory(symbols=symbols, states=states)
-        
-    def generate_multiple_sequences(self, num_sequences: int, total_length: int) -> List[ProcessHistory]:
-        return [self.generate_single_sequence(total_length) for _ in range(num_sequences)]
