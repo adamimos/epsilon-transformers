@@ -75,14 +75,14 @@ class Process(ABC):
         emission = np.random.choice(self.vocab_len, p=p)
         return emission
 
-    def generate_single_sequence(self, total_length: int) -> ProcessHistory:
+    def generate_single_sequence(self, total_length: int, current_state_idx: Optional[int] = None) -> ProcessHistory:
         """
         Generate a sequence of states based on the transition matrix.
         """        
-        index_to_state_names_dict = {v: k for k, v in self.state_names_dict.items()}
+        if current_state_idx is None:
+            current_state_ind = np.random.choice(self.num_states, p=self.steady_state)
 
-        # randomly select state from steady state distribution
-        current_state_ind = np.random.choice(self.num_states, p=self.steady_state)
+        index_to_state_names_dict = {v: k for k, v in self.state_names_dict.items()}
 
         symbols = []
         states = []
