@@ -19,7 +19,6 @@ from epsilon_transformers.markov_utilities import calculate_steady_state_distrib
 # TODO: Write validator for ProcessHistory (same length)
 
 # TODO: Add jaxtyping to steady_state 
-# TODO: Clean up dead comments
 # TODO: Check if is_unifilar is actually ever used
 
 # TODO: Add Processes Registry
@@ -31,10 +30,6 @@ class ProcessHistory:
     states: Optional[List[str]] = None
 
 class Process(ABC):
-    """
-    This is the parent class for presentations of a process. It is responsible for initializing the transition matrix,
-    calculating the steady state distribution, and setting the number of symbols and states.
-    """
     transition_matrix: Float[np.ndarray, 'vocab_len num_states num_states']
     state_names_dict: Dict[str, int]
     vocab_len: int
