@@ -11,9 +11,6 @@ from epsilon_transformers.markov_utilities import calculate_steady_state_distrib
 # LUCAS Q: Why do we have to start our selection from the steady state distribution??
 # Is it because this is what we expect the distribution to be at it's limit and we want to sample according to this limit?? If so is this the correct way of doing it??
 
-# TODO: Test generate single sequence
-# TODO: Test generate multiple sequences
-
 # TODO: Check if is_unifilar is actually ever used
 
 # TODO: Add Processes Registry
@@ -22,11 +19,13 @@ from epsilon_transformers.markov_utilities import calculate_steady_state_distrib
 @dataclass
 class ProcessHistory:
     symbols: List[int]
-    states: Optional[List[str]] = None
+    states: List[str]
 
     def __post_init__(self):
-        if self.states is not None:
-            assert len(self.symbols) == len(self.states), 'length of symbols & states must be the same'
+        assert len(self.symbols) == len(self.states), 'length of symbols & states must be the same'
+
+    def __len__(self):
+        return len(self.states)
 
 class Process(ABC):
     transition_matrix: Float[np.ndarray, 'vocab_len num_states num_states']
@@ -83,7 +82,7 @@ class Process(ABC):
         emission = np.random.choice(self.vocab_len, p=p)
         return emission
 
-    def generate_single_sequence(self, total_length: int, return_states: bool) -> ProcessHistory:
+    def generate_single_sequence(self, total_length: int) -> ProcessHistory:
         """
         Generate a sequence of states based on the transition matrix.
         """        
@@ -103,7 +102,7 @@ class Process(ABC):
             # make transition. given the current state and the emission, the next state is determined
             next_state_ind = np.argmax(self.transition_matrix[emission, current_state_ind, :])
             current_state_ind = next_state_ind
-        return ProcessHistory(symbols=symbols, states=states if return_states else None)
+        return ProcessHistory(symbols=symbols, states=states)
         
-    def generate_multiple_sequences(self, num_sequences: int, total_length: int, return_states: bool) -> List[ProcessHistory]:
-        return [self.generate_single_sequence(total_length, return_states) for _ in range(num_sequences)]
+    def generate_multiple_sequences(self, num_sequences: int, total_length: int) -> List[ProcessHistory]:
+        return [self.generate_single_sequence(total_length) for _ in range(num_sequences)]
