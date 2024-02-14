@@ -4,10 +4,17 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from jaxtyping import Float
 
-from epsilon_transformers.markov_utilities import calculate_steady_state_distribution
+from epsilon_transformers.processes.rrxor import RRXOR
+from epsilon_transformers.processes.mess3 import Mess3
+from epsilon_transformers.processes.zero_one_random import ZeroOneR  
 
-# TODO: Add Processes Registry
 # TODO: Add derive_msp() to processes
+
+PROCESS_REGISTRY: Dict[str, 'Process'] = {
+    'z1r': ZeroOneR(),
+    'mess3': Mess3(),
+    'rrxor': RRXOR()
+}
 
 @dataclass
 class ProcessHistory:
