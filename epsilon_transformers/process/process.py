@@ -1,20 +1,11 @@
 import numpy as np
-from typing import Tuple, Optional, Dict, List
+from typing import Tuple, Optional, Dict, List, Iterator
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from jaxtyping import Float
 
-from epsilon_transformers.processes.rrxor import RRXOR
-from epsilon_transformers.processes.mess3 import Mess3
-from epsilon_transformers.processes.zero_one_random import ZeroOneR  
-
 # TODO: Add derive_msp() to processes
-
-PROCESS_REGISTRY: Dict[str, 'Process'] = {
-    'z1r': ZeroOneR(),
-    'mess3': Mess3(),
-    'rrxor': RRXOR()
-}
+# TODO: Delete generate_process_history (??)
 
 @dataclass
 class ProcessHistory:
@@ -84,31 +75,50 @@ class Process(ABC):
         """
         ...
 
-    def _sample_emission(self, current_state_index: int) -> int:
-        assert 0 <= current_state_index <= self.vocab_len, "current_state_index must be positive & less than vocab_len"
+    def _sample_emission(self, current_state_idx: Optional[int] = None) -> int:
+        if current_state_idx is None:
+            current_state_idx = np.random.choice(self.num_states, p=self.steady_state_vector)
+
+        assert 0 <= current_state_idx <= self.vocab_len, "current_state_index must be positive & less than vocab_len"
         
-        p = self.transition_matrix[:, current_state_index, :].sum(axis=1)
+        p = self.transition_matrix[:, current_state_idx, :].sum(axis=1)
         emission = np.random.choice(self.vocab_len, p=p)
         return emission
+
+    def yield_emissions(self, sequence_len: int, current_state_idx: Optional[int] = None) -> Iterator[int]:
+        if current_state_idx is None:
+            current_state_idx = np.random.choice(self.num_states, p=self.steady_state_vector)
+
+        assert 0 <= current_state_idx <= self.vocab_len, "current_state_index must be positive & less than vocab_len"
+
+        for _ in range(sequence_len):           
+            emission = self._sample_emission(current_state_idx)
+            yield emission
+
+            # make transition. given the current state and the emission, the next state is determined
+            next_state_ind = np.argmax(self.transition_matrix[emission, current_state_idx, :])
+            current_state_idx = next_state_ind
 
     def generate_process_history(self, total_length: int, current_state_idx: Optional[int] = None) -> ProcessHistory:
         """
         Generate a sequence of states based on the transition matrix.
         """        
         if current_state_idx is None:
-            current_state_ind = np.random.choice(self.num_states, p=self.steady_state_vector)
+            current_state_idx = np.random.choice(self.num_states, p=self.steady_state_vector)
+
+        assert 0 <= current_state_idx <= self.vocab_len, "current_state_index must be positive & less than vocab_len"
 
         index_to_state_names_dict = {v: k for k, v in self.state_names_dict.items()}
 
         symbols = []
         states = []
         for _ in range(total_length):
-            states.append(index_to_state_names_dict[current_state_ind])
+            states.append(index_to_state_names_dict[current_state_idx])
            
-            emission = self._sample_emission(current_state_ind)
+            emission = self._sample_emission(current_state_idx)
             symbols.append(emission)
            
             # make transition. given the current state and the emission, the next state is determined
-            next_state_ind = np.argmax(self.transition_matrix[emission, current_state_ind, :])
-            current_state_ind = next_state_ind
+            next_state_ind = np.argmax(self.transition_matrix[emission, current_state_idx, :])
+            current_state_idx = next_state_ind
         return ProcessHistory(symbols=symbols, states=states)
