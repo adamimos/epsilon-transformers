@@ -24,5 +24,7 @@ dependencies = [
     "PyDrive",
     "black",
     "mypy",
-    "jaxtyping"
+    "jaxtyping",
+    "fire",
+    "pydantic"
 ]
