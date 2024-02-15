@@ -4,12 +4,15 @@ import pathlib
 import yaml
 import torch
 from torch.utils.data import DataLoader
-from transformer_lens import HookedTransformer
+from transformer_lens import HookedTransformer, HookedTransformerConfig
 from typing import Union
 
 from epsilon_transformers.process.dataset import ProcessDataset, process_dataset_collate_fn
 
 # TODO: Make Config ABS (??)
+
+# TODO: Figure out if model seed should be it's own thing or whether we can just use the same seed across
+# TODO: Decide on whether we want to use HookedTransformer exclusively or whether creating our own model class makes the most sense
 
 # TODO: Add a learning rate scheduler config
 # TODO: Add a WandbLoggingConfig
@@ -26,15 +29,26 @@ class Config(BaseModel, extra='forbid'):
 class RawModelConfig(Config):
     d_vocab: int
     d_model: int
-    input_size: int
+    n_ctx: int
     d_head: int
     n_head: int
     d_mlp: int
     n_layers: int
-    use_layernorm: bool
 
-    def to_hooked_transformer(self, device: torch.device) -> HookedTransformer:
-        raise NotImplementedError
+    def to_hooked_transformer(self, seed: int, device: torch.device) -> HookedTransformer:
+        config = HookedTransformerConfig(
+        d_model=self.d_model,
+        d_head=self.d_head,
+        n_layers=self.n_layers,
+        n_ctx=self.n_ctx,
+        n_heads=self.n_head,
+        d_mlp=self.d_mlp,
+        d_vocab=self.d_vocab,
+        seed=seed,
+        device=device,
+        act_fn='relu'
+        )
+        return HookedTransformer(config)
 
 Optimizer = Union[torch.optim.Adam, torch.optim.SGD]
 

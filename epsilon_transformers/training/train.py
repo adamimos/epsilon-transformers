@@ -37,7 +37,7 @@ def train_model(config: TrainConfig):
     _set_random_seed(config.seed)
     criterion = torch.nn.CrossEntropyLoss(reduction='none')
 
-    model = config.model.to_hooked_transformer(device=device)
+    model = config.model.to_hooked_transformer(device=device, seed=config.seed)
     optimizer = config.optimizer.from_model(model=model, device=device)
     dataloader = config.dataset.to_dataloader(sequence_length=model.cfg.n_ctx, device=device)
     
