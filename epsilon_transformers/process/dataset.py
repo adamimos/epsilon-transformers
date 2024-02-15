@@ -6,6 +6,7 @@ from torch.utils.data import IterableDataset, DataLoader
 
 from epsilon_transformers.process.processes import PROCESS_REGISTRY
 
+# TODO: Create a custom dataloader so you don't have to import the collate_function everywehre
 # TODO: Assert they are in the correct vocabulary
 # TODO: Make the dataset parallel distributed (??)
 # TODO: Figure out padding for batching
