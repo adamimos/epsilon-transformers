@@ -1,5 +1,7 @@
 import pytest
 from pydantic import ValidationError
+import torch
+from transformer_lens import HookedTransformer
 
 from epsilon_transformers.training.configs import TrainConfig, RawModelConfig, OptimizerConfig, ProcessDatasetConfig, PersistanceConfig
 from epsilon_transformers.training.train import train_model
@@ -9,6 +11,22 @@ from epsilon_transformers.training.train import train_model
 def test_configs_throw_error_on_extra():
     with pytest.raises(ValidationError):
         OptimizerConfig(optimizer_type='adam', learning_rate=1.06e-12, weight_decay=.08, jungle_bunny='hoorah')
+
+def test_raw_model_config():
+    model_config = RawModelConfig(
+        d_vocab=2,
+        d_model=100,
+        n_ctx=45,
+        d_head=48,
+        n_head=12,
+        d_mlp=12,
+        n_layers=2,
+    )
+    model = model_config.to_hooked_transformer(seed=13, device='cpu')
+    assert isinstance(model, HookedTransformer)
+    input_tensor = torch.tensor([[0,1,0,1,1,0]], device='cpu', dtype=torch.long)
+    output = model(input_tensor)
+    assert output.shape == torch.Size([1,6,2]) # batch, pos, vocab (it returns logits)
 
 def test_train_model():
     model_config = RawModelConfig(
@@ -49,4 +67,4 @@ def test_train_model():
     train_model(mock_config)
 
 if __name__ == "__main__":
-    test_train_model()
+    test_raw_model_config()
