@@ -71,8 +71,8 @@ class ProcessDatasetConfig(Config):
         return DataLoader(dataset=dataset, collate_fn=process_dataset_collate_fn, batch_size=self.batch_size)
 
 class TrainConfig(Config):
-    model_config: RawModelConfig
-    optimizer_config: OptimizerConfig
-    dataset_config: ProcessDatasetConfig
-    persistance_config: PersistanceConfig
+    model: RawModelConfig
+    optimizer: OptimizerConfig
+    dataset: ProcessDatasetConfig
+    persistance: PersistanceConfig
     seed: int

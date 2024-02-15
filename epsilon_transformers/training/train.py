@@ -37,9 +37,9 @@ def train_model(config: TrainConfig):
     _set_random_seed(config.seed)
     criterion = torch.nn.CrossEntropyLoss(reduction='none')
 
-    model = config.model_config.to_hooked_transformer(device=device)
-    optimizer = config.optimizer_config.from_model(model=model, device=device)
-    dataloader = config.dataset_config.to_dataloader(sequence_length=model.cfg.n_ctx, device=device)
+    model = config.model.to_hooked_transformer(device=device)
+    optimizer = config.optimizer.from_model(model=model, device=device)
+    dataloader = config.dataset.to_dataloader(sequence_length=model.cfg.n_ctx, device=device)
     
     model.train()
     total_loss = 0.0
@@ -57,8 +57,8 @@ def train_model(config: TrainConfig):
 
         # TODO: Logging
         
-        if _check_if_action_batch(action_frequency=config.persistance_config.checkpoint_every_n_tokens, total_tokens=config.dataset_config.num_tokens, batch_size=config.dataset_config.batch_size, batch_idx=batch_idx):
-            config.persistance_config.save_model()
+        if _check_if_action_batch(action_frequency=config.persistance.checkpoint_every_n_tokens, total_tokens=config.dataset.num_tokens, batch_size=config.dataset.batch_size, batch_idx=batch_idx):
+            config.persistance.save_model()
 
 
 if __name__ == "__main__":
