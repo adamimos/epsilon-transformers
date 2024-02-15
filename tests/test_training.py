@@ -1,8 +1,11 @@
 import pytest
 from pydantic import ValidationError
 import torch
+from torch.utils.data import DataLoader
 from transformer_lens import HookedTransformer
 
+
+from epsilon_transformers.process.dataset import ProcessDataset, process_dataset_collate_fn
 from epsilon_transformers.training.configs import TrainConfig, RawModelConfig, OptimizerConfig, ProcessDatasetConfig, PersistanceConfig
 from epsilon_transformers.training.train import train_model
 
@@ -27,6 +30,25 @@ def test_raw_model_config():
     input_tensor = torch.tensor([[0,1,0,1,1,0]], device='cpu', dtype=torch.long)
     output = model(input_tensor)
     assert output.shape == torch.Size([1,6,2]) # batch, pos, vocab (it returns logits)
+
+def test_dataloader_raw_hooked_transformer_compatibility():
+    model_config = RawModelConfig(
+        d_vocab=2,
+        d_model=100,
+        n_ctx=45,
+        d_head=48,
+        n_head=12,
+        d_mlp=12,
+        n_layers=2,
+    )
+    model = model_config.to_hooked_transformer(seed=13, device='cpu')
+    
+    dataset = ProcessDataset('z1r', 10, 16)
+    dataloader = DataLoader(dataset=dataset, collate_fn=process_dataset_collate_fn, batch_size=2)
+
+    for x, _  in dataloader:
+        output = model(x)
+        assert output.shape == torch.Size([1,10,2]) # batch, pos, vocab (it returns logits)
 
 def test_train_model():
     model_config = RawModelConfig(
@@ -67,4 +89,4 @@ def test_train_model():
     train_model(mock_config)
 
 if __name__ == "__main__":
-    test_raw_model_config()
+    test_dataloader_raw_hooked_transformer_compatibility()

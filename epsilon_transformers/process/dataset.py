@@ -39,4 +39,4 @@ class ProcessDataset(IterableDataset):
 def process_dataset_collate_fn(batch: List[Tuple[List[int]]]) -> Tuple[Float[torch.Tensor, 'batch_size sequence_length'], Float[torch.Tensor, 'batch_size sequence_length']]:
     data = [x[0] for x in batch]
     labels = [x[1] for x in batch]
-    return torch.Tensor(data), torch.Tensor(labels)
+    return torch.tensor(data, dtype=torch.long), torch.tensor(labels, dtype=torch.long)
