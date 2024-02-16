@@ -248,3 +248,5 @@ sweep_id = wandb.sweep(config, project=config["sweep_name"])  # type: ignore
 wandb.agent(sweep_id, function=sweep_train, count=100)  # type: ignore
 
 # %%
+if __name__ == "__main__":
+    sweep_train()

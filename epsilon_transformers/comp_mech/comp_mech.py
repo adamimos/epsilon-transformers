@@ -281,3 +281,25 @@ def myopic_entropy(
 
     block_entropy = entropy_by_path_length(tree, max_depth)
     return np.diff(block_entropy)
+
+def collect_paths_with_beliefs(tree: Mixed_State_Tree, target_depth: int) -> List[Tuple[Tuple[int, ...], float, np.ndarray]]:
+    """
+    Collects all path probabilities along with their paths at a specific target depth.
+    Also collects the belief state at that depth.
+
+    :param tree: The root of the Mixed_State_Tree.
+    :param target_depth: The target depth to collect path probabilities and their paths from.
+    :return: List of tuples (path, probability, belief state).
+    """
+    results = []
+
+    def traverse(node: Mixed_State_Tree, current_depth: int):
+        if current_depth == target_depth:
+            results.append((node.path, node.path_prob, node.state_vector))
+        for child in node.children:
+            traverse(child, current_depth + 1)
+
+    traverse(tree, 0)
+
+    return results
+

@@ -3,3 +3,6 @@
 build/
 wandb/
 **/__pycache__/
+*.png
+*.pt
+*.pkl
