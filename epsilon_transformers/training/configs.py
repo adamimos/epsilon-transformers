@@ -65,7 +65,7 @@ class OptimizerConfig(Config):
         else:
             raise ValueError(f"{self.optimizer_type} is not a valid optimizer_type. It must be either 'adam' or 'sgd'")
 
-        return optimizer(model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay, device=device)
+        return optimizer(model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
 
 class PersistanceConfig(Config):
     location: Literal['local', 'gdrive']
