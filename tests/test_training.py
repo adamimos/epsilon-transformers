@@ -7,7 +7,7 @@ from transformer_lens import HookedTransformer
 
 from epsilon_transformers.process.dataset import ProcessDataset, process_dataset_collate_fn
 from epsilon_transformers.training.configs import TrainConfig, RawModelConfig, OptimizerConfig, ProcessDatasetConfig, PersistanceConfig
-from epsilon_transformers.training.train import train_model, _check_if_action_batch
+from epsilon_transformers.training.train import train_model, _check_if_action_batch, _set_random_seed
 
 # TODO: Double check the HookedTransformer implementation and make sure that model(tokens) actually returns, and that there isn't something deeply wrong 
 # TODO: Paramaterize test_configs_throw_error_on_extra
@@ -60,6 +60,18 @@ def test_check_if_action_batch():
     with pytest.raises(AssertionError):
         _check_if_action_batch(perform_action_every_n_tokens=5, batch_size=2, sequence_len=10, batch_idx=4)
 
+def test_train_and_test_dataloaders_are_different():
+    _set_random_seed(45)
+
+    config = ProcessDatasetConfig(process='z1r', batch_size=2, num_tokens=100)
+    train_dataloader = config.to_dataloader(sequence_length=10)
+    test_dataloader = config.to_dataloader(sequence_length=10)
+    
+    train_data = [x for x, _ in train_dataloader]
+    test_data = [x for x, _ in test_dataloader]
+
+    assert all([not torch.equal(x, y) for x,y in zip(train_data, test_data)])
+
 def test_train_model():
     model_config = RawModelConfig(
         d_vocab=2,
@@ -99,4 +111,4 @@ def test_train_model():
     train_model(mock_config)
 
 if __name__ == "__main__":
-    test_check_if_action_batch()
+    test_train_and_test_dataloaders_are_different()
