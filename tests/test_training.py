@@ -7,8 +7,9 @@ from transformer_lens import HookedTransformer
 
 from epsilon_transformers.process.dataset import ProcessDataset, process_dataset_collate_fn
 from epsilon_transformers.training.configs import TrainConfig, RawModelConfig, OptimizerConfig, ProcessDatasetConfig, PersistanceConfig
-from epsilon_transformers.training.train import train_model
+from epsilon_transformers.training.train import train_model, _check_if_action_batch
 
+# TODO: Double check the HookedTransformer implementation and make sure that model(tokens) actually returns, and that there isn't something deeply wrong 
 # TODO: Paramaterize test_configs_throw_error_on_extra
 
 def test_configs_throw_error_on_extra():
@@ -50,6 +51,15 @@ def test_dataloader_raw_hooked_transformer_compatibility():
         output = model(x)
         assert output.shape == torch.Size([1,10,2]) # batch, pos, vocab (it returns logits)
 
+def test_check_if_action_batch():
+    # Test case 1: Valid scenario where action should be performed on the last batch
+    assert _check_if_action_batch(perform_action_every_n_tokens=100, batch_size=5, sequence_len=10, batch_idx=1) == True
+    # Test case 2: Valid scenario where action should not be performed
+    assert _check_if_action_batch(perform_action_every_n_tokens=100, batch_size=5, sequence_len=10, batch_idx=2) == False
+    # Test case 4: Invalid scenario where perform_action_every_n_tokens is not greater than tokens_per_batch
+    with pytest.raises(AssertionError):
+        _check_if_action_batch(perform_action_every_n_tokens=5, batch_size=2, sequence_len=10, batch_idx=4)
+
 def test_train_model():
     model_config = RawModelConfig(
         d_vocab=2,
@@ -75,7 +85,7 @@ def test_train_model():
 
     persistance_config = PersistanceConfig(
         location='local',
-        path="some/random/path",
+        checkpoint_dir="some/random/path",
         checkpoint_every_n_tokens=100
     )
 
@@ -89,4 +99,4 @@ def test_train_model():
     train_model(mock_config)
 
 if __name__ == "__main__":
-    test_dataloader_raw_hooked_transformer_compatibility()
+    test_check_if_action_batch()
