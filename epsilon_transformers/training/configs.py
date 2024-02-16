@@ -11,6 +11,9 @@ from epsilon_transformers.process.dataset import ProcessDataset, process_dataset
 
 # TODO: Make Config ABS (??)
 
+# TODO: Create a logger & log the file path and intermediary metrics
+# TODO: Add validator to make sure test_split is a fraction
+# TODO: Add validator in Persistence Config to make sure the path is a dir
 # TODO: Figure out if model seed should be it's own thing or whether we can just use the same seed across
 # TODO: Decide on whether we want to use HookedTransformer exclusively or whether creating our own model class makes the most sense
 
@@ -69,19 +72,30 @@ class OptimizerConfig(Config):
 
 class PersistanceConfig(Config):
     location: Literal['local', 'gdrive']
-    path: pathlib.Path
+    checkpoint_dir: pathlib.Path
     checkpoint_every_n_tokens: int
 
-    def save_model(self, model: torch.nn.Module):
-        raise NotImplementedError
+    def save_model(self, model: torch.nn.Module, num_tokens: int):
+        if self.location == 'local':
+            save_path = self.checkpoint_dir / f"{num_tokens}.pt"
+            torch.save(model.state_dict(), save_path)
+        elif self.location == 'gdrive':
+            raise NotImplementedError
+        else:
+            raise ValueError(f"{self.location} is an invalid location value. It must be either 'local' or 'gdrive'")
 
 class ProcessDatasetConfig(Config):
     process: str
     batch_size: int
     num_tokens: int
+    test_split: int
     
-    def to_dataloader(self, sequence_length: int) -> DataLoader:
-        dataset = ProcessDataset(process_name=self.process, sequence_length=sequence_length, num_samples=self.num_tokens)
+    def to_dataloader(self, sequence_length: int, train: bool) -> DataLoader:
+        dataset = ProcessDataset(
+            process_name=self.process, 
+            sequence_length=sequence_length, 
+            num_samples=self.num_tokens if train else self.num_tokens * self.test_split
+        )
         return DataLoader(dataset=dataset, collate_fn=process_dataset_collate_fn, batch_size=self.batch_size)
 
 class TrainConfig(Config):
