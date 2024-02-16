@@ -7,7 +7,7 @@ from epsilon_transformers.comp_mech.processes import (
     random_random_xor,
     zero_one_random,
     mess3,
-    serpinski
+    serpinski,
 )
 from epsilon_transformers.configs import SweepConfig
 import torch
@@ -31,9 +31,7 @@ from epsilon_transformers.comp_mech import (
 
 # %%
 
-with open(
-    "./experiments/serpinski_sweep/serpinski_sweep_cfg.yaml", "r"
-) as f:
+with open("./experiments/serpinski_sweep/serpinski_sweep_cfg.yaml", "r") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
 try:
@@ -63,7 +61,7 @@ device = torch.device(
     if torch.backends.mps.is_available()
     else ("cuda" if torch.cuda.is_available() else "cpu")
 )
-#device = torch.device("cpu")
+# device = torch.device("cpu")
 print(f"Using device: {device}")
 
 minimum_cross_entropy = torch.tensor(minimum_cross_entropy, dtype=torch.float32).to(
@@ -161,7 +159,6 @@ def train_epoch_prob(
     # validation
     model.eval()
     with torch.no_grad():
-        
         # run the whole validation set
         Y = model(val_data)
         loss = criterion(Y.view(-1, model.cfg.d_vocab), val_output.view(-1))

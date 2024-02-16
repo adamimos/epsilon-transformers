@@ -8,5 +8,5 @@ from .comp_mech import (
     block_entropy,
     myopic_entropy,
     collect_path_probs_with_paths,
-    collect_paths_with_beliefs
+    collect_paths_with_beliefs,
 )

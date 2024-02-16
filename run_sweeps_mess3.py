@@ -30,9 +30,7 @@ from epsilon_transformers.comp_mech import (
 
 # %%
 
-with open(
-    "./experiments/mess3_sweep/mess3_sweep_cfg.yaml", "r"
-) as f:
+with open("./experiments/mess3_sweep/mess3_sweep_cfg.yaml", "r") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
 try:
@@ -44,7 +42,7 @@ except Exception as e:
 if config["process"] == "RRXOR":
     process = random_random_xor()
 elif config["process"] == "mess3":
-    process = mess3(.05, .85)
+    process = mess3(0.05, 0.85)
 elif config["process"] == "zero_one_random":
     process = zero_one_random()
 
@@ -60,7 +58,7 @@ device = torch.device(
     if torch.backends.mps.is_available()
     else ("cuda" if torch.cuda.is_available() else "cpu")
 )
-#device = torch.device("cpu")
+# device = torch.device("cpu")
 print(f"Using device: {device}")
 
 minimum_cross_entropy = torch.tensor(minimum_cross_entropy, dtype=torch.float32).to(
@@ -158,7 +156,6 @@ def train_epoch_prob(
     # validation
     model.eval()
     with torch.no_grad():
-
         # run the whole validation set
         Y = model(val_data)
         loss = criterion(Y.view(-1, model.cfg.d_vocab), val_output.view(-1))

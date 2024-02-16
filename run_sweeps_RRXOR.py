@@ -30,9 +30,7 @@ from epsilon_transformers.comp_mech import (
 
 # %%
 
-with open(
-    "./experiments/RRXOR_sweep/RRXOR_sweep_cfg.yaml", "r"
-) as f:
+with open("./experiments/RRXOR_sweep/RRXOR_sweep_cfg.yaml", "r") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
 try:
