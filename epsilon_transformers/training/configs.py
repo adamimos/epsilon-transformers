@@ -88,7 +88,7 @@ class ProcessDatasetConfig(Config):
     process: str
     batch_size: int
     num_tokens: int
-    test_split: int
+    test_split: float
     
     def to_dataloader(self, sequence_length: int, train: bool) -> DataLoader:
         dataset = ProcessDataset(
