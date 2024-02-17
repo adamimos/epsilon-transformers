@@ -3,6 +3,7 @@ import pathlib
 import random
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 from transformer_lens import HookedTransformer
 
 from epsilon_transformers.training.configs import TrainConfig, ProcessDatasetConfig, PersistanceConfig, LoggingConfig, Log
@@ -15,7 +16,6 @@ from epsilon_transformers.training.configs import TrainConfig, ProcessDatasetCon
 # TODO: I don't like how the log is mutable... think on whether there's something better you can do
 
 # TODO: Review best practices regarding seed setting
-# TODO: Add Wandb Logging
 # TODO: Test on GPUs
 # TODO: Add DP
 
@@ -31,13 +31,18 @@ def _check_if_action_batch(perform_action_every_n_tokens: int, batch_size: int, 
     perform_action_every_n_batches = perform_action_every_n_tokens // tokens_per_batch
     return (batch_idx + 1) % perform_action_every_n_batches == 0
 
-def _evaluate_model(model: HookedTransformer, eval_dataloader, eval_config, logging_config):
+def _evaluate_model(model: HookedTransformer, eval_dataloader: DataLoader, logging_config: LoggingConfig, device: torch.device) -> Log:
+    log = logging_config.init()
     with torch.no_grad():
-        raise NotImplementedError
+        for input_data, target_data in eval_dataloader:
+            input_data, target_data = input_data.to(device), target_data.to(device)
+            loss = model(input_data, return_type="loss")
+            log = logging_config.update_test_metrics(log, loss.item())
+    return log
 
-def _evaluate_log_and_persist(dataset_config: ProcessDatasetConfig, logging_config: LoggingConfig, persistance_config: PersistanceConfig, model: HookedTransformer, log: Log):
+def _evaluate_log_and_persist(dataset_config: ProcessDatasetConfig, logging_config: LoggingConfig, persistance_config: PersistanceConfig, model: HookedTransformer, log: Log, device: torch.device):
     eval_dataloader = dataset_config.to_dataloader(sequence_length=model.cfg.n_ctx, train=False)
-    eval_log = _evaluate_model(model, eval_dataloader, logging_config)
+    eval_log = _evaluate_model(model=model, eval_dataloader=eval_dataloader, logging_config=logging_config, device=device)
     updated_log = log.merge_mutually_exclusive_logs(eval_log)
     logging_config.log(updated_log)
     persistance_config.save_model(model, dataset_config.num_tokens)
@@ -72,7 +77,7 @@ def train_model(config: TrainConfig) -> HookedTransformer:
         if _check_if_action_batch(perform_action_every_n_tokens=config.persistance.checkpoint_every_n_tokens, batch_size=config.dataset.batch_size, batch_idx=batch_idx, sequence_len=config.model.n_ctx):
             model.eval()
             _evaluate_log_and_persist(dataset_config=config.dataset, logging_config={}, persistance_config=config.persistance, model=model)
-            log = config.logging.init() # TODO: Check if this is actually what should be happening
+            log = config.logging.init() # TODO: Check if this is actually what should be happening. There will be a bug here if the last batch is an action batch
             model.train()
   
     model.eval()

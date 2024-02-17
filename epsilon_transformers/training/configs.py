@@ -169,6 +169,13 @@ class LoggingConfig(Config):
             raise NotImplementedError
         return log
 
+    def update_test_metrics(self, log: Log, loss: float) -> Log:
+        if self.test_loss:
+            log.test_loss += loss
+        if self.test_accuracy:
+            raise NotImplementedError
+        return log
+
 class TrainConfig(Config):
     model: RawModelConfig
     optimizer: OptimizerConfig
