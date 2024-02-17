@@ -10,6 +10,7 @@ from epsilon_transformers.training.configs import TrainConfig, ProcessDatasetCon
 # TODO: Add TQDM to all of this
 # TODO: Generalize train_model so that it doesn't depend on the HookedTransformer internal loss function
 # TODO: move _check_if_action_batch asserts to a config validator
+# TODO: Add option to resume from checkpoint
 
 # TODO: Review best practices regarding seed setting
 # TODO: Add Wandb Logging
