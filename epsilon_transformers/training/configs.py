@@ -137,9 +137,9 @@ class LoggingConfig(Config):
     project_name: Optional[str]
 
     train_loss: bool = True
-    train_accuracy: bool = True
+    train_accuracy: bool = False
     test_loss: bool = True
-    test_accuracy:bool = True
+    test_accuracy:bool = False
 
     def log(self, info: Dict[str, float]):
         if self.wandb:

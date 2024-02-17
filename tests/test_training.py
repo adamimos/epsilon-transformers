@@ -129,7 +129,7 @@ def test_train_model():
             optimizer=optimizer_config,
             dataset=dataset_config,
             persistance=persistance_config,
-            logging=LoggingConfig(project_name="my-awesome-project"),
+            logging=LoggingConfig(project_name="my-awesome-project", wandb=False),
             seed=1337
         )
         model, metrics = train_model(mock_config)

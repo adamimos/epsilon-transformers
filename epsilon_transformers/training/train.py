@@ -8,6 +8,7 @@ from transformer_lens import HookedTransformer
 
 from epsilon_transformers.training.configs import TrainConfig, ProcessDatasetConfig, PersistanceConfig, LoggingConfig, Log
 
+# TODO: Add verbose option
 # TODO: Add TQDM to all of this
 # TODO: Generalize train_model so that it doesn't depend on the HookedTransformer internal loss function
 # TODO: move _check_if_action_batch asserts to a config validator
@@ -76,12 +77,12 @@ def train_model(config: TrainConfig) -> HookedTransformer:
 
         if _check_if_action_batch(perform_action_every_n_tokens=config.persistance.checkpoint_every_n_tokens, batch_size=config.dataset.batch_size, batch_idx=batch_idx, sequence_len=config.model.n_ctx):
             model.eval()
-            _evaluate_log_and_persist(dataset_config=config.dataset, logging_config={}, persistance_config=config.persistance, model=model)
+            _evaluate_log_and_persist(dataset_config=config.dataset, logging_config=config.logging, persistance_config=config.persistance, model=model, log=log, device=device)
             log = config.logging.init() # TODO: Check if this is actually what should be happening. There will be a bug here if the last batch is an action batch
             model.train()
   
     model.eval()
-    final_log = _evaluate_log_and_persist(dataset_config=config.dataset, logging_config={}, persistance_config=config.persistance, model=model, final=True)
+    final_log = _evaluate_log_and_persist(dataset_config=config.dataset, logging_config=config.logging, persistance_config=config.persistance, model=model, log=log, device=device)
     config.logging.close()
     return model, final_log
 
