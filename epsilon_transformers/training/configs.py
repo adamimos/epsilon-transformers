@@ -5,15 +5,20 @@ import yaml
 import torch
 from torch.utils.data import DataLoader
 from transformer_lens import HookedTransformer, HookedTransformerConfig
-from typing import Union
+from typing import Union, Optional, Dict
+import wandb
+import os
+import dotenv
 
 from epsilon_transformers.process.dataset import ProcessDataset, process_dataset_collate_fn
 
 # TODO: Make Config ABS (??)
+# TODO: Turn log input into a dataclass (??)
 
 # TODO: Create a logger & log the file path and intermediary metrics
 # TODO: Add validator to make sure test_split is a fraction
 # TODO: Add validator in Persistence Config to make sure the path is a dir
+# TODO: Add validator in Logging Config to make sure that if we're logging wandb then we're using a project name
 # TODO: Figure out if model seed should be it's own thing or whether we can just use the same seed across
 # TODO: Decide on whether we want to use HookedTransformer exclusively or whether creating our own model class makes the most sense
 
@@ -98,9 +103,51 @@ class ProcessDatasetConfig(Config):
         )
         return DataLoader(dataset=dataset, collate_fn=process_dataset_collate_fn, batch_size=self.batch_size)
 
+class LoggingConfig(Config):
+    local: Optional[pathlib.Path] = None
+    wandb: bool = True
+
+    project_name: Optional[str]
+
+    train_loss: bool = True
+    train_accuracy: bool = True
+    test_loss: bool = True
+    test_accuracy:bool = True
+
+    def log(self, info: Dict[str, float]):
+        if self.wandb:
+            # TODO: Make that the dict has all the expected entries
+            wandb.log(info)
+        if self.local is not None:
+            raise NotImplementedError
+    
+    def close(self):
+        if self.wandb:
+            wandb.finish()
+        if self.local is not None:
+            raise NotImplementedError
+
 class TrainConfig(Config):
     model: RawModelConfig
     optimizer: OptimizerConfig
     dataset: ProcessDatasetConfig
     persistance: PersistanceConfig
+    logging: LoggingConfig
     seed: int
+
+    def init_logger(self):
+        if self.logging.wandb:
+            dotenv.load_dotenv()
+            wandb_api_key = os.environ.get("WANDB_API_KEY", None)
+            if wandb_api_key is None:
+                raise ValueError("To use wandb, set your API key as the environment variable `WANDB_API_KEY`")
+
+            wandb.login(key=wandb_api_key)
+            wandb.init(
+                project=self.logging.project_name,
+                config=self.model_dump()
+            )
+        if self.logging.local is not None:
+            raise NotImplementedError()
+
+    

@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from transformer_lens import HookedTransformer
 
-from epsilon_transformers.training.configs import TrainConfig, ProcessDatasetConfig, PersistanceConfig
+from epsilon_transformers.training.configs import TrainConfig, ProcessDatasetConfig, PersistanceConfig, LoggingConfig
 
 # TODO: Add TQDM to all of this
 # TODO: Generalize train_model so that it doesn't depend on the HookedTransformer internal loss function
@@ -32,13 +32,11 @@ def _check_if_action_batch(perform_action_every_n_tokens: int, batch_size: int, 
 def _evaluate_model(model, eval_dataloader, eval_config, logging_config):
     with torch.no_grad():
         raise NotImplementedError
-def _log():
-    raise NotImplementedError
 
-def _evaluate_log_and_persist(dataset_config: ProcessDatasetConfig, logging_config, persistance_config: PersistanceConfig, model: HookedTransformer):
+def _evaluate_log_and_persist(dataset_config: ProcessDatasetConfig, logging_config: LoggingConfig, persistance_config: PersistanceConfig, model: HookedTransformer):
     eval_dataloader = dataset_config.to_dataloader(sequence_length=model.cfg.n_ctx, train=False)
     metrics = _evaluate_model(model, eval_dataloader, logging_config)
-    _log(metrics)
+    logging_config.log(metrics)
     persistance_config.save_model()
     return metrics
 
@@ -54,6 +52,8 @@ def train_model(config: TrainConfig) -> HookedTransformer:
     model = config.model.to_hooked_transformer(device=device, seed=config.seed)
     optimizer = config.optimizer.from_model(model=model, device=device)
     train_dataloader = config.dataset.to_dataloader(sequence_length=model.cfg.n_ctx, train=True)
+
+    config.init_logger()
 
     model.train()
     for batch_idx, (input_data, target_data) in enumerate(train_dataloader):
@@ -71,7 +71,8 @@ def train_model(config: TrainConfig) -> HookedTransformer:
             model.train()
   
     model.eval()
-    metrics = _evaluate_log_and_persist(dataset_config=config.dataset, logging_config={}, persistance_config=config.persistance, model=model)
+    metrics = _evaluate_log_and_persist(dataset_config=config.dataset, logging_config={}, persistance_config=config.persistance, model=model, final=True)
+    config.logging.close()
     return model, metrics
 
 if __name__ == "__main__":

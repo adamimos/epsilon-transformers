@@ -7,10 +7,9 @@ import tempfile
 
 
 from epsilon_transformers.process.dataset import ProcessDataset, process_dataset_collate_fn
-from epsilon_transformers.training.configs import TrainConfig, RawModelConfig, OptimizerConfig, ProcessDatasetConfig, PersistanceConfig
+from epsilon_transformers.training.configs import TrainConfig, RawModelConfig, OptimizerConfig, ProcessDatasetConfig, PersistanceConfig, LoggingConfig
 from epsilon_transformers.training.train import train_model, _check_if_action_batch, _set_random_seed
 
-# TODO: Double check the HookedTransformer implementation and make sure that model(tokens) actually returns, and that there isn't something deeply wrong 
 # TODO: Paramaterize test_configs_throw_error_on_extra
 
 def test_configs_throw_error_on_extra():
@@ -53,11 +52,8 @@ def test_dataloader_raw_hooked_transformer_compatibility():
         assert output.shape == torch.Size([1,10,2]) # batch, pos, vocab (it returns logits)
 
 def test_check_if_action_batch():
-    # Test case 1: Valid scenario where action should be performed on the last batch
     assert _check_if_action_batch(perform_action_every_n_tokens=100, batch_size=5, sequence_len=10, batch_idx=1) == True
-    # Test case 2: Valid scenario where action should not be performed
     assert _check_if_action_batch(perform_action_every_n_tokens=100, batch_size=5, sequence_len=10, batch_idx=2) == False
-    # Test case 4: Invalid scenario where perform_action_every_n_tokens is not greater than tokens_per_batch
     with pytest.raises(AssertionError):
         _check_if_action_batch(perform_action_every_n_tokens=5, batch_size=2, sequence_len=10, batch_idx=4)
 
@@ -97,42 +93,47 @@ def test_persistance():
     assert all(torch.equal(p1, p2) for p1, p2 in zip(model.parameters(), loaded_model.parameters()))
 
 def test_train_model():
-    model_config = RawModelConfig(
-        d_vocab=2,
-        d_model=100,
-        n_ctx=45,
-        d_head=48,
-        n_head=12,
-        d_mlp=12,
-        n_layers=2,
-    )
+    with tempfile.TemporaryDirectory() as temp_dir:
+        model_config = RawModelConfig(
+            d_vocab=2,
+            d_model=100,
+            n_ctx=45,
+            d_head=48,
+            n_head=12,
+            d_mlp=12,
+            n_layers=2,
+        )
 
-    optimizer_config = OptimizerConfig(
-        optimizer_type='adam',
-        learning_rate=1.06e-4,
-        weight_decay=0.8
-    )
+        optimizer_config = OptimizerConfig(
+            optimizer_type='adam',
+            learning_rate=1.06e-4,
+            weight_decay=0.8
+        )
 
-    dataset_config = ProcessDatasetConfig(
-        process='z1r',
-        batch_size=2,
-        num_tokens=1000
-    )
+        dataset_config = ProcessDatasetConfig(
+            process='z1r',
+            batch_size=2,
+            num_tokens=1000,
+            test_split=0.15
+        )
 
-    persistance_config = PersistanceConfig(
-        location='local',
-        checkpoint_dir="some/random/path",
-        checkpoint_every_n_tokens=100
-    )
+        persistance_config = PersistanceConfig(
+            location='local',
+            checkpoint_dir=temp_dir,
+            checkpoint_every_n_tokens=100
+        )
 
-    mock_config = TrainConfig(
-        model=model_config,
-        optimizer=optimizer_config,
-        dataset=dataset_config,
-        persistance=persistance_config,
-        seed=1337
-    )
-    train_model(mock_config)
+        mock_config = TrainConfig(
+            model=model_config,
+            optimizer=optimizer_config,
+            dataset=dataset_config,
+            persistance=persistance_config,
+            logging=LoggingConfig(project_name="my-awesome-project"),
+            seed=1337
+        )
+        model, metrics = train_model(mock_config)
+
+        # Assert that the loss has decreased
 
 if __name__ == "__main__":
-    test_persistance()
+    test_train_model()
