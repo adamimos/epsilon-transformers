@@ -3,6 +3,7 @@ from pydantic import ValidationError
 import torch
 from torch.utils.data import DataLoader
 from transformer_lens import HookedTransformer
+import tempfile
 
 
 from epsilon_transformers.process.dataset import ProcessDataset, process_dataset_collate_fn
@@ -72,6 +73,29 @@ def test_train_and_test_dataloaders_are_different():
 
     assert all([not torch.equal(x, y) for x,y in zip(train_data, test_data)])
 
+def test_persistance():
+    class LinearModel(torch.nn.Module):
+        def __init__(self):
+            super(LinearModel, self).__init__()
+            self.fc = torch.nn.Linear(10, 1)
+
+        def forward(self, x):
+            return self.fc(x)
+
+    model = LinearModel()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config = PersistanceConfig(location='local', checkpoint_dir=temp_dir, checkpoint_every_n_tokens=100)
+        config.save_model(model, 55)
+
+        loaded_model = LinearModel()
+        loaded_model.fc.weight.data.fill_(1.0)
+        loaded_model.fc.bias.data.fill_(0.0)
+        assert any(not torch.equal(p1, p2) for p1, p2 in zip(model.parameters(), loaded_model.parameters()))
+        
+        loaded_model.load_state_dict(torch.load(f"{temp_dir}/55.pt"))
+
+    assert all(torch.equal(p1, p2) for p1, p2 in zip(model.parameters(), loaded_model.parameters()))
+
 def test_train_model():
     model_config = RawModelConfig(
         d_vocab=2,
@@ -111,4 +135,4 @@ def test_train_model():
     train_model(mock_config)
 
 if __name__ == "__main__":
-    test_train_and_test_dataloaders_are_different()
+    test_persistance()
