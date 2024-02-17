@@ -9,18 +9,23 @@ from typing import Union, Optional, Dict
 import wandb
 import os
 import dotenv
+from dataclasses import dataclass
 
 from epsilon_transformers.process.dataset import ProcessDataset, process_dataset_collate_fn
 
 # TODO: Make Config ABS (??)
 # TODO: Turn log input into a dataclass (??)
 
+# TODO: Fix the eval_dataloader_ratio_creation
 # TODO: Create a logger & log the file path and intermediary metrics
 # TODO: Add validator to make sure test_split is a fraction
 # TODO: Add validator in Persistence Config to make sure the path is a dir
 # TODO: Add validator in Logging Config to make sure that if we're logging wandb then we're using a project name
 # TODO: Figure out if model seed should be it's own thing or whether we can just use the same seed across
 # TODO: Decide on whether we want to use HookedTransformer exclusively or whether creating our own model class makes the most sense
+
+# TODO: Think if you can make Log DRY
+# TODO: Switch statement code smell with update_loss_metrics
 
 # TODO: Add a learning rate scheduler config
 # TODO: Add a WandbLoggingConfig
@@ -103,6 +108,28 @@ class ProcessDatasetConfig(Config):
         )
         return DataLoader(dataset=dataset, collate_fn=process_dataset_collate_fn, batch_size=self.batch_size)
 
+@dataclass
+class Log:
+    train_loss: Optional[float]
+    train_accuracy: Optional[float]
+    test_loss: Optional[float]
+    test_accuracy:Optional[float]
+
+    def merge_mutually_exclusive_logs(self, log: 'Log') -> 'Log':
+        merged_data = dict()
+        for field in self.__annotations__:
+            value_1 = getattr(self, field)
+            value_2 = getattr(log, field)
+
+            if value_1 is not None and value_2 is not None:
+                raise ValueError(f"Logs are not mutually exclusive. Conflict in field '{field}': {value_1} and {value_2}")
+
+            if value_1 is not None:
+                merged_data[field] = value_1
+            else:
+                merged_data[field] = value_2
+        return Log(**merged_data)
+
 class LoggingConfig(Config):
     local: Optional[pathlib.Path] = None
     wandb: bool = True
@@ -116,7 +143,7 @@ class LoggingConfig(Config):
 
     def log(self, info: Dict[str, float]):
         if self.wandb:
-            # TODO: Make that the dict has all the expected entries
+            # TODO: Make sure that the dict has all the expected entries
             wandb.log(info)
         if self.local is not None:
             raise NotImplementedError
@@ -126,6 +153,21 @@ class LoggingConfig(Config):
             wandb.finish()
         if self.local is not None:
             raise NotImplementedError
+    
+    def init(self) -> Log:
+        return Log(
+            train_loss=0.0 if self.train_loss else None,
+            train_accuracy=0.0 if self.train_accuracy else None,
+            test_loss=0.0 if self.test_loss else None,
+            test_accuracy=0.0 if self.test_accuracy else None
+        )
+    
+    def update_train_metrics(self, log: Log, loss: float) -> Log:
+        if self.train_loss:
+            log.train_loss += loss
+        if self.train_accuracy:
+            raise NotImplementedError
+        return log
 
 class TrainConfig(Config):
     model: RawModelConfig
@@ -135,7 +177,7 @@ class TrainConfig(Config):
     logging: LoggingConfig
     seed: int
 
-    def init_logger(self):
+    def init_logger(self) -> Log:
         if self.logging.wandb:
             dotenv.load_dotenv()
             wandb_api_key = os.environ.get("WANDB_API_KEY", None)
@@ -149,5 +191,6 @@ class TrainConfig(Config):
             )
         if self.logging.local is not None:
             raise NotImplementedError()
+        return self.logging.init()
 
     

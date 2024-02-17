@@ -11,6 +11,7 @@ from epsilon_transformers.training.configs import TrainConfig, RawModelConfig, O
 from epsilon_transformers.training.train import train_model, _check_if_action_batch, _set_random_seed
 
 # TODO: Paramaterize test_configs_throw_error_on_extra
+# TODO: Test mutually_exclusive_logs
 
 def test_configs_throw_error_on_extra():
     with pytest.raises(ValidationError):

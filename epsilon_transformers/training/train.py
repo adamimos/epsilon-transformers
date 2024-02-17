@@ -5,12 +5,14 @@ import numpy as np
 import torch
 from transformer_lens import HookedTransformer
 
-from epsilon_transformers.training.configs import TrainConfig, ProcessDatasetConfig, PersistanceConfig, LoggingConfig
+from epsilon_transformers.training.configs import TrainConfig, ProcessDatasetConfig, PersistanceConfig, LoggingConfig, Log
 
 # TODO: Add TQDM to all of this
 # TODO: Generalize train_model so that it doesn't depend on the HookedTransformer internal loss function
 # TODO: move _check_if_action_batch asserts to a config validator
 # TODO: Add option to resume from checkpoint
+
+# TODO: I don't like how the log is mutable... think on whether there's something better you can do
 
 # TODO: Review best practices regarding seed setting
 # TODO: Add Wandb Logging
@@ -29,16 +31,17 @@ def _check_if_action_batch(perform_action_every_n_tokens: int, batch_size: int, 
     perform_action_every_n_batches = perform_action_every_n_tokens // tokens_per_batch
     return (batch_idx + 1) % perform_action_every_n_batches == 0
 
-def _evaluate_model(model, eval_dataloader, eval_config, logging_config):
+def _evaluate_model(model: HookedTransformer, eval_dataloader, eval_config, logging_config):
     with torch.no_grad():
         raise NotImplementedError
 
-def _evaluate_log_and_persist(dataset_config: ProcessDatasetConfig, logging_config: LoggingConfig, persistance_config: PersistanceConfig, model: HookedTransformer):
+def _evaluate_log_and_persist(dataset_config: ProcessDatasetConfig, logging_config: LoggingConfig, persistance_config: PersistanceConfig, model: HookedTransformer, log: Log):
     eval_dataloader = dataset_config.to_dataloader(sequence_length=model.cfg.n_ctx, train=False)
-    metrics = _evaluate_model(model, eval_dataloader, logging_config)
-    logging_config.log(metrics)
-    persistance_config.save_model()
-    return metrics
+    eval_log = _evaluate_model(model, eval_dataloader, logging_config)
+    updated_log = log.merge_mutually_exclusive_logs(eval_log)
+    logging_config.log(updated_log)
+    persistance_config.save_model(model, dataset_config.num_tokens)
+    return updated_log
 
 def _main(config_path: pathlib.Path):
     config: TrainConfig = TrainConfig.from_yaml(config_path)
@@ -53,14 +56,15 @@ def train_model(config: TrainConfig) -> HookedTransformer:
     optimizer = config.optimizer.from_model(model=model, device=device)
     train_dataloader = config.dataset.to_dataloader(sequence_length=model.cfg.n_ctx, train=True)
 
-    config.init_logger()
+    log = config.init_logger()
 
     model.train()
     for batch_idx, (input_data, target_data) in enumerate(train_dataloader):
         input_data, target_data = input_data.to(device), target_data.to(device)
 
         loss = model(input_data, return_type="loss")
-
+        log = config.logging.update_train_metrics(log, loss.item())
+        
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -68,12 +72,13 @@ def train_model(config: TrainConfig) -> HookedTransformer:
         if _check_if_action_batch(perform_action_every_n_tokens=config.persistance.checkpoint_every_n_tokens, batch_size=config.dataset.batch_size, batch_idx=batch_idx, sequence_len=config.model.n_ctx):
             model.eval()
             _evaluate_log_and_persist(dataset_config=config.dataset, logging_config={}, persistance_config=config.persistance, model=model)
+            log = config.logging.init() # TODO: Check if this is actually what should be happening
             model.train()
   
     model.eval()
-    metrics = _evaluate_log_and_persist(dataset_config=config.dataset, logging_config={}, persistance_config=config.persistance, model=model, final=True)
+    final_log = _evaluate_log_and_persist(dataset_config=config.dataset, logging_config={}, persistance_config=config.persistance, model=model, final=True)
     config.logging.close()
-    return model, metrics
+    return model, final_log
 
 if __name__ == "__main__":
     fire.Fire(_main)
