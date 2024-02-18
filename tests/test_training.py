@@ -5,13 +5,13 @@ from torch.utils.data import DataLoader
 from transformer_lens import HookedTransformer
 import tempfile
 
-
 from epsilon_transformers.process.dataset import ProcessDataset, process_dataset_collate_fn
 from epsilon_transformers.training.configs import TrainConfig, RawModelConfig, OptimizerConfig, ProcessDatasetConfig, PersistanceConfig, LoggingConfig
 from epsilon_transformers.training.train import train_model, _check_if_action_batch, _set_random_seed
 
 # TODO: Paramaterize test_configs_throw_error_on_extra
 # TODO: Test mutually_exclusive_logs
+# TODO: Test the log state
 
 def test_configs_throw_error_on_extra():
     with pytest.raises(ValidationError):
@@ -93,6 +93,17 @@ def test_persistance():
 
     assert all(torch.equal(p1, p2) for p1, p2 in zip(model.parameters(), loaded_model.parameters()))
 
+def test_merge_mutually_exclusive_logs():
+    raise NotImplementedError
+    # Raise error when they're not the same log
+    # Raise issue when they're not mutually exclusive
+
+def test_changing_log_states():
+    log = config.init_logger()
+    log = config.logging.update_train_metrics(log, loss.item())
+    eval_log = _evaluate_model(model=model, eval_dataloader=eval_dataloader, logging_config=logging_config, device=device)
+    updated_log = log.merge_mutually_exclusive_logs(eval_log)
+
 def test_train_model():
     with tempfile.TemporaryDirectory() as temp_dir:
         model_config = RawModelConfig(
@@ -130,6 +141,7 @@ def test_train_model():
             dataset=dataset_config,
             persistance=persistance_config,
             logging=LoggingConfig(project_name="my-awesome-project", wandb=False),
+            verbose=True,
             seed=1337
         )
         model, metrics = train_model(mock_config)
