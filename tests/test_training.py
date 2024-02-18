@@ -11,7 +11,9 @@ from epsilon_transformers.training.train import train_model, _check_if_action_ba
 
 # TODO: Paramaterize test_configs_throw_error_on_extra
 # TODO: Test mutually_exclusive_logs
-# TODO: Test the log state
+# TODO: Test the log state (it get's reset when needed, it gets updated appropriately)
+# TODO: Test for writing multiple checkpoints
+# TODO: Write test to make sure transformer is initialized correctly
 
 def test_configs_throw_error_on_extra():
     with pytest.raises(ValidationError):
@@ -93,23 +95,17 @@ def test_persistance():
 
     assert all(torch.equal(p1, p2) for p1, p2 in zip(model.parameters(), loaded_model.parameters()))
 
-def test_merge_mutually_exclusive_logs():
-    raise NotImplementedError
-    # Raise error when they're not the same log
-    # Raise issue when they're not mutually exclusive
-
 def test_changing_log_states():
-    log = config.init_logger()
-    log = config.logging.update_train_metrics(log, loss.item())
-    eval_log = _evaluate_model(model=model, eval_dataloader=eval_dataloader, logging_config=logging_config, device=device)
-    updated_log = log.merge_mutually_exclusive_logs(eval_log)
+    # Input numbers make sense
+    # 
+    raise NotImplementedError
 
 def test_train_model():
     with tempfile.TemporaryDirectory() as temp_dir:
         model_config = RawModelConfig(
             d_vocab=2,
             d_model=100,
-            n_ctx=45,
+            n_ctx=10,
             d_head=48,
             n_head=12,
             d_mlp=12,
@@ -124,8 +120,8 @@ def test_train_model():
 
         dataset_config = ProcessDatasetConfig(
             process='z1r',
-            batch_size=2,
-            num_tokens=1000,
+            batch_size=5,
+            num_tokens=500,
             test_split=0.15
         )
 
@@ -140,7 +136,7 @@ def test_train_model():
             optimizer=optimizer_config,
             dataset=dataset_config,
             persistance=persistance_config,
-            logging=LoggingConfig(project_name="my-awesome-project", wandb=False),
+            logging=LoggingConfig(project_name="testing-logging-output", wandb=True),
             verbose=True,
             seed=1337
         )

@@ -10,7 +10,7 @@ import wandb
 import os
 import dotenv
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 from epsilon_transformers.process.dataset import (
     ProcessDataset,
@@ -20,6 +20,7 @@ from epsilon_transformers.process.dataset import (
 # TODO: Make Config ABS (??)
 # TODO: Turn log input into a dataclass (??)
 
+# TODO: Put all the functionality of the log congig into the logger
 # TODO: Fix the eval_dataloader_ratio_creation
 # TODO: Create a logger & log the file path and intermediary metrics
 # TODO: Add validator to make sure test_split is a fraction
@@ -160,22 +161,18 @@ class Log:
         else:
             raise ValueError
 
+    def persist(self):
+        if self.config.wandb:
+            wandb.log({k: v for k, v in asdict(self).items() if v is not None and not isinstance(v, LoggingConfig)})
+        if self.config.local is not None:
+            raise NotImplementedError
 
 class LoggingConfig(Config):
     local: Optional[pathlib.Path] = None
     wandb: bool = True
-
     project_name: Optional[str]
-
     train_loss: bool = True
     test_loss: bool = True
-
-    def log(self, info: Dict[str, float]):
-        if self.wandb:
-            # TODO: Make sure that the dict has all the expected entries
-            wandb.log(info)
-        if self.local is not None:
-            raise NotImplementedError
 
     def close(self):
         if self.wandb:

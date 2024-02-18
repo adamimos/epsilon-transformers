@@ -14,13 +14,12 @@ from epsilon_transformers.training.configs import (
     Log,
 )
 
-# TODO: Add verbose option
+# TODO: Use logger library for logging
+# TODO: Make Log into a singleton
 # TODO: Add TQDM to all of this
 # TODO: Generalize train_model so that it doesn't depend on the HookedTransformer internal loss function
 # TODO: move _check_if_action_batch asserts to a config validator
 # TODO: Add option to resume from checkpoint
-
-# TODO: I don't like how the log is mutable... think on whether there's something better you can do
 
 # TODO: Review best practices regarding seed setting
 # TODO: Test on GPUs
@@ -47,14 +46,13 @@ def _check_if_action_batch(
     perform_action_every_n_batches = perform_action_every_n_tokens // tokens_per_batch
     return (batch_idx + 1) % perform_action_every_n_batches == 0
 
-
+# TODO: We shouldn't be taking the last loss, we should be doing something different
 def _evaluate_model(
     model: HookedTransformer,
     eval_dataloader: DataLoader,
-    logging_config: LoggingConfig,
     device: torch.device,
+    log: Log
 ) -> Log:
-    log = logging_config.init()
     with torch.no_grad():
         for input_data, target_data in eval_dataloader:
             input_data, target_data = input_data.to(device), target_data.to(device)
@@ -65,21 +63,27 @@ def _evaluate_model(
 
 def _evaluate_log_and_persist(
     dataset_config: ProcessDatasetConfig,
-    logging_config: LoggingConfig,
     persistance_config: PersistanceConfig,
     model: HookedTransformer,
+    verbose: bool,
     log: Log,
     device: torch.device,
 ):
     eval_dataloader = dataset_config.to_dataloader(
         sequence_length=model.cfg.n_ctx, train=False
     )
-    log = _evaluate_model(
+    _evaluate_model(
         model=model,
         eval_dataloader=eval_dataloader,
-        logging_config=logging_config,
         device=device,
+        log=log
     )
+    
+    if verbose:
+        print(f"This is the log\n{log}")
+    
+    log.persist()
+    log.reset()
     persistance_config.save_model(model, dataset_config.num_tokens)
     return log
 
@@ -107,7 +111,6 @@ def train_model(config: TrainConfig) -> HookedTransformer:
     log = config.init_logger()
     model.train()
     for batch_idx, (input_data, target_data) in enumerate(train_dataloader):
-
         input_data, target_data = input_data.to(device), target_data.to(device)
         loss = model(input_data, return_type="loss")
         log.update_metrics(train_or_test="train", loss=loss.item())
@@ -125,28 +128,24 @@ def train_model(config: TrainConfig) -> HookedTransformer:
             model.eval()
             _evaluate_log_and_persist(
                 dataset_config=config.dataset,
-                logging_config=config.logging,
                 persistance_config=config.persistance,
                 model=model,
                 log=log,
+                verbose=config.verbose,
                 device=device,
             )
             log.reset()
-            if config.verbose:
-                print(f"This is the log/n{log}")
             model.train()
 
     model.eval()
     _evaluate_log_and_persist(
         dataset_config=config.dataset,
-        logging_config=config.logging,
         persistance_config=config.persistance,
         model=model,
         log=log,
+        verbose=config.verbose,
         device=device,
     )
-    if config.verbose:
-        print(f"This is the final log/n{log}")
 
     config.logging.close()
     return model, log
