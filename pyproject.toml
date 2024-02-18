@@ -28,4 +28,5 @@ dependencies = [
     "fire",
     "pydantic",
     "wandb",
+    "python-dotenv",
 ]
