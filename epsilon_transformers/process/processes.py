@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Dict
 
-from epsilon_transformers.process.process import Process
+from epsilon_transformers.process.Process import Process
 
 # TODO: Automatically generate PROCESS_REGISTRY using the inspect module
 # TODO: Add test to make sure that all members of this module are a member of Process

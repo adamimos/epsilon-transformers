@@ -7,7 +7,6 @@ from jaxtyping import Float
 # TODO: Add derive_msp() to processes
 # TODO: Delete generate_process_history (??)
 
-
 @dataclass
 class ProcessHistory:
     symbols: List[int]
