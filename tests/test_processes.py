@@ -1,7 +1,7 @@
 import pytest
 from torch.utils.data import DataLoader
 
-from epsilon_transformers.process.process import ProcessHistory
+from epsilon_transformers.process.Process import ProcessHistory
 from epsilon_transformers.process.processes import ZeroOneR
 from epsilon_transformers.process.dataset import ProcessDataset, process_dataset_collate_fn
 
