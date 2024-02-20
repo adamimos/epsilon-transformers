@@ -3,11 +3,11 @@ from typing import Set
 import numpy as np
 
 class MixedStateTreeNode:
-	state_vector: Float[np.ndarray, "n_states"] # Prob vector
+	state_prob_vector: Float[np.ndarray, "n_states"]
 	children: Set['MixedStateTreeNode']
 	
-	def __init__(self, state_vector: Float[np.ndarray, "n_states"], children: Set['MixedStateTreeNode']):
-		self.state_vector = state_vector
+	def __init__(self, state_prob_vector: Float[np.ndarray, "n_states"], children: Set['MixedStateTreeNode']):
+		self.state_prob_vector = state_prob_vector
 		self.children = children
 		
 	def add_child(self, child: 'MixedStateTreeNode'):
