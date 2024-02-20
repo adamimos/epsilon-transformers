@@ -3,7 +3,12 @@ from typing import Tuple, Optional, Dict, List, Iterator
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from jaxtyping import Float
+from collections import deque
 
+from epsilon_transformers.process.MixedStatePresentation import MixedStateTree, MixedStateTreeNode
+
+
+# TODO: Rename _create_hmm
 # TODO: Add derive_msp() to processes
 # TODO: Delete generate_process_history (??)
 
@@ -22,6 +27,7 @@ class ProcessHistory:
 
 
 class Process(ABC):
+    name: str
     transition_matrix: Float[np.ndarray, "vocab_len num_states num_states"]
     state_names_dict: Dict[str, int]
     vocab_len: int
@@ -152,3 +158,58 @@ class Process(ABC):
             )
             current_state_idx = next_state_ind
         return ProcessHistory(symbols=symbols, states=states)
+    
+    def derive_mixed_state_presentation(self, depth: int) -> MixedStateTree:
+        uniform_prior = np.full(self.vocab_len, 1/self.vocab_len)
+        tree_root = MixedStateTreeNode(state_prob_vector=uniform_prior, children=set())
+        nodes = set(tree_root)
+
+        stack = deque([(tree_root, uniform_prior, 0)])
+        while stack:
+            current_node, mixed_state, current_depth = stack.pop()
+            if current_depth < depth: # Or we've reached complete cetainty??
+                emission_probs = _compute_emission_probabilities(self, mixed_state)
+                for emission in range(self.vocab_len):
+                    if emission_probs[emission] > 0:
+                        next_mixed_state_vector = _compute_next_distribution(self.transition_matrix, mixed_state, emission)
+                        child_mixed_state = MixedStateTreeNode(state_prob_vector=next_mixed_state_vector, children=set())
+                        current_node.add_child(child_mixed_state)
+
+                        stack.append((child_mixed_state, next_mixed_state_vector, current_depth + 1))
+            nodes.add(current_node)
+        
+        return MixedStateTree(root_node=tree_root, process=self.name, nodes=nodes)
+
+def _compute_emission_probabilities(hmm: Process, mixed_state: np.ndarray) -> np.ndarray:
+    """
+    Compute the probabilities associated with each emission given the current mixed state.
+
+    Parameters:
+    hmm (HMM): The HMM to compute emission probabilities for.
+    mixed_state (np.ndarray): The mixed state to compute emission probabilities for.
+
+    Returns:
+        np.ndarray: The emission probabilities.
+    """
+
+    T = hmm.transition_matrix
+    emission_probs = np.einsum("s,esd->ed", mixed_state, T).sum(axis=1)
+    emission_probs /= emission_probs.sum()
+    return emission_probs
+
+def _compute_next_distribution(
+    epsilon_machine: np.ndarray, X_current: np.ndarray, output: int
+) -> np.ndarray:
+    """
+    Compute the next mixed state distribution for a given output.
+
+    Parameters:
+    epsilon_machine (np.ndarray): The epsilon machine transition tensor of shape (n_outputs, n_states, n_states).
+    X_current (np.ndarray): The current mixed state distribution.
+    output (int): The output symbol.
+
+    Returns:
+    np.ndarray: The next mixed state distribution.
+    """
+    X_next = np.einsum("sd, s -> d", epsilon_machine[output], X_current)
+    return X_next / np.sum(X_next) if np.sum(X_next) != 0 else X_next

@@ -45,3 +45,7 @@ def test_process_dataset():
     for data, label in dataloader:
         assert len(data) == len(label) == 2  # Since batch_size is set to 2
         assert (data[:, 1:] == label[:, :-1]).all()
+
+# TODO: Mock z1r
+def test_msp_creation():
+    raise NotImplementedError
