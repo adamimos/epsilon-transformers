@@ -10,10 +10,9 @@ from epsilon_transformers.training.configs import (
     TrainConfig,
     ProcessDatasetConfig,
     PersistanceConfig,
-    LoggingConfig,
     Log,
 )
-
+# TODO: Bug where the last final loss outputs train_loss of 0
 # TODO: Use logger library for logging
 # TODO: Make Log into a singleton
 # TODO: Add TQDM to all of this
@@ -46,7 +45,6 @@ def _check_if_action_batch(
     perform_action_every_n_batches = perform_action_every_n_tokens // tokens_per_batch
     return (batch_idx + 1) % perform_action_every_n_batches == 0
 
-# TODO: We shouldn't be taking the last loss, we should be doing something different
 def _evaluate_model(
     model: HookedTransformer,
     eval_dataloader: DataLoader,
