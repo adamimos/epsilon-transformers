@@ -182,36 +182,25 @@ class Process(ABC):
         
         return MixedStateTree(root_node=tree_root, process=self.name, nodes=nodes)
 
-def _compute_emission_probabilities(hmm: Process, mixed_state: np.ndarray) -> np.ndarray:
+def _compute_emission_probabilities(
+    hmm: Process, 
+    state_prob_vector: Float[np.ndarray, "num_states"]
+) -> Float[np.ndarray, "vocab_len"]:
     """
     Compute the probabilities associated with each emission given the current mixed state.
-
-    Parameters:
-    hmm (HMM): The HMM to compute emission probabilities for.
-    mixed_state (np.ndarray): The mixed state to compute emission probabilities for.
-
-    Returns:
-        np.ndarray: The emission probabilities.
     """
-
     T = hmm.transition_matrix
-    emission_probs = np.einsum("s,esd->ed", mixed_state, T).sum(axis=1)
+    emission_probs = np.einsum("s,esd->ed", state_prob_vector, T).sum(axis=1)
     emission_probs /= emission_probs.sum()
     return emission_probs
 
 def _compute_next_distribution(
-    epsilon_machine: np.ndarray, X_current: np.ndarray, output: int
-) -> np.ndarray:
+    epsilon_machine: Float[np.ndarray, "vocab_len num_states num_states"],
+    current_state_prob_vector: Float[np.ndarray, "num_states"], 
+    current_emission: int
+) -> Float[np.ndarray, "num_states"]:
     """
     Compute the next mixed state distribution for a given output.
-
-    Parameters:
-    epsilon_machine (np.ndarray): The epsilon machine transition tensor of shape (n_outputs, n_states, n_states).
-    X_current (np.ndarray): The current mixed state distribution.
-    output (int): The output symbol.
-
-    Returns:
-    np.ndarray: The next mixed state distribution.
     """
-    X_next = np.einsum("sd, s -> d", epsilon_machine[output], X_current)
+    X_next = np.einsum("sd, s -> d", epsilon_machine[current_emission], current_state_prob_vector)
     return X_next / np.sum(X_next) if np.sum(X_next) != 0 else X_next
