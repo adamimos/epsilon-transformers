@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Tuple, Optional, Dict, List, Iterator
+from typing import Set, Tuple, Optional, Dict, List, Iterator
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from jaxtyping import Float
@@ -159,23 +159,25 @@ class Process(ABC):
             current_state_idx = next_state_ind
         return ProcessHistory(symbols=symbols, states=states)
     
-    def derive_mixed_state_presentation(self, depth: int) -> MixedStateTree:
-        uniform_prior = np.full(self.vocab_len, 1/self.vocab_len)
-        tree_root = MixedStateTreeNode(state_prob_vector=uniform_prior, children=set())
-        nodes = set(tree_root)
+    # TODO: You can get rid of the stack, and just iterate through the nodes & the depth as tuples
+    def derive_mixed_state_presentation(self, max_depth: int) -> MixedStateTree:
+        uniform_prior = np.full(self.num_states, 1/self.num_states)
+        tree_root = MixedStateTreeNode(state_prob_vector=uniform_prior, children=set(), path=[])
+        nodes = set([tree_root])
 
-        stack = deque([(tree_root, uniform_prior, 0)])
+        stack = deque([(tree_root, uniform_prior, [], 0)])
         while stack:
-            current_node, mixed_state, current_depth = stack.pop()
-            if current_depth < depth: # Or we've reached complete cetainty??
-                emission_probs = _compute_emission_probabilities(self, mixed_state)
+            current_node, state_prob_vector, current_path, current_depth = stack.pop()
+            if current_depth < max_depth: # Or we've reached complete cetainty??
+                emission_probs = _compute_emission_probabilities(self, state_prob_vector)
                 for emission in range(self.vocab_len):
                     if emission_probs[emission] > 0:
-                        next_mixed_state_vector = _compute_next_distribution(self.transition_matrix, mixed_state, emission)
-                        child_mixed_state = MixedStateTreeNode(state_prob_vector=next_mixed_state_vector, children=set())
-                        current_node.add_child(child_mixed_state)
+                        next_state_prob_vector = _compute_next_distribution(self.transition_matrix, state_prob_vector, emission)
+                        child_path = current_path + [emission]
+                        child_node = MixedStateTreeNode(state_prob_vector=next_state_prob_vector, path=child_path, children=set())
+                        current_node.add_child(child_node)
 
-                        stack.append((child_mixed_state, next_mixed_state_vector, current_depth + 1))
+                        stack.append((child_node, next_state_prob_vector, child_path, current_depth + 1))
             nodes.add(current_node)
         
         return MixedStateTree(root_node=tree_root, process=self.name, nodes=nodes)

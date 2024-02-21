@@ -6,10 +6,12 @@ from epsilon_transformers.process.Process import Process
 # TODO: Automatically generate PROCESS_REGISTRY using the inspect module
 # TODO: Add test to make sure that all members of this module are a member of Process
 # TODO: Find paper where mess3 process is introduced
-
+# TODO: Think through whether self.name is necessary (review it's usage in derive_mixed_state_presentation)
+# TODO: Move _create_hmm into the init function prior to super()__init__()
 
 class ZeroOneR(Process):
     def __init__(self, prob_of_zero_from_r_state: float = 0.5):
+        self.name = "z1r"
         self.p = prob_of_zero_from_r_state
         super().__init__()
 
@@ -26,6 +28,7 @@ class ZeroOneR(Process):
 
 class RRXOR(Process):
     def __init__(self, pR1=0.5, pR2=0.5):
+        self.name = "rrxor"
         self.pR1 = pR1
         self.pR2 = pR2
         super().__init__()
@@ -47,6 +50,7 @@ class RRXOR(Process):
 
 class Mess3(Process):
     def __init__(self, x=0.15, a=0.6):
+        self.name = "mess3"
         self.x = x
         self.a = a
         super().__init__()
