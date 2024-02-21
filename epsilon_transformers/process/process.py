@@ -7,26 +7,30 @@ from jaxtyping import Float
 # TODO: Add derive_msp() to processes
 # TODO: Delete generate_process_history (??)
 
+
 @dataclass
 class ProcessHistory:
     symbols: List[int]
     states: List[str]
 
     def __post_init__(self):
-        assert len(self.symbols) == len(self.states), 'length of symbols & states must be the same'
+        assert len(self.symbols) == len(
+            self.states
+        ), "length of symbols & states must be the same"
 
     def __len__(self):
         return len(self.states)
 
+
 class Process(ABC):
-    transition_matrix: Float[np.ndarray, 'vocab_len num_states num_states']
+    transition_matrix: Float[np.ndarray, "vocab_len num_states num_states"]
     state_names_dict: Dict[str, int]
     vocab_len: int
     num_states: int
-    steady_state_vector: Float[np.ndarray, 'num_states']
+    steady_state_vector: Float[np.ndarray, "num_states"]
 
     @property
-    def steady_state_vector(self) -> Float[np.ndarray, 'num_states']:
+    def steady_state_vector(self) -> Float[np.ndarray, "num_states"]:
         state_transition_matrix = np.sum(self.transition_matrix, axis=0)
 
         eigenvalues, eigenvectors = np.linalg.eig(state_transition_matrix.T)
@@ -37,7 +41,7 @@ class Process(ABC):
         assert out.ndim == 1
         assert len(out) == self.num_states
         return out
-        
+
     @property
     def is_unifilar(self) -> bool:
         # For each state, check if there are multiple transitions for each symbol
@@ -51,12 +55,17 @@ class Process(ABC):
     def __init__(self):
         self.transition_matrix, self.state_names_dict = self._create_hmm()
 
-        if len(self.transition_matrix.shape) != 3 or self.transition_matrix.shape[1] != self.transition_matrix.shape[2]:
-            raise ValueError("Transition matrix should have 3 axes and the final two dims shoulds be square")
+        if (
+            len(self.transition_matrix.shape) != 3
+            or self.transition_matrix.shape[1] != self.transition_matrix.shape[2]
+        ):
+            raise ValueError(
+                "Transition matrix should have 3 axes and the final two dims shoulds be square"
+            )
 
         if self.transition_matrix.shape[1] != self.transition_matrix.shape[2]:
             raise ValueError("Transition matrix should be square")
-        
+
         transition = self.transition_matrix.sum(axis=0)
         if not np.allclose(transition.sum(axis=1), 1.0):
             raise ValueError("Transition matrix should be stochastic and sum to 1")
@@ -65,7 +74,9 @@ class Process(ABC):
         self.num_states = self.transition_matrix.shape[1]
 
     @abstractmethod
-    def _create_hmm(self) -> Tuple[Float[np.ndarray, 'vocab_len num_states num_states'], Dict[str,int]]:
+    def _create_hmm(
+        self,
+    ) -> Tuple[Float[np.ndarray, "vocab_len num_states num_states"], Dict[str, int]]:
         """
         Create the HMM which defines the process.
 
@@ -77,36 +88,54 @@ class Process(ABC):
 
     def _sample_emission(self, current_state_idx: Optional[int] = None) -> int:
         if current_state_idx is None:
-            current_state_idx = np.random.choice(self.num_states, p=self.steady_state_vector)
+            current_state_idx = np.random.choice(
+                self.num_states, p=self.steady_state_vector
+            )
 
-        assert 0 <= current_state_idx <= self.vocab_len, "current_state_index must be positive & less than vocab_len"
-        
+        assert (
+            0 <= current_state_idx <= self.vocab_len
+        ), "current_state_index must be positive & less than vocab_len"
+
         p = self.transition_matrix[:, current_state_idx, :].sum(axis=1)
         emission = np.random.choice(self.vocab_len, p=p)
         return emission
 
-    def yield_emissions(self, sequence_len: int, current_state_idx: Optional[int] = None) -> Iterator[int]:
+    def yield_emissions(
+        self, sequence_len: int, current_state_idx: Optional[int] = None
+    ) -> Iterator[int]:
         if current_state_idx is None:
-            current_state_idx = np.random.choice(self.num_states, p=self.steady_state_vector)
+            current_state_idx = np.random.choice(
+                self.num_states, p=self.steady_state_vector
+            )
 
-        assert 0 <= current_state_idx <= self.vocab_len, "current_state_index must be positive & less than vocab_len"
+        assert (
+            0 <= current_state_idx <= self.vocab_len
+        ), "current_state_index must be positive & less than vocab_len"
 
-        for _ in range(sequence_len):           
+        for _ in range(sequence_len):
             emission = self._sample_emission(current_state_idx)
             yield emission
 
             # make transition. given the current state and the emission, the next state is determined
-            next_state_ind = np.argmax(self.transition_matrix[emission, current_state_idx, :])
+            next_state_ind = np.argmax(
+                self.transition_matrix[emission, current_state_idx, :]
+            )
             current_state_idx = next_state_ind
 
-    def generate_process_history(self, total_length: int, current_state_idx: Optional[int] = None) -> ProcessHistory:
+    def generate_process_history(
+        self, total_length: int, current_state_idx: Optional[int] = None
+    ) -> ProcessHistory:
         """
         Generate a sequence of states based on the transition matrix.
-        """        
+        """
         if current_state_idx is None:
-            current_state_idx = np.random.choice(self.num_states, p=self.steady_state_vector)
+            current_state_idx = np.random.choice(
+                self.num_states, p=self.steady_state_vector
+            )
 
-        assert 0 <= current_state_idx <= self.vocab_len, "current_state_index must be positive & less than vocab_len"
+        assert (
+            0 <= current_state_idx <= self.vocab_len
+        ), "current_state_index must be positive & less than vocab_len"
 
         index_to_state_names_dict = {v: k for k, v in self.state_names_dict.items()}
 
@@ -114,11 +143,13 @@ class Process(ABC):
         states = []
         for _ in range(total_length):
             states.append(index_to_state_names_dict[current_state_idx])
-           
+
             emission = self._sample_emission(current_state_idx)
             symbols.append(emission)
-           
+
             # make transition. given the current state and the emission, the next state is determined
-            next_state_ind = np.argmax(self.transition_matrix[emission, current_state_idx, :])
+            next_state_ind = np.argmax(
+                self.transition_matrix[emission, current_state_idx, :]
+            )
             current_state_idx = next_state_ind
         return ProcessHistory(symbols=symbols, states=states)
