@@ -9,7 +9,6 @@ from epsilon_transformers.process.MixedStatePresentation import MixedStateTree, 
 
 
 # TODO: Rename _create_hmm
-# TODO: Add derive_msp() to processes
 # TODO: Delete generate_process_history (??)
 
 @dataclass
