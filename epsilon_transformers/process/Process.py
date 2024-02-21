@@ -168,7 +168,7 @@ class Process(ABC):
         stack = deque([(tree_root, uniform_prior, [], 0)])
         while stack:
             current_node, state_prob_vector, current_path, current_depth = stack.pop()
-            if current_depth < max_depth: # Or we've reached complete cetainty??
+            if current_depth < max_depth:
                 emission_probs = _compute_emission_probabilities(self, state_prob_vector)
                 for emission in range(self.vocab_len):
                     if emission_probs[emission] > 0:
