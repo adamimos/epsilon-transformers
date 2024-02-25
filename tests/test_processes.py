@@ -49,6 +49,16 @@ def test_process_dataset():
         assert len(data) == len(label) == 2  # Since batch_size is set to 2
         assert (data[:, 1:] == label[:, :-1]).all()
 
+def test_yield_emission_histories():
+    process = ZeroOneR()
+    foo = process.yield_emission_histories(sequence_len=10, num_sequences=3)
+    out = []
+    for x in foo:
+        assert len(x) == 10
+        out.append(x)
+    assert len(out) == 3
+    assert out[0] != out[1] != out[2]
+
 def test_compute_emission_probabilities():
     return NotImplementedError
 
@@ -57,7 +67,7 @@ def test_compute_next_distribution():
 
 def test_msp_creation():
     process = ZeroOneR()
-    z1r_msp = process.derive_mixed_state_presentation(max_depth=5)
+    z1r_msp = process.derive_mixed_state_presentation(depth=5)
     paths_and_probs = sorted([(x.path, x.state_prob_vector) for x in z1r_msp.nodes], key=lambda x: len(x[0]))
     assert paths_and_probs[0][0] == [] and np.array_equal(paths_and_probs[0][1], np.array([1/3, 1/3, 1/3]))
     def _query_path(list_of_tuples, path: list) -> Tuple[List[int], np.ndarray]:
@@ -72,4 +82,4 @@ def test_msp_creation():
     assert all([np.all((vector == 0) | (vector == 1)) and np.sum(vector) == 1 for path, vector in paths_and_probs if path != [] and path != [0] and path != [1] and path != [1,0]])
 
 if __name__ == "__main__":
-    test_msp_creation()
+    test_yield_emission_histories()

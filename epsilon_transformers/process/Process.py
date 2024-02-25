@@ -7,7 +7,7 @@ from collections import deque
 
 from epsilon_transformers.process.MixedStatePresentation import MixedStateTree, MixedStateTreeNode
 
-
+# TODO: Test yield_emission_histories for different emissions in the emission history
 # TODO: Rename _create_hmm
 # TODO: Delete generate_process_history (??)
 
@@ -126,6 +126,10 @@ class Process(ABC):
             )
             current_state_idx = next_state_ind
 
+    def yield_emission_histories(self, sequence_len: int, num_sequences: int) -> Iterator[List[int]]:
+        for _ in range(num_sequences):
+            yield [x for x in self.yield_emissions(sequence_len=sequence_len)]
+
     def generate_process_history(
         self, total_length: int, current_state_idx: Optional[int] = None
     ) -> ProcessHistory:
@@ -159,7 +163,7 @@ class Process(ABC):
         return ProcessHistory(symbols=symbols, states=states)
     
     # TODO: You can get rid of the stack, and just iterate through the nodes & the depth as tuples
-    def derive_mixed_state_presentation(self, max_depth: int) -> MixedStateTree:
+    def derive_mixed_state_presentation(self, depth: int) -> MixedStateTree:
         uniform_prior = np.full(self.num_states, 1/self.num_states)
         tree_root = MixedStateTreeNode(state_prob_vector=uniform_prior, children=set(), path=[])
         nodes = set([tree_root])
@@ -167,7 +171,7 @@ class Process(ABC):
         stack = deque([(tree_root, uniform_prior, [], 0)])
         while stack:
             current_node, state_prob_vector, current_path, current_depth = stack.pop()
-            if current_depth < max_depth:
+            if current_depth < depth:
                 emission_probs = _compute_emission_probabilities(self, state_prob_vector)
                 for emission in range(self.vocab_len):
                     if emission_probs[emission] > 0:
@@ -179,7 +183,7 @@ class Process(ABC):
                         stack.append((child_node, next_state_prob_vector, child_path, current_depth + 1))
             nodes.add(current_node)
         
-        return MixedStateTree(root_node=tree_root, process=self.name, nodes=nodes)
+        return MixedStateTree(root_node=tree_root, process=self.name, nodes=nodes, depth=depth)
 
 def _compute_emission_probabilities(
     hmm: Process, 
