@@ -71,3 +71,17 @@ class Mixed_State_Tree:
             belief_states.extend(child.get_belief_states())
 
         return belief_states
+
+
+    def get_belief_states_and_depth(self, depth=0) -> List[Tuple[np.ndarray, int]]:
+        """
+        Returns a list of tuples containing belief states and their corresponding depths for all nodes in the tree.
+        The belief states are the state vectors, and the depth is the level of the node in the tree.
+        """
+        belief_states_with_depth = [(self.state_vector, depth)]  # Include the current node's state vector and depth
+
+        # Recursively collect belief states and depths from children
+        for child in self.children:
+            belief_states_with_depth.extend(child.get_belief_states_and_depth(depth + 1))
+
+        return belief_states_with_depth

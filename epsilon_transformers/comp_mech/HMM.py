@@ -96,6 +96,10 @@ def calculate_steady_state_distribution(transition_matrix: np.ndarray) -> np.nda
     # Find the eigenvector corresponding to the eigenvalue 1
     steady_state_vector = eigenvectors[:, np.isclose(eigenvalues, 1)].real
 
+    # if theres more than one then sum them, but keep the first dimension
+    if steady_state_vector.shape[1] > 1:
+        steady_state_vector = steady_state_vector.sum(axis=1, keepdims=True)
+
     # Normalize the steady state vector
     steady_state_vector /= steady_state_vector.sum()
 

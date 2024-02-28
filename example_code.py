@@ -35,10 +35,10 @@ def main():
     print(even_process_hmm)
     print(nond_hmm)
     print(golden_mean_hmm)
-    process = mess3_hmm
+    process = even_process_hmm
     generate_sequences(process, 5, 10000)
 
-    n_ctx = 7
+    n_ctx = 10
     MSP_tree = mixed_state_tree(process, n_ctx)
 
     H_mu = block_entropy(MSP_tree)

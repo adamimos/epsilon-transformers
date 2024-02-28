@@ -9,4 +9,6 @@ from .comp_mech import (
     myopic_entropy,
     collect_path_probs_with_paths,
     collect_paths_with_beliefs,
+    generate_sequences_with_states
+
 )

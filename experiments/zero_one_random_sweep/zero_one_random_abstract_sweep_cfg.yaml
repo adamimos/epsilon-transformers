@@ -1,0 +1,45 @@
+method: random
+metric:
+  goal: minimize
+  name: val_relative_loss
+sweep_name: transformer-MSPs
+process: zero_one_random_abstracted
+parameters:
+  d_model:
+    values: [64]
+  d_head:
+    values: [8]
+  n_layers:
+    values: [4]
+  n_ctx:
+    value: 10
+  n_heads:
+    values: [2]
+  d_vocab:
+    value: 4
+  act_fn:
+    value: 'relu'
+  use_attn_scale:
+    value: true
+  normalization_type:
+    value: 'LN'
+  attention_dir:
+    value: 'causal'
+  attn_only:
+    value: false
+  seed:
+    value: 42
+  init_weights:
+    value: true
+  batch_size:
+    values: [64]
+  n_iters:
+    value: 25
+  num_epochs:
+    value: 1500000000
+  learning_rate:
+    values: [1e-2]
+  weight_decay:
+    values: [0.0]
+  optimizer:
+    values: ['sgd']
