@@ -1,3 +1,4 @@
+from typing import Literal
 import datashader as ds
 import datashader.transfer_functions as tf
 from colorcet import fire
@@ -21,14 +22,14 @@ def _project_to_simplex(points: Float[np.ndarray, "num_points num_states"]):
     return x, y
 
 # Combine aggregated channels into RGB images
-def _combine_channels_to_rgb(agg_r, agg_g, agg_b):
+def _combine_channels_to_rgb(agg_r, agg_g, agg_b, px:int):
     img_r = tf.shade(agg_r, cmap=['black', 'red'], how='linear')
     img_g = tf.shade(agg_g, cmap=['black', 'green'], how='linear')
     img_b = tf.shade(agg_b, cmap=['black', 'blue'], how='linear')
 
-    img_r = tf.spread(img_r, px=1, shape='circle')
-    img_g = tf.spread(img_g, px=1, shape='circle')
-    img_b = tf.spread(img_b, px=1, shape='circle')
+    img_r = tf.spread(img_r, px=px, shape='circle')
+    img_g = tf.spread(img_g, px=px, shape='circle')
+    img_b = tf.spread(img_b, px=px, shape='circle')
 
     # Combine using numpy
     r_array = np.array(img_r.to_pil()).astype(np.float64)
@@ -41,7 +42,13 @@ def _combine_channels_to_rgb(agg_r, agg_g, agg_b):
     return Image.fromarray(np.uint8(rgb_image))
 
 # TODO: I changed up the code for this to something which makes sense to me (creating panda dataframes from ground truth and predicted simplex. Check to see if this is what should actually be done)
-def generate_belief_state_figures_datashader(ground_truth_tensor: Float[np.ndarray, "num_points num_states"], predicted_beliefs: Float[np.ndarray, "num_points num_states"], plot_triangles: bool) -> Figure:
+def plot_ground_truth_and_evaluated_2d_simplex(
+    ground_truth_tensor: Float[np.ndarray, "num_points num_states"], 
+    predicted_beliefs: Float[np.ndarray, "num_points num_states"], 
+    plot_triangles: bool,
+    facecolor: Literal['black', 'white'],
+    px: int
+) -> Figure:
     # Projection and DataFrame preparation
     bs_x, bs_y = _project_to_simplex(np.array(ground_truth_tensor))
     ground_truth_data_frame = pd.DataFrame({'x': bs_x, 'y': bs_y, 'r': ground_truth_tensor[:, 0], 'g': ground_truth_tensor[:, 1], 'b': ground_truth_tensor[:, 2]})
@@ -53,21 +60,21 @@ def generate_belief_state_figures_datashader(ground_truth_tensor: Float[np.ndarr
     canvas = ds.Canvas(plot_width=1000, plot_height=1000, x_range=(-0.1, 1.1), y_range=(-0.1, np.sqrt(3)/2 + 0.1))
     
     # Aggregate each RGB channel separately for ground truth and predicted beliefs
-    aggregate_functions = {'r': ds.mean('r'), 'g': ds.mean('g'), 'b': ds.mean('b')}
-    ground_truth_aggregated = {color: canvas.points(ground_truth_data_frame, 'x', 'y', aggregate_functions[color]) for color in ['r', 'g', 'b']}
-    predited_belief_vector_aggregated = {color: canvas.points(predicted_belief_vector_data_frame, 'x', 'y', aggregate_functions[color]) for color in ['r', 'g', 'b']}
+    colours = ['r', 'g', 'b']
+    ground_truth_aggregated = {color: canvas.points(ground_truth_data_frame, 'x', 'y', ds.mean(color)) for color in colours}
+    predited_belief_vector_aggregated = {color: canvas.points(predicted_belief_vector_data_frame, 'x', 'y', ds.mean(color)) for color in colours}
 
-    img_gt = _combine_channels_to_rgb(ground_truth_aggregated['r'], ground_truth_aggregated['g'], ground_truth_aggregated['b'])
-    img_pb = _combine_channels_to_rgb(predited_belief_vector_aggregated['r'], predited_belief_vector_aggregated['g'], predited_belief_vector_aggregated['b'])
+    img_gt = _combine_channels_to_rgb(ground_truth_aggregated['r'], ground_truth_aggregated['g'], ground_truth_aggregated['b'], background_color=facecolor, px=px)
+    img_pb = _combine_channels_to_rgb(predited_belief_vector_aggregated['r'], predited_belief_vector_aggregated['g'], predited_belief_vector_aggregated['b'], background_color=facecolor, px=px)
 
     # Visualization with Matplotlib
-    fig, axs = plt.subplots(1, 2, figsize=(10, 5), sharex=True, sharey=True, facecolor='black')  # Changed 'white' to 'black'
+    fig, axs = plt.subplots(1, 2, figsize=(10, 5), sharex=True, sharey=True, facecolor=facecolor)
     for ax in axs:
-        ax.tick_params(axis='x', colors='black')  # Changed 'black' to 'white'
-        ax.tick_params(axis='y', colors='black')  # Changed 'black' to 'white'
-        ax.xaxis.label.set_color('black')  # Changed 'black' to 'white'
-        ax.yaxis.label.set_color('black')  # Changed 'black' to 'white'
-        ax.title.set_color('black')  # Changed 'black' to 'white'
+        ax.tick_params(axis='x', colors=facecolor)  
+        ax.tick_params(axis='y', colors=facecolor)  
+        ax.xaxis.label.set_color(facecolor)  
+        ax.yaxis.label.set_color(facecolor)  
+        ax.title.set_color(facecolor)
     axs[0].imshow(img_gt)
     axs[1].imshow(img_pb)
     
@@ -97,4 +104,4 @@ if __name__ == "__main__":
     process = ZeroOneR()
 
     belief_states_reshaped, predicted_beliefs = find_msp_subspace_in_residual_stream(model=model, process=process, num_sequences=5)
-    generate_belief_state_figures_datashader(ground_truth_tensor=belief_states_reshaped, predicted_beliefs=predicted_beliefs, plot_triangles=True)
+    plot_ground_truth_and_evaluated_2d_simplex(ground_truth_tensor=belief_states_reshaped, predicted_beliefs=predicted_beliefs, plot_triangles=True)

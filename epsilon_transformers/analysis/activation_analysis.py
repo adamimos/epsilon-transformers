@@ -11,6 +11,8 @@ from epsilon_transformers.process.processes import ZeroOneR
 from epsilon_transformers.training.configs import ProcessDatasetConfig
 
 # TODO: Make dataclass for ground_truth & predicted_belief states
+# TODO: Abstract persister & make persister for the dataclass
+
 # TODO: All of this passing of the process around is unnecessary. I just gotta pass the msp around and that's it
 # TODO: This train/test split is unnatural.... I may want to fix it or leave a None options
 # TODO: For non toy models, derive_mixed_state_presentation needs to be parallelized
