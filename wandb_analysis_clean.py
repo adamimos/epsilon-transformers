@@ -216,28 +216,46 @@ from colorcet import fire
 import pandas as pd
 from PIL import Image
 
+
 def create_dataframe(points, beliefs):
     x, y = project_to_simplex(np.array(points))
-    return pd.DataFrame({
-        "x": x,
-        "y": y,
-        "r": beliefs[:, 0],
-        "g": beliefs[:, 1],
-        "b": beliefs[:, 2],
-    })
+    return pd.DataFrame(
+        {
+            "x": x,
+            "y": y,
+            "r": beliefs[:, 0],
+            "g": beliefs[:, 1],
+            "b": beliefs[:, 2],
+        }
+    )
+
+
 def percentile_agg(array, q=50):
     """Custom aggregation function to compute the percentile."""
     return np.percentile(array, q)
 
 
 def aggregate_data(df):
-    cvs = ds.Canvas(plot_width=1000, plot_height=1000, x_range=(-0.1, 1.1), y_range=(-0.1, np.sqrt(3) / 2 + 0.1))
+    cvs = ds.Canvas(
+        plot_width=1000,
+        plot_height=1000,
+        x_range=(-0.1, 1.1),
+        y_range=(-0.1, np.sqrt(3) / 2 + 0.1),
+    )
     agg_funcs = {"r": ds.mean("r"), "g": ds.mean("g"), "b": ds.mean("b")}
-    return {color: cvs.points(df, "x", "y", agg_funcs[color]) for color in ["r", "g", "b"]}
+    return {
+        color: cvs.points(df, "x", "y", agg_funcs[color]) for color in ["r", "g", "b"]
+    }
+
 
 def custom_thresholded_linear_cmap(threshold, color):
     black_rgb = (0, 0, 0)
-    rgb_dict = {'black': black_rgb, 'green': (0, 255, 0), 'red': (255, 0, 0), 'blue': (0, 0, 255)}
+    rgb_dict = {
+        "black": black_rgb,
+        "green": (0, 255, 0),
+        "red": (255, 0, 0),
+        "blue": (0, 0, 255),
+    }
     cmap = []
     # we want to interpolate from black to color,
     # over the range above the threshold
@@ -245,13 +263,18 @@ def custom_thresholded_linear_cmap(threshold, color):
         if v < threshold:
             cmap.append(black_rgb)
         else:
-            interp_color = tuple(np.array(black_rgb) + (np.array(rgb_dict[color]) - np.array(black_rgb)) * ((v - threshold) / (1 - threshold)))
+            interp_color = tuple(
+                np.array(black_rgb)
+                + (np.array(rgb_dict[color]) - np.array(black_rgb))
+                * ((v - threshold) / (1 - threshold))
+            )
             cmap.append(interp_color)
     return cmap
 
+
 def combine_channels_to_rgb(agg_r, agg_g, agg_b):
-    #green_cmap = custom_thresholded_linear_cmap(0.75,'green')
-    
+    # green_cmap = custom_thresholded_linear_cmap(0.75,'green')
+
     img_r = tf.shade(agg_r, cmap=["black", "red"], how="linear")
     img_g = tf.shade(agg_g, cmap=["black", "green"], how="linear")
     img_b = tf.shade(agg_b, cmap=["black", "blue"], how="linear")
@@ -264,22 +287,32 @@ def combine_channels_to_rgb(agg_r, agg_g, agg_b):
     g_array = np.array(img_g.to_pil()).astype(np.float64)
     b_array = np.array(img_b.to_pil()).astype(np.float64)
 
-    rgb_image = np.stack([r_array[:, :, 0], g_array[:, :, 1], b_array[:, :, 2]], axis=-1)
+    rgb_image = np.stack(
+        [r_array[:, :, 0], g_array[:, :, 1], b_array[:, :, 2]], axis=-1
+    )
     return Image.fromarray(np.uint8(rgb_image))
+
 
 def generate_image(beliefs, all_beliefs):
     df = create_dataframe(beliefs, all_beliefs)
     agg_data = aggregate_data(df)
     return combine_channels_to_rgb(agg_data["r"], agg_data["g"], agg_data["b"])
 
-def generate_belief_state_figures_datashader(belief_states, all_beliefs, predicted_beliefs, gt_fig=None, plot_triangles=False):
+
+def generate_belief_state_figures_datashader(
+    belief_states, all_beliefs, predicted_beliefs, gt_fig=None, plot_triangles=False
+):
     if gt_fig is None:
-        img_gt = generate_image(belief_states, belief_states)  # Using the same data for ground truth visualization
+        img_gt = generate_image(
+            belief_states, belief_states
+        )  # Using the same data for ground truth visualization
     else:
         img_gt = gt_fig
     img_pb = generate_image(predicted_beliefs, all_beliefs)
 
-    fig, axs = plt.subplots(1, 2, figsize=(10, 5), sharex=True, sharey=True, facecolor="black")
+    fig, axs = plt.subplots(
+        1, 2, figsize=(10, 5), sharex=True, sharey=True, facecolor="black"
+    )
     for ax in axs:
         ax.tick_params(axis="x", colors="white")
         ax.tick_params(axis="y", colors="white")
@@ -293,8 +326,26 @@ def generate_belief_state_figures_datashader(belief_states, all_beliefs, predict
     axs[1].axis("off")
 
     title_y_position = -0.1
-    fig.text(0.5, title_y_position, "Ground Truth", ha="center", va="top", transform=axs[0].transAxes, color="white", fontsize=15)
-    fig.text(0.5, title_y_position, "Residual Stream", ha="center", va="top", transform=axs[1].transAxes, color="white", fontsize=15)
+    fig.text(
+        0.5,
+        title_y_position,
+        "Ground Truth",
+        ha="center",
+        va="top",
+        transform=axs[0].transAxes,
+        color="white",
+        fontsize=15,
+    )
+    fig.text(
+        0.5,
+        title_y_position,
+        "Residual Stream",
+        ha="center",
+        va="top",
+        transform=axs[1].transAxes,
+        color="white",
+        fontsize=15,
+    )
 
     if plot_triangles:
         for ax in axs:
@@ -319,7 +370,7 @@ def generate_belief_state_figures(
     x_gt, y_gt = project_to_simplex(np.array(belief_states))
 
     # randomly permute the rows
-    axs[0].scatter(x_gt, y_gt, c=colors_gt, s=s, alpha=1.0, marker=',')
+    axs[0].scatter(x_gt, y_gt, c=colors_gt, s=s, alpha=1.0, marker=",")
     axs[0].set_title("Ground Truth", pad=-20)
     axs[0].axis("off")
 
@@ -356,7 +407,7 @@ project_name = "transformer-MSPs"
 # run_id = '2zulyhrv' # mess3 param change
 # run_id = 's6p0aaci' # zero one random
 run_id = "halvkdvk"  # mess3 param change long run
-#run_id = 'anmsm2sv' # mess 3 original param, with scheduler
+# run_id = 'anmsm2sv' # mess 3 original param, with scheduler
 # make a folder in figures with the name of the run_id
 # for the images
 if not os.path.exists(f"figures/{run_id}"):
@@ -391,21 +442,32 @@ X_val = torch.tensor(X_val, dtype=torch.int).to(device)
 val_weights = torch.tensor(val_weights, dtype=torch.float32).to(device)
 val_weights_repeated = val_weights.unsqueeze(1).repeat(1, config["n_ctx"]).cpu().numpy()
 Y_val = torch.tensor(Y_val, dtype=torch.long).to(device)
-print(f"X_val: {X_val.size()}, Y_val: {Y_val.size()}, val_weights: {val_weights.size()}, val_weights_repeated: {val_weights_repeated.shape}")
+print(
+    f"X_val: {X_val.size()}, Y_val: {Y_val.size()}, val_weights: {val_weights.size()}, val_weights_repeated: {val_weights_repeated.shape}"
+)
 img_gt = generate_image(belief_states, belief_states)
 
-#%%
+# %%
 # get simplex points
 simplex_points = project_to_simplex(belief_states)
 simplex_points = np.array(simplex_points)
 max_depth = min(max(depths), 9)  # Limiting max_depth to 9
-depth_normalized = depths / max_depth  # Normalize depth values to [0, 1] for color mapping
+depth_normalized = (
+    depths / max_depth
+)  # Normalize depth values to [0, 1] for color mapping
 
 # Create a scatter plot with a color map based on depth
-scatter = plt.scatter(simplex_points[0], simplex_points[1], c=depth_normalized, cmap='viridis', s=1, alpha=1)
+scatter = plt.scatter(
+    simplex_points[0],
+    simplex_points[1],
+    c=depth_normalized,
+    cmap="viridis",
+    s=1,
+    alpha=1,
+)
 
 # Add a color bar to indicate depth values
-plt.colorbar(scatter, label='Depth')
+plt.colorbar(scatter, label="Depth")
 plt.show()
 # %%
 all_beliefs = precompute_activation_and_belief_inds(MSP_tree, config["n_ctx"], X_val)
@@ -413,11 +475,11 @@ all_beliefs = precompute_activation_and_belief_inds(MSP_tree, config["n_ctx"], X
 # all_beliefs is shape [n_samples, n_ctx, 3]
 # %%
 results = []
-#for art in tqdm(arts):
+# for art in tqdm(arts):
 for art in arts:
     art_name = art.name
     print(f"Artifact: {art_name}")
-    
+
     # art.name is "name:version" so we split it to get the name and version
     artifact_name, artifact_version = art_name.split(":")
     epoch_num = int(artifact_name.split("_")[-1])
@@ -428,6 +490,7 @@ for art in arts:
     if os.path.exists(f"figures/{run_id}/belief_states_{artifact_name}.png"):
         # Skip this run if the .png already exists
         continue
+
     def analyze_artifact(
         user_or_org,
         project_name,
@@ -464,20 +527,26 @@ for art in arts:
         all_beliefs_reshaped = all_beliefs.reshape(-1, all_beliefs.shape[-1])
         all_acts = activations.reshape(-1, activations.shape[-1])
         val_weights_reshaped = val_weights.reshape(-1)
-        reg, predicted_beliefs = run_linear_regression(all_acts, all_beliefs_reshaped, None)
+        reg, predicted_beliefs = run_linear_regression(
+            all_acts, all_beliefs_reshaped, None
+        )
 
         # add the image generation here
-        #reg_c = reg.coef_.T # [d_model, 3]
-        #reg_b = reg.interce|pt_ # [3]
-        #U_c = model.unembed.W_U.detach().cpu().numpy() # [d_model, 3]
-        #U_b = model.unembed.b_U.detach().cpu().numpy() # [3]
+        # reg_c = reg.coef_.T # [d_model, 3]
+        # reg_b = reg.interce|pt_ # [3]
+        # U_c = model.unembed.W_U.detach().cpu().numpy() # [d_model, 3]
+        # U_b = model.unembed.b_U.detach().cpu().numpy() # [3]
 
         # determine if the reg and the U are the same or not
 
-        #fig3 = generate_belief_state_figures(belief_states, all_beliefs_reshaped, predicted_beliefs, plot_triangles=False, alpha=0.1)
-        #fig3.savefig(f"figures/{run_id}/belief_states_{artifact_name}_no_datashader.png", dpi=300)
+        # fig3 = generate_belief_state_figures(belief_states, all_beliefs_reshaped, predicted_beliefs, plot_triangles=False, alpha=0.1)
+        # fig3.savefig(f"figures/{run_id}/belief_states_{artifact_name}_no_datashader.png", dpi=300)
         fig = generate_belief_state_figures_datashader(
-            belief_states, all_beliefs_reshaped, predicted_beliefs, plot_triangles=True, gt_fig=gt_fig
+            belief_states,
+            all_beliefs_reshaped,
+            predicted_beliefs,
+            plot_triangles=True,
+            gt_fig=gt_fig,
         )
         # belief_states # [n_ctx, 3], all_beliefs_reshaped # [n_samples * n_ctx, 3], predicted_beliefs # [n_samples * n_ctx, 3]
         fig.savefig(f"figures/{run_id}/belief_states_{artifact_name}.png", dpi=300)
@@ -612,7 +681,9 @@ from moviepy.editor import ImageSequenceClip
 belief_state_images = [
     f"./figures/halvkdvk/{img}"
     for img in os.listdir("./figures/halvkdvk")
-    if img.startswith("belief_states_model_epoch_") and img.endswith(".png") and not img.endswith("_datashader.png")
+    if img.startswith("belief_states_model_epoch_")
+    and img.endswith(".png")
+    and not img.endswith("_datashader.png")
 ]
 
 # only take images that have numbers that are multiples of 5
@@ -633,7 +704,7 @@ belief_state_images = bfi
 
 print(f"Number of images: {len(belief_state_images)}")
 
-#%%
+# %%
 # Ensure fps is a real number, not NoneType or any other type
 fps_value = 30.0
 

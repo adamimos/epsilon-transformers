@@ -35,9 +35,9 @@ from epsilon_transformers.comp_mech import (
 train_process = zero_one_random_set()
 abstract_process = zero_one_random_abstracted()
 
-#%%
+# %%
 generate_sequences_with_states(abstract_process, 2, 15)
- #%%
+# %%
 with open(
     "./experiments/zero_one_random_sweep/zero_one_random_abstract_sweep_cfg.yaml", "r"
 ) as f:
@@ -60,8 +60,12 @@ elif config["process"] == "zero_one_random_abstracted":
     abstract_process = zero_one_random_abstracted()
 
 print(config["parameters"]["n_ctx"])
-train_MSP_tree = mixed_state_tree(train_process, config["parameters"]["n_ctx"]["value"] + 1)
-abstract_MSP_tree = mixed_state_tree(abstract_process, config["parameters"]["n_ctx"]["value"] + 1)
+train_MSP_tree = mixed_state_tree(
+    train_process, config["parameters"]["n_ctx"]["value"] + 1
+)
+abstract_MSP_tree = mixed_state_tree(
+    abstract_process, config["parameters"]["n_ctx"]["value"] + 1
+)
 myopic_entropy_rate = myopic_entropy(train_MSP_tree)
 abstract_myopic_entropy_rate = myopic_entropy(abstract_MSP_tree)
 minimum_cross_entropy = myopic_entropy_rate[1:]
@@ -80,11 +84,11 @@ device = torch.device(
 print(f"Using device: {device}")
 
 minimum_cross_entropy = torch.tensor(minimum_cross_entropy, dtype=torch.float32).to(
-    device)
-abstract_minimum_cross_entropy = torch.tensor(abstract_minimum_cross_entropy, dtype=torch.float32).to(
-        device)
-
-
+    device
+)
+abstract_minimum_cross_entropy = torch.tensor(
+    abstract_minimum_cross_entropy, dtype=torch.float32
+).to(device)
 
 
 # %%
@@ -103,9 +107,13 @@ def sweep_train(config: Optional[Dict] = None):
         val_weights = torch.tensor(val_weights, dtype=torch.float32).to(device)
         Y_val = torch.tensor(Y_val, dtype=torch.long).to(device)
 
-        X_abstract_val, Y_abstract_val, abstract_val_weights = create_validation_set(abstract_MSP_tree, config.n_ctx)
+        X_abstract_val, Y_abstract_val, abstract_val_weights = create_validation_set(
+            abstract_MSP_tree, config.n_ctx
+        )
         X_abstract_val = torch.tensor(X_abstract_val, dtype=torch.int).to(device)
-        abstract_val_weights = torch.tensor(abstract_val_weights, dtype=torch.float32).to(device)
+        abstract_val_weights = torch.tensor(
+            abstract_val_weights, dtype=torch.float32
+        ).to(device)
         Y_abstract_val = torch.tensor(Y_abstract_val, dtype=torch.long).to(device)
 
         # Build model
@@ -116,8 +124,9 @@ def sweep_train(config: Optional[Dict] = None):
         val_data = torch.tensor(X_val, dtype=torch.int).to(device)
         abstract_val_data = torch.tensor(X_abstract_val, dtype=torch.int).to(device)
         val_weights = torch.tensor(val_weights, dtype=torch.float32).to(device)
-        abstract_val_weights = torch.tensor(abstract_val_weights, dtype=torch.float32).to(device)
-
+        abstract_val_weights = torch.tensor(
+            abstract_val_weights, dtype=torch.float32
+        ).to(device)
 
         # Build optimizer
         optimizer = build_optimizer(model, config)
@@ -197,7 +206,6 @@ def train_epoch_prob(
         for i, rel_loss in enumerate(relative_loss):
             log_data[f"val_relative_loss_{i}"] = rel_loss.item()
 
-
     model.eval()
     with torch.no_grad():
         Y = model(X_abstract_val)
@@ -206,10 +214,12 @@ def train_epoch_prob(
         mean_loss, relative_loss = compute_val_losses(
             loss, abstract_minimum_cross_entropy, abstract_val_weights
         )
-        log_data.update({
-            "abstract_val_loss": mean_loss.item(),
-            "abstract_val_relative_loss": relative_loss.mean().item(),
-        })
+        log_data.update(
+            {
+                "abstract_val_loss": mean_loss.item(),
+                "abstract_val_relative_loss": relative_loss.mean().item(),
+            }
+        )
         for i, rel_loss in enumerate(relative_loss):
             log_data[f"abstract_val_relative_loss_{i}"] = rel_loss.item()
         wandb.log(log_data)
