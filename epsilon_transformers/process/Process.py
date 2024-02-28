@@ -1,12 +1,15 @@
 import numpy as np
-from typing import Tuple, Optional, Dict, List, Iterator
+from typing import Set, Tuple, Optional, Dict, List, Iterator
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from jaxtyping import Float
+from collections import deque
 
-# TODO: Add derive_msp() to processes
+from epsilon_transformers.process.MixedStatePresentation import MixedStateTree, MixedStateTreeNode
+
+# TODO: Test yield_emission_histories for different emissions in the emission history
+# TODO: Rename _create_hmm
 # TODO: Delete generate_process_history (??)
-
 
 @dataclass
 class ProcessHistory:
@@ -23,6 +26,7 @@ class ProcessHistory:
 
 
 class Process(ABC):
+    name: str
     transition_matrix: Float[np.ndarray, "vocab_len num_states num_states"]
     state_names_dict: Dict[str, int]
     vocab_len: int
@@ -122,6 +126,10 @@ class Process(ABC):
             )
             current_state_idx = next_state_ind
 
+    def yield_emission_histories(self, sequence_len: int, num_sequences: int) -> Iterator[List[int]]:
+        for _ in range(num_sequences):
+            yield [x for x in self.yield_emissions(sequence_len=sequence_len)]
+
     def generate_process_history(
         self, total_length: int, current_state_idx: Optional[int] = None
     ) -> ProcessHistory:
@@ -153,3 +161,49 @@ class Process(ABC):
             )
             current_state_idx = next_state_ind
         return ProcessHistory(symbols=symbols, states=states)
+    
+    # TODO: You can get rid of the stack, and just iterate through the nodes & the depth as tuples
+    def derive_mixed_state_presentation(self, depth: int) -> MixedStateTree:
+        uniform_prior = np.full(self.num_states, 1/self.num_states)
+        tree_root = MixedStateTreeNode(state_prob_vector=uniform_prior, children=set(), path=[])
+        nodes = set([tree_root])
+
+        stack = deque([(tree_root, uniform_prior, [], 0)])
+        while stack:
+            current_node, state_prob_vector, current_path, current_depth = stack.pop()
+            if current_depth < depth:
+                emission_probs = _compute_emission_probabilities(self, state_prob_vector)
+                for emission in range(self.vocab_len):
+                    if emission_probs[emission] > 0:
+                        next_state_prob_vector = _compute_next_distribution(self.transition_matrix, state_prob_vector, emission)
+                        child_path = current_path + [emission]
+                        child_node = MixedStateTreeNode(state_prob_vector=next_state_prob_vector, path=child_path, children=set())
+                        current_node.add_child(child_node)
+
+                        stack.append((child_node, next_state_prob_vector, child_path, current_depth + 1))
+            nodes.add(current_node)
+        
+        return MixedStateTree(root_node=tree_root, process=self.name, nodes=nodes, depth=depth)
+
+def _compute_emission_probabilities(
+    hmm: Process, 
+    state_prob_vector: Float[np.ndarray, "num_states"]
+) -> Float[np.ndarray, "vocab_len"]:
+    """
+    Compute the probabilities associated with each emission given the current mixed state.
+    """
+    T = hmm.transition_matrix
+    emission_probs = np.einsum("s,esd->ed", state_prob_vector, T).sum(axis=1)
+    emission_probs /= emission_probs.sum()
+    return emission_probs
+
+def _compute_next_distribution(
+    epsilon_machine: Float[np.ndarray, "vocab_len num_states num_states"],
+    current_state_prob_vector: Float[np.ndarray, "num_states"], 
+    current_emission: int
+) -> Float[np.ndarray, "num_states"]:
+    """
+    Compute the next mixed state distribution for a given output.
+    """
+    X_next = np.einsum("sd, s -> d", epsilon_machine[current_emission], current_state_prob_vector)
+    return X_next / np.sum(X_next) if np.sum(X_next) != 0 else X_next

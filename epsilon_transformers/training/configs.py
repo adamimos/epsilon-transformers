@@ -19,6 +19,7 @@ from epsilon_transformers.process.dataset import (
 
 # TODO: Make Config ABS (??)
 # TODO: Turn log input into a dataclass (??)
+# TODO: Have a no persistenc config option
 
 # TODO: Put all the functionality of the log congig into the logger
 # TODO: Fix the eval_dataloader_ratio_creation
