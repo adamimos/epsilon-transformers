@@ -9,6 +9,7 @@ from epsilon_transformers.process.dataset import ProcessDataset, process_dataset
 from epsilon_transformers.training.configs import TrainConfig, RawModelConfig, OptimizerConfig, ProcessDatasetConfig, PersistanceConfig, LoggingConfig
 from epsilon_transformers.training.train import train_model, _check_if_action_batch, _set_random_seed
 
+# TODO: Test training config on all of the processes. Currently we are throwing a CUDA error on MESS3
 # TODO: Paramaterize test_configs_throw_error_on_extra
 # TODO: Test mutually_exclusive_logs
 # TODO: Test the log state (it get's reset when needed, it gets updated appropriately)
