@@ -12,6 +12,10 @@ from epsilon_transformers.training.configs import (
     PersistanceConfig,
     Log,
 )
+
+# TODO: Bug of outputting num_of_tokens_trained on rather than num_of_tokens_seen
+# TODO: Put flag for overwriting (either don't do it, or have a logger throw a warning)
+
 # TODO: Bug where the last final loss outputs train_loss of 0
 # TODO: Use logger library for logging
 # TODO: Make Log into a singleton
