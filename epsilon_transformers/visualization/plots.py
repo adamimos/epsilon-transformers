@@ -1,6 +1,7 @@
 import datashader as ds
 import datashader.transfer_functions as tf
 from colorcet import fire
+from matplotlib.figure import Figure
 import pandas as pd
 from PIL import Image
 import numpy as np
@@ -10,6 +11,8 @@ from epsilon_transformers.analysis.activation_analysis import find_msp_subspace_
 
 from epsilon_transformers.process.processes import ZeroOneR
 from epsilon_transformers.training.configs import RawModelConfig
+
+# TODO: Modularize generate_belief_state_figures_datashader && parallalize slow tensor code
 
 def _project_to_simplex(points: Float[np.ndarray, "num_points num_states"]):
     """Project points onto the 2-simplex (equilateral triangle in 2D)."""
@@ -38,23 +41,24 @@ def _combine_channels_to_rgb(agg_r, agg_g, agg_b):
     return Image.fromarray(np.uint8(rgb_image))
 
 # TODO: I changed up the code for this to something which makes sense to me (creating panda dataframes from ground truth and predicted simplex. Check to see if this is what should actually be done)
-def generate_belief_state_figures_datashader(belief_states, all_beliefs, predicted_beliefs, plot_triangles=False):
+def generate_belief_state_figures_datashader(ground_truth_tensor: Float[np.ndarray, "num_points num_states"], predicted_beliefs: Float[np.ndarray, "num_points num_states"], plot_triangles: bool) -> Figure:
     # Projection and DataFrame preparation
-    bs_x, bs_y = _project_to_simplex(np.array(belief_states))
-    df_gt = pd.DataFrame({'x': bs_x, 'y': bs_y, 'r': belief_states[:, 0], 'g': belief_states[:, 1], 'b': belief_states[:, 2]})
+    bs_x, bs_y = _project_to_simplex(np.array(ground_truth_tensor))
+    ground_truth_data_frame = pd.DataFrame({'x': bs_x, 'y': bs_y, 'r': ground_truth_tensor[:, 0], 'g': ground_truth_tensor[:, 1], 'b': ground_truth_tensor[:, 2]})
 
     pb_x, pb_y = _project_to_simplex(np.array(predicted_beliefs))
-    df_pb = pd.DataFrame({'x': pb_x, 'y': pb_y, 'r': all_beliefs[:, 0], 'g': all_beliefs[:, 1], 'b': all_beliefs[:, 2]})
+    predicted_belief_vector_data_frame = pd.DataFrame({'x': pb_x, 'y': pb_y, 'r': predicted_beliefs[:, 0], 'g': predicted_beliefs[:, 1], 'b': predicted_beliefs[:, 2]})
 
     # Create canvas
-    cvs = ds.Canvas(plot_width=1000, plot_height=1000, x_range=(-0.1, 1.1), y_range=(-0.1, np.sqrt(3)/2 + 0.1))
+    canvas = ds.Canvas(plot_width=1000, plot_height=1000, x_range=(-0.1, 1.1), y_range=(-0.1, np.sqrt(3)/2 + 0.1))
+    
     # Aggregate each RGB channel separately for ground truth and predicted beliefs
-    agg_funcs = {'r': ds.mean('r'), 'g': ds.mean('g'), 'b': ds.mean('b')}
-    agg_gt = {color: cvs.points(df_gt, 'x', 'y', agg_funcs[color]) for color in ['r', 'g', 'b']}
-    agg_pb = {color: cvs.points(df_pb, 'x', 'y', agg_funcs[color]) for color in ['r', 'g', 'b']}
+    aggregate_functions = {'r': ds.mean('r'), 'g': ds.mean('g'), 'b': ds.mean('b')}
+    ground_truth_aggregated = {color: canvas.points(ground_truth_data_frame, 'x', 'y', aggregate_functions[color]) for color in ['r', 'g', 'b']}
+    predited_belief_vector_aggregated = {color: canvas.points(predicted_belief_vector_data_frame, 'x', 'y', aggregate_functions[color]) for color in ['r', 'g', 'b']}
 
-    img_gt = _combine_channels_to_rgb(agg_gt['r'], agg_gt['g'], agg_gt['b'])
-    img_pb = _combine_channels_to_rgb(agg_pb['r'], agg_pb['g'], agg_pb['b'])
+    img_gt = _combine_channels_to_rgb(ground_truth_aggregated['r'], ground_truth_aggregated['g'], ground_truth_aggregated['b'])
+    img_pb = _combine_channels_to_rgb(predited_belief_vector_aggregated['r'], predited_belief_vector_aggregated['g'], predited_belief_vector_aggregated['b'])
 
     # Visualization with Matplotlib
     fig, axs = plt.subplots(1, 2, figsize=(10, 5), sharex=True, sharey=True, facecolor='black')  # Changed 'white' to 'black'
@@ -91,9 +95,6 @@ if __name__ == "__main__":
     )
     model = model_config.to_hooked_transformer(seed=13, device='cpu')
     process = ZeroOneR()
-    msp = process.derive_mixed_state_presentation(model.cfg.n_ctx + 1)
-    msp.belief_states
 
     belief_states_reshaped, predicted_beliefs = find_msp_subspace_in_residual_stream(model=model, process=process, num_sequences=5)
-
-    generate_belief_state_figures_datashader(belief_states=msp.belief_states, all_beliefs=belief_states_reshaped, predicted_beliefs=predicted_beliefs, plot_triangles=True)
+    generate_belief_state_figures_datashader(ground_truth_tensor=belief_states_reshaped, predicted_beliefs=predicted_beliefs, plot_triangles=True)
