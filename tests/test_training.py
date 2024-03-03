@@ -9,8 +9,8 @@ from epsilon_transformers.process.dataset import ProcessDataset, process_dataset
 from epsilon_transformers.training.configs import TrainConfig, RawModelConfig, OptimizerConfig, ProcessDatasetConfig, PersistanceConfig, LoggingConfig
 from epsilon_transformers.training.train import train_model, _check_if_action_batch, _set_random_seed
 
-# TODO: Test training config on all of the processes. Currently we are throwing a CUDA error on MESS3
 # TODO: Paramaterize test_configs_throw_error_on_extra
+# TODO: Patamaterize train_model w/ all configs
 # TODO: Test mutually_exclusive_logs
 # TODO: Test the log state (it get's reset when needed, it gets updated appropriately)
 # TODO: Test for writing multiple checkpoints
@@ -101,6 +101,48 @@ def test_changing_log_states():
     # 
     raise NotImplementedError
 
+def test_train_model_config_validator():
+    with pytest.raises(ValueError):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_config = RawModelConfig(
+                d_vocab=2,
+                d_model=100,
+                n_ctx=10,
+                d_head=48,
+                n_head=12,
+                d_mlp=12,
+                n_layers=2,
+            )
+
+            optimizer_config = OptimizerConfig(
+                optimizer_type='adam',
+                learning_rate=1.06e-4,
+                weight_decay=0.8
+            )
+
+            dataset_config = ProcessDatasetConfig(
+                process='mess3',
+                batch_size=5,
+                num_tokens=500,
+                test_split=0.15
+            )
+
+            persistance_config = PersistanceConfig(
+                location='local',
+                checkpoint_dir=temp_dir,
+                checkpoint_every_n_tokens=100
+            )
+
+            TrainConfig(
+                model=model_config,
+                optimizer=optimizer_config,
+                dataset=dataset_config,
+                persistance=persistance_config,
+                logging=LoggingConfig(project_name="testing-logging-output", wandb=False),
+                verbose=True,
+                seed=1337
+            )
+
 def test_train_model():
     with tempfile.TemporaryDirectory() as temp_dir:
         model_config = RawModelConfig(
@@ -120,7 +162,7 @@ def test_train_model():
         )
 
         dataset_config = ProcessDatasetConfig(
-            process='z1r',
+            process='rrxor',
             batch_size=5,
             num_tokens=500,
             test_split=0.15
@@ -137,7 +179,7 @@ def test_train_model():
             optimizer=optimizer_config,
             dataset=dataset_config,
             persistance=persistance_config,
-            logging=LoggingConfig(project_name="testing-logging-output", wandb=True),
+            logging=LoggingConfig(project_name="testing-logging-output", wandb=False),
             verbose=True,
             seed=1337
         )
@@ -146,4 +188,4 @@ def test_train_model():
         # Assert that the loss has decreased
 
 if __name__ == "__main__":
-    test_train_model()
+    test_train_model_config_validator()
