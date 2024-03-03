@@ -97,8 +97,8 @@ class Process(ABC):
             )
 
         assert (
-            0 <= current_state_idx <= self.vocab_len
-        ), "current_state_index must be positive & less than vocab_len"
+            0 <= current_state_idx < self.num_states
+        ), "current_state_index must be positive & less than num_states"
 
         p = self.transition_matrix[:, current_state_idx, :].sum(axis=1)
         emission = np.random.choice(self.vocab_len, p=p)
@@ -113,7 +113,7 @@ class Process(ABC):
             )
 
         assert (
-            0 <= current_state_idx <= self.vocab_len
+            0 <= current_state_idx < self.num_states
         ), "current_state_index must be positive & less than vocab_len"
 
         for _ in range(sequence_len):
