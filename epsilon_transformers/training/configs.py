@@ -34,7 +34,6 @@ from epsilon_transformers.process.dataset import (
 # TODO: Switch statement code smell with update_loss_metrics
 
 # TODO: Add a learning rate scheduler config
-# TODO: Add a WandbLoggingConfig
 # TODO: Add a sweep config
 # TODO: Add epoch training
 
