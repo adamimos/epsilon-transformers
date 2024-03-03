@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, model_validator, validator
 import pathlib
 import yaml
 import torch
@@ -120,6 +120,11 @@ class ProcessDatasetConfig(Config):
     batch_size: int
     num_tokens: int
     test_split: float
+
+    @validator('test_split')
+    def test_split_is_fraction(cls, v: float):
+        assert 0 < v < 1, f'{v} is not a valid test_split. It must be a fraction 0 < v < 1'
+        return v
 
     def to_dataloader(self, sequence_length: int, train: bool) -> DataLoader:
         dataset = ProcessDataset(

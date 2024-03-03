@@ -143,6 +143,22 @@ def test_train_model_config_validator():
                 seed=1337
             )
 
+def test_dataset_config_validator():
+    ProcessDatasetConfig(
+                process='mess3',
+                batch_size=5,
+                num_tokens=500,
+                test_split=0.15
+            )
+    
+    with pytest.raises(ValidationError):
+        ProcessDatasetConfig(
+                process='mess3',
+                batch_size=5,
+                num_tokens=500,
+                test_split=15
+            )
+
 def test_train_model():
     with tempfile.TemporaryDirectory() as temp_dir:
         model_config = RawModelConfig(
@@ -188,4 +204,4 @@ def test_train_model():
         # Assert that the loss has decreased
 
 if __name__ == "__main__":
-    test_train_model()
+    test_dataset_config_validator()
