@@ -3,6 +3,7 @@ import pathlib
 import random
 import numpy as np
 import torch
+from tqdm import tqdm
 from torch.utils.data import DataLoader
 from transformer_lens import HookedTransformer
 
@@ -56,7 +57,7 @@ def _evaluate_model(
     log: Log
 ) -> Log:
     with torch.no_grad():
-        for input_data, target_data in eval_dataloader:
+        for input_data, target_data in tqdm(eval_dataloader, desc="Eval Loop"):
             input_data, target_data = input_data.to(device), target_data.to(device)
             loss = model(input_data, return_type="loss")
             log.update_metrics("test", loss.item())
@@ -112,7 +113,7 @@ def train_model(config: TrainConfig) -> HookedTransformer:
 
     log = config.init_logger()
     model.train()
-    for batch_idx, (input_data, target_data) in enumerate(train_dataloader):
+    for batch_idx, (input_data, target_data) in enumerate(tqdm(train_dataloader, desc="Train Loop")):
         input_data, target_data = input_data.to(device), target_data.to(device)
         loss = model(input_data, return_type="loss")
         log.update_metrics(train_or_test="train", loss=loss.item())
