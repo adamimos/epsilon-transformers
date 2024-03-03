@@ -29,4 +29,5 @@ dependencies = [
     "pydantic",
     "wandb",
     "python-dotenv",
+    "tqdm",
 ]
