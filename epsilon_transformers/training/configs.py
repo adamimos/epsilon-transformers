@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 import pathlib
 import yaml
 import torch
@@ -11,7 +11,9 @@ import os
 import dotenv
 import math
 from dataclasses import dataclass, asdict
+from epsilon_transformers.process.Process import Process
 
+from epsilon_transformers.process.processes import PROCESS_REGISTRY
 from epsilon_transformers.process.dataset import (
     ProcessDataset,
     process_dataset_collate_fn,
@@ -197,6 +199,15 @@ class TrainConfig(Config):
     logging: LoggingConfig
     seed: int
     verbose: bool
+
+    @model_validator(mode='after')
+    def validate_model(self):
+        dataset_process = self.dataset.process
+        if dataset_process:
+            process_vocab_len = PROCESS_REGISTRY[dataset_process].vocab_len
+            if self.model.d_vocab != process_vocab_len:
+                raise ValueError(f"Model's d_vocab ({self.model.d_vocab}) doesn't match dataset process's vocab_len ({process_vocab_len})")
+        return self
 
     def init_logger(self) -> Log:
         if self.logging.wandb:
