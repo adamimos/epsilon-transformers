@@ -188,4 +188,4 @@ def test_train_model():
         # Assert that the loss has decreased
 
 if __name__ == "__main__":
-    test_train_model_config_validator()
+    test_train_model()
