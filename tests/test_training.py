@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import DataLoader
 from transformer_lens import HookedTransformer
 import tempfile
+import pathlib
 
 from epsilon_transformers.process.dataset import ProcessDataset, process_dataset_collate_fn
 from epsilon_transformers.training.configs import TrainConfig, RawModelConfig, OptimizerConfig, ProcessDatasetConfig, PersistanceConfig, LoggingConfig
@@ -159,6 +160,43 @@ def test_dataset_config_validator():
                 test_split=15
             )
 
+@pytest.mark.parametrize(
+    "local, expected_exception",
+    [
+        ("/path/to/local", None),  # Test validate_model_with_local
+        ("/nonexistent_parent/local", AssertionError),  # Test validate_model_local_parent_not_exist
+        ("/path/to/a_file.txt", AssertionError),  # Test validate_model_local_not_dir
+        (None, AssertionError),  # Test validate_model_with_wandb_missing_project_name
+        (None, AssertionError),  # Test validate_model_without_logging
+        (None, AssertionError),  # Test validate_model_without_loss
+        (pathlib.Path("/existing_path"), None),  # Test validate_model_with_existing_path
+    ]
+)
+def test_logging_config_validator(local, expected_exception):
+    # Use try-except block to handle assertion errors
+    try:
+        # If local is a pathlib.Path object, we convert it to string
+        local = str(local) if local is not None and isinstance(local, pathlib.Path) else local
+
+        if local and local.startswith('/existing_path'):
+            with tempfile.TemporaryDirectory() as temp_dir:
+                existing_path = pathlib.Path(temp_dir) / "existing_path"
+                existing_path.mkdir()
+                config = LoggingConfig(local=existing_path)
+        else:
+            config = LoggingConfig(local=local)
+
+        # Check if the parent directory exists
+        if expected_exception is None and local is not None and not local.startswith('/existing_path'):
+            assert config.local.parent.exists(), f"The parent directory of {config.local} does not exist"
+
+        # Ensure validation is called automatically upon instantiation
+        # This will throw an error if validation fails
+    except AssertionError as e:
+        assert type(e) == expected_exception
+    else:
+        assert expected_exception is None
+
 def test_train_model():
     with tempfile.TemporaryDirectory() as temp_dir:
         model_config = RawModelConfig(
@@ -204,4 +242,4 @@ def test_train_model():
         # Assert that the loss has decreased
 
 if __name__ == "__main__":
-    test_dataset_config_validator()
+    pytest.main(['-v', '-k', 'test_logging_config_validator'])

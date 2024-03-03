@@ -25,7 +25,6 @@ from epsilon_transformers.process.dataset import (
 # TODO: Put all the functionality of the log congig into the logger
 # TODO: Fix the eval_dataloader_ratio_creation
 # TODO: Create a logger & log the file path and intermediary metrics
-# TODO: Add validator to make sure test_split is a fraction
 # TODO: Add validator in Persistence Config to make sure the path is a dir
 # TODO: Add validator in Logging Config to make sure that if we're logging wandb then we're using a project name
 # TODO: Figure out if model seed should be it's own thing or whether we can just use the same seed across
@@ -181,6 +180,19 @@ class LoggingConfig(Config):
     train_loss: bool = True
     test_loss: bool = True
 
+    @model_validator(mode='after')
+    def validate_model(self):
+        assert self.local is not None or self.wandb, "Must have either wandb or local logging turned on"
+        assert self.train_loss or self.test_loss, "must pick a loss to log"
+        
+        if self.wandb:
+            assert self.project_name is not None, "project_name can't be none if wandb logging is on"
+        if self.local is not None:
+            assert self.local.is_dir(), f"{self.local} is not a directory"
+            assert self.local.parent.exists(), f"the parent of {self.local} does not exist. Make sure you create it before training"
+            self.local.mkdir(exist_ok=True)
+        return self    
+        
     def close(self):
         if self.wandb:
             wandb.finish()
