@@ -5,13 +5,12 @@ import yaml
 import torch
 from torch.utils.data import DataLoader
 from transformer_lens import HookedTransformer, HookedTransformerConfig
-from typing import Union, Optional, Dict
+from typing import Union, Optional
 import wandb
 import os
 import dotenv
 import math
 from dataclasses import dataclass, asdict
-from epsilon_transformers.process.Process import Process
 
 from epsilon_transformers.process.processes import PROCESS_REGISTRY
 from epsilon_transformers.process.dataset import (
