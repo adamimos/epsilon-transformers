@@ -104,10 +104,10 @@ class PersistanceConfig(Config):
     checkpoint_dir: pathlib.Path
     checkpoint_every_n_tokens: int
 
-    def save_model(self, model: torch.nn.Module, batch_idx: int):
+    def save_model(self, model: torch.nn.Module, tokens_trained: int):
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         if self.location == "local":
-            save_path = self.checkpoint_dir / f"{batch_idx}_{timestamp}.pt"
+            save_path = self.checkpoint_dir / f"{tokens_trained}_{timestamp}.pt"
             torch.save(model.state_dict(), save_path)
         elif self.location == "gdrive":
             raise NotImplementedError

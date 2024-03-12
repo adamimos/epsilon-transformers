@@ -37,6 +37,16 @@ def _set_random_seed(seed):
     torch.cuda.manual_seed_all(seed)
 
 
+def _calculate_tokens_trained(
+    batch_size: int,
+    sequence_len: int,
+    batch_idx: int,
+) -> int:
+    tokens_per_batch = batch_size * sequence_len
+    total_tokens_trained = (batch_idx + 1) * tokens_per_batch
+    return total_tokens_trained
+
+
 def _check_if_action_batch(
     perform_action_every_n_tokens: int,
     batch_size: int,
@@ -71,7 +81,7 @@ def _evaluate_log_and_persist(
     verbose: bool,
     log: Log,
     device: torch.device,
-    batch_idx: int,
+    tokens_trained: int,
 ):
     eval_dataloader = dataset_config.to_dataloader(
         sequence_length=model.cfg.n_ctx, train=False
@@ -88,7 +98,7 @@ def _evaluate_log_and_persist(
     
     log.persist()
     log.reset()
-    persistance_config.save_model(model, batch_idx)
+    persistance_config.save_model(model, tokens_trained)
     return log
 
 
@@ -123,6 +133,12 @@ def train_model(config: TrainConfig) -> HookedTransformer:
         loss.backward()
         optimizer.step()
 
+        tokens_trained_so_far = _calculate_tokens_trained(
+            batch_size=config.dataset.batch_size,
+            sequence_len=config.model.n_ctx,
+            batch_idx=batch_idx,
+        )
+
         if _check_if_action_batch(
             perform_action_every_n_tokens=config.persistance.checkpoint_every_n_tokens,
             batch_size=config.dataset.batch_size,
@@ -137,7 +153,7 @@ def train_model(config: TrainConfig) -> HookedTransformer:
                 log=log,
                 verbose=config.verbose,
                 device=device,
-                batch_idx=batch_idx,
+                tokens_trained=tokens_trained_so_far,
             )
             log.reset()
             model.train()
@@ -150,7 +166,7 @@ def train_model(config: TrainConfig) -> HookedTransformer:
         log=log,
         verbose=config.verbose,
         device=device,
-        batch_idx=batch_idx,
+        tokens_trained=tokens_trained_so_far,
     )
 
     config.logging.close()
