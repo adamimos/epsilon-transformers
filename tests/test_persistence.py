@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 # TODO: Create a PIBBSS S3 account
 # TODO: Get Adam to move the relevant models into the new S3 account and buckets
 # TODO: Write up the ReadMe stuff
+# TODO: E2E training persistence example
 
 def test_s3_persistence_put_and_retrieve_object_from_bucket():
     # Define a simple neural network
