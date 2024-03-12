@@ -104,62 +104,42 @@ class Process(ABC):
         emission = np.random.choice(self.vocab_len, p=p)
         return emission
 
-    def yield_emissions(
-        self, sequence_len: int, current_state_idx: Optional[int] = None
-    ) -> Iterator[int]:
+    def yield_emissions(self, sequence_len: int, current_state_idx: Optional[int] = None) -> Iterator[int]:
         if current_state_idx is None:
-            current_state_idx = np.random.choice(
-                self.num_states, p=self.steady_state_vector
-            )
-
-        assert (
-            0 <= current_state_idx < self.num_states
-        ), "current_state_index must be positive & less than vocab_len"
-
+            current_state_idx = np.random.choice(self.num_states, p=self.steady_state_vector)
+        assert 0 <= current_state_idx < self.num_states, "current_state_index must be positive & less than num_states"
         for _ in range(sequence_len):
-            emission = self._sample_emission(current_state_idx)
+            emission, next_state_idx = self._sample_emission_and_next_state(current_state_idx)
             yield emission
+            current_state_idx = next_state_idx
 
-            # make transition. given the current state and the emission, the next state is determined
-            next_state_ind = np.argmax(
-                self.transition_matrix[emission, current_state_idx, :]
-            )
-            current_state_idx = next_state_ind
+    def _sample_emission_and_next_state(self, current_state_idx: int) -> Tuple[int, int]:
+        transition_probs = self.transition_matrix[:, current_state_idx, :]
+        emission_next_state_idx = np.random.choice(transition_probs.size, p=transition_probs.ravel())
+        emission = emission_next_state_idx // self.num_states
+        next_state_idx = emission_next_state_idx % self.num_states
+        return emission, next_state_idx
 
     def yield_emission_histories(self, sequence_len: int, num_sequences: int) -> Iterator[List[int]]:
         for _ in range(num_sequences):
             yield [x for x in self.yield_emissions(sequence_len=sequence_len)]
 
-    def generate_process_history(
-        self, total_length: int, current_state_idx: Optional[int] = None
-    ) -> ProcessHistory:
-        """
-        Generate a sequence of states based on the transition matrix.
-        """
+    def generate_process_history(self, total_length: int, current_state_idx: Optional[int] = None) -> ProcessHistory:
         if current_state_idx is None:
-            current_state_idx = np.random.choice(
-                self.num_states, p=self.steady_state_vector
-            )
-
-        assert (
-            0 <= current_state_idx <= self.vocab_len
-        ), "current_state_index must be positive & less than vocab_len"
-
+            current_state_idx = np.random.choice(self.num_states, p=self.steady_state_vector)
+        assert 0 <= current_state_idx < self.num_states, "current_state_index must be positive & less than num_states"
+        
         index_to_state_names_dict = {v: k for k, v in self.state_names_dict.items()}
-
+        
         symbols = []
         states = []
+        
         for _ in range(total_length):
             states.append(index_to_state_names_dict[current_state_idx])
-
-            emission = self._sample_emission(current_state_idx)
+            emission, next_state_idx = self._sample_emission_and_next_state(current_state_idx)
             symbols.append(emission)
-
-            # make transition. given the current state and the emission, the next state is determined
-            next_state_ind = np.argmax(
-                self.transition_matrix[emission, current_state_idx, :]
-            )
-            current_state_idx = next_state_ind
+            current_state_idx = next_state_idx
+            
         return ProcessHistory(symbols=symbols, states=states)
     
     # TODO: You can get rid of the stack, and just iterate through the nodes & the depth as tuples
