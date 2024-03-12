@@ -18,6 +18,9 @@ from epsilon_transformers.process.dataset import (
     process_dataset_collate_fn,
 )
 
+# TODO: For persistence config, upon init make sure that you check that the relevant environment variables are set
+# TODO: Generalize the checkpoint_dir option so that it can work w/ S3 outputs
+
 # TODO: Make Config ABS (??)
 # TODO: Turn log input into a dataclass (??)
 # TODO: Have a no persistenc config option
