@@ -71,6 +71,7 @@ def _evaluate_log_and_persist(
     verbose: bool,
     log: Log,
     device: torch.device,
+    batch_idx: int,
 ):
     eval_dataloader = dataset_config.to_dataloader(
         sequence_length=model.cfg.n_ctx, train=False
@@ -87,7 +88,7 @@ def _evaluate_log_and_persist(
     
     log.persist()
     log.reset()
-    persistance_config.save_model(model, dataset_config.num_tokens)
+    persistance_config.save_model(model, batch_idx)
     return log
 
 
@@ -136,6 +137,7 @@ def train_model(config: TrainConfig) -> HookedTransformer:
                 log=log,
                 verbose=config.verbose,
                 device=device,
+                batch_idx=batch_idx,
             )
             log.reset()
             model.train()
@@ -148,6 +150,7 @@ def train_model(config: TrainConfig) -> HookedTransformer:
         log=log,
         verbose=config.verbose,
         device=device,
+        batch_idx=batch_idx,
     )
 
     config.logging.close()
