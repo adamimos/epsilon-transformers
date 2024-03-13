@@ -144,9 +144,6 @@ class Process(ABC):
     
     # TODO: You can get rid of the stack, and just iterate through the nodes & the depth as tuples
     def derive_mixed_state_presentation(self, depth: int) -> MixedStateTree:
-        if not self.is_unifilar:
-            raise NotImplementedError("Currently we only have msp derivations for unifilar processes")
-        
         tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, children=set(), path=[])
         nodes = set([tree_root])
 
