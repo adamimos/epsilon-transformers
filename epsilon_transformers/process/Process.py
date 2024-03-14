@@ -45,6 +45,17 @@ class Process(ABC):
         assert out.ndim == 1
         assert len(out) == self.num_states
         return out
+    
+    @property
+    def entropy_rate(self) -> float:
+        entropy_rate = 0.0
+        steady_state = self.steady_state_vector
+        for state in range(self.num_states):
+            outward_probs = self.transition_matrix[:, state, :].ravel()
+            mask = outward_probs > 0
+            local_entropy = -np.sum(outward_probs[mask] * np.log2(outward_probs[mask])) if np.any(mask) else 0
+            entropy_rate += steady_state[state] * local_entropy
+        return entropy_rate
 
     @property
     def is_unifilar(self) -> bool:
