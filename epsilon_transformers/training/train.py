@@ -126,11 +126,15 @@ def train_model(config: TrainConfig) -> HookedTransformer:
     model.train()
     for batch_idx, (input_data, target_data) in enumerate(tqdm(train_dataloader, desc="Train Loop")):
         input_data, target_data = input_data.to(device), target_data.to(device)
-        loss = model(input_data, return_type="loss")
-        log.update_metrics(train_or_test="train", loss=loss.item())
+        logits = model(input_data, return_type="logits") # [batch, pos, vocab]
+        loss = torch.nn.functional.cross_entropy(logits.view(-1, logits.size(-1)), target_data.view(-1), reduction='none') # [batch * pos]
+        loss = loss.view(-1, model.cfg.n_ctx) # [batch, pos]
+        loss_per_token = loss.mean(dim=0) # [pos]
+        total_loss = loss_per_token.mean() # [1]
+        log.update_metrics(train_or_test="train", loss=total_loss.item())
 
         optimizer.zero_grad()
-        loss.backward()
+        total_loss.backward()
         optimizer.step()
 
         tokens_trained_so_far = _calculate_tokens_trained(
