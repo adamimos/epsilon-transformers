@@ -84,7 +84,7 @@ def test_persistance():
 
     model = LinearModel()
     with tempfile.TemporaryDirectory() as temp_dir:
-        config = PersistanceConfig(location='local', checkpoint_dir=temp_dir, checkpoint_every_n_tokens=100)
+        config = PersistanceConfig(location='local', collection_location=temp_dir, checkpoint_every_n_tokens=100)
         config.save_model(model, 55)
 
         loaded_model = LinearModel()
@@ -129,7 +129,7 @@ def test_train_model_config_validator():
 
             persistance_config = PersistanceConfig(
                 location='local',
-                checkpoint_dir=temp_dir,
+                collection_location=temp_dir,
                 checkpoint_every_n_tokens=100
             )
 
@@ -170,7 +170,7 @@ def test_train_model():
 
         persistance_config = PersistanceConfig(
             location='local',
-            checkpoint_dir=temp_dir,
+            collection_location=temp_dir,
             checkpoint_every_n_tokens=100
         )
 
