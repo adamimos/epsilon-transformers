@@ -1,0 +1,3 @@
+[submodule "splinecam"]
+	path = splinecam
+	url = https://github.com/AhmedImtiazPrio/splinecam.git
