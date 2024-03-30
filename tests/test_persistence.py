@@ -11,15 +11,61 @@ from epsilon_transformers.training.configs import LoggingConfig, OptimizerConfig
 from epsilon_transformers.training.train import train_model
 
 # TODO: Get Adam to move the relevant models into the new S3 account and buckets
-# TODO: E2E training persistence example
 # TODO: Add save training config to the model persister
-
+# TODO: Add e2e training check for expected saved models
 # TODO: Refactor the tests to use SimpleNN as fixture and random init the params
 
 # TODO: Put slow tags on all s3 tests
 # TODO: Write tests for local save_model overwrite protection
 # TODO: Add a reset to the bucket state before running all the tests
 # TODO: Move test non existing bucket into it's own test
+
+def test_e2e_training():
+    bucket_name = 'lucas-testing-rrxor-s3-training'
+    s3 = boto3.client('s3')
+    s3.create_bucket(Bucket=bucket_name)
+    
+    model_config = RawModelConfig(
+            d_vocab=2,
+            d_model=100,
+            n_ctx=10,
+            d_head=48,
+            n_head=12,
+            d_mlp=12,
+            n_layers=2,
+        )
+    optimizer_config = OptimizerConfig(
+        optimizer_type='adam',
+        learning_rate=1.06e-4,
+        weight_decay=0.8
+    )
+
+    dataset_config = ProcessDatasetConfig(
+        process='rrxor',
+        batch_size=5,
+        num_tokens=500,
+        test_split=0.15
+    )
+
+    persistance_config = PersistanceConfig(
+        location='s3',
+        collection_location= 'lucas-testing-rrxor-s3-training',
+        checkpoint_every_n_tokens=100
+    )
+
+    mock_config = TrainConfig(
+        model=model_config,
+        optimizer=optimizer_config,
+        dataset=dataset_config,
+        persistance=persistance_config,
+        logging=LoggingConfig(project_name='lucas-testing-rrxor-s3-training', wandb=False),
+        verbose=True,
+        seed=1337
+    )
+    train_model(mock_config)
+
+    s3.delete_bucket(Bucket=bucket_name)
+
 
 
 def test_s3_save_model_overwrite_protection():
@@ -242,4 +288,4 @@ def test_s3_create_and_delete_bucket():
     assert bucket_name not in bucket_names, f"Bucket {bucket_name} was not deleted"
 
 if __name__ == "__main__":
-    test_save_and_load_s3_model()
+    test_e2e_training()
