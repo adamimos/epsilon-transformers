@@ -8,9 +8,9 @@ from dotenv import load_dotenv
 
 from epsilon_transformers.persistence import LocalPersister, S3Persister
 
-# TODO: Create a PIBBSS S3 account
 # TODO: Get Adam to move the relevant models into the new S3 account and buckets
 # TODO: E2E training persistence example
+# TODO: Refactor the tests to use SimpleNN as fixture and random init the params
 
 def load_local_model():
     # Define a simple neural network
@@ -36,7 +36,30 @@ def load_local_model():
     assert torch.all(torch.eq(loaded_model.state_dict()['fc.bias'], model.state_dict()['fc.bias']))
 
 def save_local_model():
-    raise NotImplementedError
+    # Define a simple neural network
+    class SimpleNN(torch.nn.Module):
+        def __init__(self):
+            super(SimpleNN, self).__init__()
+            self.fc = torch.nn.Linear(10, 1)
+
+        def forward(self, x):
+            return self.fc(x)
+
+    # Create an instance of the neural network
+    model = SimpleNN()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        persister = LocalPersister(collection_location=pathlib.Path(temp_dir))
+        num_tokens = 45
+        
+        persister.save_model(model, num_tokens)
+
+        loaded_model = SimpleNN()
+        loaded_model_dict = torch.load(pathlib.Path(temp_dir) / f"{num_tokens}.pt")
+        loaded_model.load_state_dict(loaded_model_dict)
+    assert torch.all(torch.eq(loaded_model.state_dict()['fc.weight'], model.state_dict()['fc.weight']))
+    assert torch.all(torch.eq(loaded_model.state_dict()['fc.bias'], model.state_dict()['fc.bias']))
+
 
 def save_and_load_s3_model():
     bucket_name = 'lucas-new-test-bucket-003'
@@ -178,4 +201,4 @@ def test_s3_create_and_delete_bucket():
     assert bucket_name not in bucket_names, f"Bucket {bucket_name} was not deleted"
 
 if __name__ == "__main__":
-    save_and_load_s3_model()
+    save_local_model()
