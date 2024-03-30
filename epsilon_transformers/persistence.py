@@ -7,10 +7,9 @@ import dotenv
 import torch
 from typing import TypeVar
 
-TorchModule = TypeVar("TorchModule", torch.nn.modules.Module)
-# TODO: Refactor tests
+TorchModule = TypeVar("TorchModule", bound=torch.nn.modules.Module)
+
 # TODO: Implement save_model overwrite protection
-# TODO: Use TypeVar
 
 class Persister(ABC):
     collection_location: pathlib.Path | str
