@@ -1,15 +1,19 @@
 from abc import ABC
+from doctest import UnexpectedException
 from io import BytesIO
 import os
 import pathlib
+from aiohttp import ClientError
 import boto3
 import dotenv
+from numpy import save
 import torch
 from typing import TypeVar
 
 TorchModule = TypeVar("TorchModule", bound=torch.nn.modules.Module)
 
 # TODO: Implement save_model overwrite protection
+# TODO: Make all save_model functions async
 
 class Persister(ABC):
     collection_location: pathlib.Path | str
@@ -27,7 +31,9 @@ class LocalPersister(Persister):
         self.collection_location = collection_location        
 
     def save_model(self, model: TorchModule, num_tokens_trained: int):
-        save_path = self.collection_location / f"{num_tokens_trained}.pt"
+        save_path: pathlib.Path = self.collection_location / f"{num_tokens_trained}.pt"
+        if save_path.exists():
+            raise ValueError(f"Overwrite Protection: {save_path} already exists.")
         torch.save(model.state_dict(), save_path)
 
     def load_model(self, model: TorchModule, object_name: str) -> TorchModule:
@@ -48,6 +54,13 @@ class S3Persister(Persister):
         self.collection_location = collection_location
 
     def save_model(self, model: TorchModule, num_tokens_trained: int):
+        try:
+            self.s3.head_object(Bucket=self.collection_location, Key=f'{num_tokens_trained}.pt')
+            raise ValueError(f"Overwrite Protection: {self.collection_location}/{num_tokens_trained}.pt already exists")
+        except ClientError as e:
+            if e.response['Error']['Code'] != '404':
+                raise ValueError(f"Expected 404 from empty object, received {e}")
+
         buffer = BytesIO()
         torch.save(model.state_dict(), buffer)
         buffer.seek(0)
