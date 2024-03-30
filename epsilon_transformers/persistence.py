@@ -1,19 +1,18 @@
 from abc import ABC
-from doctest import UnexpectedException
 from io import BytesIO
 import os
 import pathlib
-from aiohttp import ClientError
+from botocore.exceptions import ClientError
 import boto3
 import dotenv
-from numpy import save
 import torch
 from typing import TypeVar
 
 TorchModule = TypeVar("TorchModule", bound=torch.nn.modules.Module)
 
-# TODO: Implement save_model overwrite protection
 # TODO: Make all save_model functions async
+# TODO: Create save config & implement it in the training loop
+# TODO: Create query commit hash and add it to the save_config method
 
 class Persister(ABC):
     collection_location: pathlib.Path | str
@@ -34,6 +33,8 @@ class LocalPersister(Persister):
         save_path: pathlib.Path = self.collection_location / f"{num_tokens_trained}.pt"
         if save_path.exists():
             raise ValueError(f"Overwrite Protection: {save_path} already exists.")
+        
+        print(f"Saving model to {save_path}")
         torch.save(model.state_dict(), save_path)
 
     def load_model(self, model: TorchModule, object_name: str) -> TorchModule:
@@ -54,17 +55,22 @@ class S3Persister(Persister):
         self.collection_location = collection_location
 
     def save_model(self, model: TorchModule, num_tokens_trained: int):
+        object_name = f'{num_tokens_trained}.pt'
         try:
-            self.s3.head_object(Bucket=self.collection_location, Key=f'{num_tokens_trained}.pt')
-            raise ValueError(f"Overwrite Protection: {self.collection_location}/{num_tokens_trained}.pt already exists")
+            self.s3.head_object(Bucket=self.collection_location, Key=object_name)
+            raise ValueError(f"Overwrite Protection: {self.collection_location}/{object_name} already exists")
         except ClientError as e:
-            if e.response['Error']['Code'] != '404':
+            if e.response['Error']['Code'] == '404':
+                pass
+            else:
                 raise ValueError(f"Expected 404 from empty object, received {e}")
-
+        
+        print(f"Saving model as {object_name} in bucket {self.collection_location}")
+        
         buffer = BytesIO()
         torch.save(model.state_dict(), buffer)
         buffer.seek(0)
-        self.s3.upload_fileobj(buffer, self.collection_location, f'{num_tokens_trained}.pt')
+        self.s3.upload_fileobj(buffer, self.collection_location, object_name)
 
     def load_model(self, model_class: TorchModule, object_name: str) -> TorchModule:
         download_buffer = BytesIO()

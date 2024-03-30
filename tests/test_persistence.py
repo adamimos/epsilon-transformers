@@ -7,13 +7,20 @@ from io import BytesIO
 from dotenv import load_dotenv
 
 from epsilon_transformers.persistence import LocalPersister, S3Persister
+from epsilon_transformers.training.configs import LoggingConfig, OptimizerConfig, PersistanceConfig, ProcessDatasetConfig, RawModelConfig, TrainConfig
+from epsilon_transformers.training.train import train_model
 
 # TODO: Get Adam to move the relevant models into the new S3 account and buckets
 # TODO: E2E training persistence example
+# TODO: Add save training config to the model persister
+
 # TODO: Refactor the tests to use SimpleNN as fixture and random init the params
 
 # TODO: Put slow tags on all s3 tests
 # TODO: Write tests for local save_model overwrite protection
+# TODO: Add a reset to the bucket state before running all the tests
+# TODO: Move test non existing bucket into it's own test
+
 
 def test_s3_save_model_overwrite_protection():
     # Define a simple neural network
@@ -94,7 +101,7 @@ def save_local_model():
     assert torch.all(torch.eq(loaded_model.state_dict()['fc.bias'], model.state_dict()['fc.bias']))
 
 
-def save_and_load_s3_model():
+def test_save_and_load_s3_model():
     bucket_name = 'lucas-new-test-bucket-003'
     with pytest.raises(ValueError):
         S3Persister(collection_location=bucket_name)
@@ -121,7 +128,7 @@ def save_and_load_s3_model():
     persister.save_model(model, 85)
 
     download_buffer = BytesIO()
-    s3.download_fileobj(bucket_name, 'model.pt', download_buffer, 85)
+    s3.download_fileobj(bucket_name, '85.pt', download_buffer)
 
     # Load the downloaded network
     downloaded_model = SimpleNN()
@@ -137,7 +144,8 @@ def save_and_load_s3_model():
         persister.save_model(model, 85)
 
     # Test load
-    loaded_model = persister.load_model(SimpleNN(), "85.pt")
+    loaded_model = SimpleNN()
+    persister.load_model(loaded_model, "85.pt")
     assert torch.all(torch.eq(model.state_dict()['fc.weight'], loaded_model.state_dict()['fc.weight']))
     assert torch.all(torch.eq(model.state_dict()['fc.bias'], loaded_model.state_dict()['fc.bias']))
 
@@ -234,4 +242,4 @@ def test_s3_create_and_delete_bucket():
     assert bucket_name not in bucket_names, f"Bucket {bucket_name} was not deleted"
 
 if __name__ == "__main__":
-    test_s3_save_model_overwrite_protection()
+    test_save_and_load_s3_model()
