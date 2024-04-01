@@ -7,6 +7,10 @@ import boto3
 import dotenv
 import torch
 from typing import TypeVar
+import git
+
+from epsilon_transformers.training.configs import Config
+
 
 TorchModule = TypeVar("TorchModule", bound=torch.nn.modules.Module)
 
@@ -16,6 +20,16 @@ TorchModule = TypeVar("TorchModule", bound=torch.nn.modules.Module)
 
 class Persister(ABC):
     collection_location: pathlib.Path | str
+    repo_commit_hash: str
+    repo_url: str
+
+    def __init__(self):
+        repo = git.Repo(search_parent_directories=True)
+        self.repo_url = repo.remotes.origin.url
+        self.repo_commit_hash = repo.head.object.hexsha
+
+    def save_config(self, config: Config):
+        ...
 
     def save_model(self, model: TorchModule, num_tokens_trained: int):
         ...
@@ -25,6 +39,7 @@ class Persister(ABC):
 
 class LocalPersister(Persister):
     def __init__(self, collection_location: pathlib.Path):
+        super().__init__()
         assert collection_location.is_dir()
         assert collection_location.exists()
         self.collection_location = collection_location        
@@ -44,6 +59,8 @@ class LocalPersister(Persister):
 
 class S3Persister(Persister):
     def __init__(self, collection_location: str):
+        super().__init__()
+        
         dotenv.load_dotenv()
         assert os.environ.get('AWS_ACCESS_KEY_ID') is not None
         assert os.environ.get('AWS_SECRET_ACCESS_KEY') is not None
