@@ -17,6 +17,7 @@ TorchModule = TypeVar("TorchModule", bound=torch.nn.modules.Module)
 # TODO: Make all save_model functions async
 # TODO: Create save config & implement it in the training loop
 # TODO: Create query commit hash and add it to the save_config method
+# TODO: Add create bucket functioality
 
 class Persister(ABC):
     collection_location: pathlib.Path | str
