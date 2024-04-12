@@ -10,3 +10,4 @@ poetry.lock
 **.env
 wandb/
 .DS_Store
+*.pt
