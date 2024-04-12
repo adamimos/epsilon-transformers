@@ -1,3 +1,4 @@
+from io import BytesIO
 from typing import Literal
 from pydantic import BaseModel, model_validator
 import pathlib
@@ -13,11 +14,15 @@ import math
 from dataclasses import dataclass, asdict
 import datetime
 
+from epsilon_transformers.persistence import LocalPersister, Persister, S3Persister
 from epsilon_transformers.process.processes import PROCESS_REGISTRY
 from epsilon_transformers.process.dataset import (
     ProcessDataset,
     process_dataset_collate_fn,
 )
+
+# TODO: For persistence config, upon init make sure that you check that the relevant environment variables are set
+# TODO: Generalize the checkpoint_dir option so that it can work w/ S3 outputs
 
 # TODO: Make Config ABS (??)
 # TODO: Turn log input into a dataclass (??)
@@ -100,20 +105,18 @@ class OptimizerConfig(Config):
 
 
 class PersistanceConfig(Config):
-    location: Literal["local", "gdrive"]
-    checkpoint_dir: pathlib.Path
+    location: Literal["local", "s3"]
+    collection_location: pathlib.Path | str
     checkpoint_every_n_tokens: int
 
-    def save_model(self, model: torch.nn.Module, tokens_trained: int):
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    def init(self) -> Persister:
         if self.location == "local":
-            save_path = self.checkpoint_dir / f"{tokens_trained}_{timestamp}.pt"
-            torch.save(model.state_dict(), save_path)
-        elif self.location == "gdrive":
-            raise NotImplementedError
+            return LocalPersister(collection_location=self.collection_location)
+        elif self.location == "s3":
+            return S3Persister(collection_location=self.collection_location)
         else:
             raise ValueError(
-                f"{self.location} is an invalid location value. It must be either 'local' or 'gdrive'"
+                f"{self.location} is an invalid location value. It must be either 'local' or 's3'"
             )
 
 
