@@ -10,8 +10,6 @@ from epsilon_transformers.persistence import LocalPersister, S3Persister
 from epsilon_transformers.training.configs import LoggingConfig, OptimizerConfig, PersistanceConfig, ProcessDatasetConfig, RawModelConfig, TrainConfig
 from epsilon_transformers.training.train import train_model
 
-# TODO: Get Adam to move the relevant models into the new S3 account and buckets
-# TODO: Add save training config to the model persister
 # TODO: Add e2e training check for expected saved models
 # TODO: Refactor the tests to use SimpleNN as fixture and random init the params
 
