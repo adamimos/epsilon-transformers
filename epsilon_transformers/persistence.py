@@ -22,6 +22,9 @@ class Persister(ABC):
 
     def load_model(self, model_class: TorchModule, object_name: str) -> TorchModule:
         ...
+    
+    def _save_overwrite_protection(self, object_name: pathlib.Path | str):
+        ...
 
 class LocalPersister(Persister):
     def __init__(self, collection_location: pathlib.Path):
@@ -29,11 +32,14 @@ class LocalPersister(Persister):
         assert collection_location.exists()
         self.collection_location = collection_location        
 
+    def _save_overwrite_protection(self, object_name: pathlib.Path):
+        if object_name.exists():
+            raise ValueError(f"Overwrite Protection: {object_name} already exists.")
+
     def save_model(self, model: TorchModule, num_tokens_trained: int):
         save_path: pathlib.Path = self.collection_location / f"{num_tokens_trained}.pt"
-        if save_path.exists():
-            raise ValueError(f"Overwrite Protection: {save_path} already exists.")
-        
+        self._save_overwrite_protection(object_name=save_path)
+
         print(f"Saving model to {save_path}")
         torch.save(model.state_dict(), save_path)
 
@@ -54,8 +60,7 @@ class S3Persister(Persister):
             raise ValueError(f"{collection_location} is not an existing bucket. Either use one of the existing buckets or create a new bucket")
         self.collection_location = collection_location
 
-    def save_model(self, model: TorchModule, num_tokens_trained: int):
-        object_name = f'{num_tokens_trained}.pt'
+    def _save_overwrite_protection(self, object_name: str):
         try:
             self.s3.head_object(Bucket=self.collection_location, Key=object_name)
             raise ValueError(f"Overwrite Protection: {self.collection_location}/{object_name} already exists")
@@ -64,6 +69,10 @@ class S3Persister(Persister):
                 pass
             else:
                 raise ValueError(f"Expected 404 from empty object, received {e}")
+
+    def save_model(self, model: TorchModule, num_tokens_trained: int):
+        object_name = f'{num_tokens_trained}.pt'
+        self._save_overwrite_protection(object_name=object_name)
         
         print(f"Saving model as {object_name} in bucket {self.collection_location}")
         
