@@ -1,6 +1,6 @@
 from multiprocessing.util import sub_debug
 from jaxtyping import Float
-from typing import List, Set
+from typing import List, Set, Tuple
 import numpy as np
 
 # TODO: Move the derive MSP function to be in the MSP init
@@ -28,6 +28,15 @@ class MixedStateTree:
 	@property
 	def belief_states(self) -> Set[Float[np.ndarray, "num_states"]]:
 		return [x.state_prob_vector for x in self.nodes]
+	
+
+	@property
+	def paths(self) -> List[List[int]]:
+		return [x.path for x in self.nodes]
+	
+	@property
+	def paths_and_belief_states(self) -> List[Tuple[List[int], Float[np.ndarray, "n_states"]]]:
+		return [(x.path, x.state_prob_vector) for x in self.nodes]
 	
 	def __init__(self, root_node: MixedStateTreeNode, process: str, nodes: Set[MixedStateTreeNode], depth: int):
 		self.root_node = root_node
