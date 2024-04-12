@@ -8,8 +8,9 @@ import dotenv
 import torch
 from typing import TypeVar
 import git
+import json
 
-from epsilon_transformers.training.configs import Config
+# from epsilon_transformers.training.configs import Config
 
 
 TorchModule = TypeVar("TorchModule", bound=torch.nn.modules.Module)
@@ -29,8 +30,8 @@ class Persister(ABC):
         self.repo_url = repo.remotes.origin.url
         self.repo_commit_hash = repo.head.object.hexsha
 
-    def save_config(self, config: Config):
-        ...
+    # def save_config(self, config: Config):
+        # ...
 
     def save_model(self, model: TorchModule, num_tokens_trained: int):
         ...
@@ -90,8 +91,41 @@ class S3Persister(Persister):
         buffer.seek(0)
         self.s3.upload_fileobj(buffer, self.collection_location, object_name)
 
+    def check_if_file_exists(self, object_name: str) -> bool:
+        """
+        Check if a file with the given name exists in the bucket.
+        object_name: str
+        """
+        try:
+            self.s3.head_object(Bucket=self.collection_location, Key=object_name)
+            return True
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                return False
+            else:
+                raise ValueError(f"Expected 404 from empty object, received {e}")
+
+    def save_train_config(self, config: dict):
+        object_name = f'train_config.json'
+        try:
+            self.s3.head_object(Bucket=self.collection_location, Key=object_name)
+            raise ValueError(f"Overwrite Protection: {self.collection_location}/{object_name} already exists")
+        except ClientError as e:
+            print(f"Saving train config to {self.collection_location}/{object_name}")
+            self.s3.put_object(Bucket=self.collection_location, Key=object_name, Body=json.dumps(config))
+
+    def save_log_df(self, log_csv_file: str):
+        object_name = f'{log_csv_file}'
+        try:
+            self.s3.head_object(Bucket=self.collection_location, Key=object_name)
+            raise ValueError(f"Overwrite Protection: {self.collection_location}/{object_name} already exists")
+        except ClientError as e:
+            print(f"Saving log to {self.collection_location}/{object_name}")
+            self.s3.upload_file(log_csv_file, self.collection_location, object_name)
+
     def load_model(self, model_class: TorchModule, object_name: str) -> TorchModule:
         download_buffer = BytesIO()
         self.s3.download_fileobj(self.collection_location, object_name, download_buffer)
         download_buffer.seek(0)
         return model_class.load_state_dict(torch.load(download_buffer))
+    
