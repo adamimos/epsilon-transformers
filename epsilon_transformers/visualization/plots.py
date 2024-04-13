@@ -64,8 +64,8 @@ def plot_ground_truth_and_evaluated_2d_simplex(
     ground_truth_aggregated = {color: canvas.points(ground_truth_data_frame, 'x', 'y', ds.mean(color)) for color in colours}
     predited_belief_vector_aggregated = {color: canvas.points(predicted_belief_vector_data_frame, 'x', 'y', ds.mean(color)) for color in colours}
 
-    img_gt = _combine_channels_to_rgb(ground_truth_aggregated['r'], ground_truth_aggregated['g'], ground_truth_aggregated['b'], background_color=facecolor, px=px)
-    img_pb = _combine_channels_to_rgb(predited_belief_vector_aggregated['r'], predited_belief_vector_aggregated['g'], predited_belief_vector_aggregated['b'], background_color=facecolor, px=px)
+    img_gt = _combine_channels_to_rgb(ground_truth_aggregated['r'], ground_truth_aggregated['g'], ground_truth_aggregated['b'], px=px)
+    img_pb = _combine_channels_to_rgb(predited_belief_vector_aggregated['r'], predited_belief_vector_aggregated['g'], predited_belief_vector_aggregated['b'], px=px)
 
     # Visualization with Matplotlib
     fig, axs = plt.subplots(1, 2, figsize=(10, 5), sharex=True, sharey=True, facecolor=facecolor)
