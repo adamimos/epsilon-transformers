@@ -12,7 +12,6 @@ import os
 import dotenv
 import math
 from dataclasses import dataclass, asdict
-import datetime
 
 from epsilon_transformers.persistence import LocalPersister, Persister, S3Persister
 from epsilon_transformers.process.processes import PROCESS_REGISTRY
@@ -20,6 +19,9 @@ from epsilon_transformers.process.dataset import (
     ProcessDataset,
     process_dataset_collate_fn,
 )
+from epsilon_transformers.training.configs.base_config import Config
+from epsilon_transformers.training.configs.model_configs import RawModelConfig
+
 
 # TODO: For persistence config, upon init make sure that you check that the relevant environment variables are set
 # TODO: Generalize the checkpoint_dir option so that it can work w/ S3 outputs
@@ -44,41 +46,6 @@ from epsilon_transformers.process.dataset import (
 # TODO: Add a WandbLoggingConfig
 # TODO: Add a sweep config
 # TODO: Add epoch training
-
-
-class Config(BaseModel, extra="forbid"):
-    @classmethod
-    def from_yaml(cls, config_path: pathlib.Path) -> "Config":
-        with open(config_path, "r") as file:
-            config_data = yaml.safe_load(file)
-        return cls(**config_data)
-
-
-class RawModelConfig(Config):
-    d_vocab: int
-    d_model: int
-    n_ctx: int
-    d_head: int
-    n_head: int
-    d_mlp: int
-    n_layers: int
-
-    def to_hooked_transformer(
-        self, seed: int, device: torch.device
-    ) -> HookedTransformer:
-        config = HookedTransformerConfig(
-            d_model=self.d_model,
-            d_head=self.d_head,
-            n_layers=self.n_layers,
-            n_ctx=self.n_ctx,
-            n_heads=self.n_head,
-            d_mlp=self.d_mlp,
-            d_vocab=self.d_vocab,
-            seed=seed,
-            device=device,
-            act_fn="relu",
-        )
-        return HookedTransformer(config)
 
 
 Optimizer = Union[torch.optim.Adam, torch.optim.SGD]

@@ -5,7 +5,7 @@ import torch
 from epsilon_transformers.analysis.activation_analysis import find_msp_subspace_in_residual_stream, generate_belief_state_and_activations
 
 from epsilon_transformers.process.processes import ZeroOneR
-from epsilon_transformers.training.configs import RawModelConfig
+from epsilon_transformers.training.configs.model_configs import RawModelConfig
 
 def test_msp_path_to_beliefs():
     process = ZeroOneR()

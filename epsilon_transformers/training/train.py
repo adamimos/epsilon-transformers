@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from transformer_lens import HookedTransformer
 
 from epsilon_transformers.persistence import Persister
-from epsilon_transformers.training.configs import (
+from epsilon_transformers.training.configs.training_configs import (
     TrainConfig,
     ProcessDatasetConfig,
     Log,
