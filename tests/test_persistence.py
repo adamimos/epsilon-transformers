@@ -7,7 +7,8 @@ from io import BytesIO
 from dotenv import load_dotenv
 
 from epsilon_transformers.persistence import LocalPersister, S3Persister
-from epsilon_transformers.training.configs import LoggingConfig, OptimizerConfig, PersistanceConfig, ProcessDatasetConfig, RawModelConfig, TrainConfig
+from epsilon_transformers.training.configs.training_configs import LoggingConfig, OptimizerConfig, PersistanceConfig, ProcessDatasetConfig, TrainConfig
+from epsilon_transformers.training.configs.model_configs import RawModelConfig
 from epsilon_transformers.training.train import train_model
 
 # TODO: Add e2e training check for expected saved models

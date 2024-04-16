@@ -6,7 +6,8 @@ from transformer_lens import HookedTransformer
 import tempfile
 
 from epsilon_transformers.process.dataset import ProcessDataset, process_dataset_collate_fn
-from epsilon_transformers.training.configs import TrainConfig, RawModelConfig, OptimizerConfig, ProcessDatasetConfig, PersistanceConfig, LoggingConfig
+from epsilon_transformers.training.configs.training_configs import TrainConfig, OptimizerConfig, ProcessDatasetConfig, PersistanceConfig, LoggingConfig
+from epsilon_transformers.training.configs.model_configs import RawModelConfig
 from epsilon_transformers.training.train import train_model, _check_if_action_batch, _set_random_seed
 
 # TODO: Paramaterize test_configs_throw_error_on_extra

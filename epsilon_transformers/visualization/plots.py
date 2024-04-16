@@ -11,7 +11,7 @@ from jaxtyping import Float
 from epsilon_transformers.analysis.activation_analysis import find_msp_subspace_in_residual_stream
 
 from epsilon_transformers.process.processes import ZeroOneR
-from epsilon_transformers.training.configs import RawModelConfig
+from epsilon_transformers.training.configs.model_configs import RawModelConfig
 
 # TODO: Modularize generate_belief_state_figures_datashader && parallalize slow tensor code
 
