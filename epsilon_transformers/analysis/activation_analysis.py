@@ -8,7 +8,7 @@ import torch
 from epsilon_transformers.process.MixedStatePresentation import MixedStateTree
 from epsilon_transformers.process.Process import Process
 from epsilon_transformers.process.processes import ZeroOneR
-from epsilon_transformers.training.configs import ProcessDatasetConfig
+from epsilon_transformers.training.configs.training_configs import ProcessDatasetConfig
 
 # TODO: Make dataclass for ground_truth & predicted_belief states
 # TODO: Abstract persister & make persister for the dataclass
