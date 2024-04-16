@@ -10,6 +10,8 @@ from epsilon_transformers.process.Process import Process
 from epsilon_transformers.process.processes import ZeroOneR
 from epsilon_transformers.training.configs.training_configs import ProcessDatasetConfig
 
+# TODO: TQDM find_msp_subpace_in_residual_stream
+# TODO: (??) _generate_belief_state_and_activation() (??)
 # TODO: Make dataclass for ground_truth & predicted_belief states
 # TODO: Abstract persister & make persister for the dataclass
 
