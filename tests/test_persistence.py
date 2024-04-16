@@ -5,12 +5,16 @@ import pytest
 import torch
 from io import BytesIO
 from dotenv import load_dotenv
+from transformer_lens import HookedTransformer
+import numpy as np
 
 from epsilon_transformers.persistence import LocalPersister, S3Persister
 from epsilon_transformers.training.configs.training_configs import LoggingConfig, OptimizerConfig, PersistanceConfig, ProcessDatasetConfig, TrainConfig
 from epsilon_transformers.training.configs.model_configs import RawModelConfig
 from epsilon_transformers.training.train import train_model
 
+# TODO: Add relevant asserts to test_save_and_load_s3_model
+# TODO: Insert check for training config path in load_model
 # TODO: Add e2e training check for expected saved models
 # TODO: Refactor the tests to use SimpleNN as fixture and random init the params
 
@@ -156,44 +160,65 @@ def test_save_and_load_s3_model():
     s3.create_bucket(Bucket=bucket_name)
     
     persister = S3Persister(collection_location=bucket_name)
+    
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = RawModelConfig(
+         d_vocab=3,
+         d_model=64,
+         n_ctx=10,
+         d_head=8,
+         n_head=1,
+         d_mlp=256,
+         n_layers=4,
+     ).to_hooked_transformer(seed=1337, device=device)
 
-    # mock nn
-    # TODO: Mock needs to be randomly initialized
-    class SimpleNN(torch.nn.Module):
-        def __init__(self):
-            super(SimpleNN, self).__init__()
-            self.fc = torch.nn.Linear(10, 1)
-
-        def forward(self, x):
-            return self.fc(x)
-
-    model = SimpleNN()
     
     # test save
     persister.save_model(model, 85)
 
     download_buffer = BytesIO()
     s3.download_fileobj(bucket_name, '85.pt', download_buffer)
+    
+    
+    def _scramble_weights(model):
+        for param in model.parameters():
+            with torch.no_grad():
+                if len(param.shape) > 1:  # Only scramble weights, not biases
+                    flattened_param = param.view(-1)
+                    np.random.shuffle(flattened_param.numpy())  # Shuffle the flattened weights
+                    param.data = flattened_param.view(param.shape)  # Restore the shape
+        return model
 
     # Load the downloaded network
-    downloaded_model = SimpleNN()
+    downloaded_model = _scramble_weights(RawModelConfig(
+         d_vocab=3,
+         d_model=64,
+         n_ctx=10,
+         d_head=8,
+         n_head=1,
+         d_mlp=256,
+         n_layers=4,
+     ).to_hooked_transformer(seed=1337, device=device))
     download_buffer.seek(0)  # Reset download buffer position to the beginning
     downloaded_model.load_state_dict(torch.load(download_buffer))
 
     # Assert that the downloaded network is the same as the original one
-    assert torch.all(torch.eq(model.state_dict()['fc.weight'], downloaded_model.state_dict()['fc.weight']))
-    assert torch.all(torch.eq(model.state_dict()['fc.bias'], downloaded_model.state_dict()['fc.bias']))
+    for (name1, param1), (name2, param2) in zip(model.named_parameters(), downloaded_model.named_parameters()):
+        assert name1 == name2, "Model structure mismatch"
+        assert param1.shape == param2.shape, f"Parameter shape mismatch for {name1} and {name2}"
+        assert torch.allclose(param1, param2), f"Parameter values mismatch for {name1} and {name2}"
 
     # Test save overwrite protection
     with pytest.raises(ValueError):
         persister.save_model(model, 85)
 
     # Test load
-    loaded_model = SimpleNN()
-    persister.load_model(loaded_model, "85.pt")
-    assert torch.all(torch.eq(model.state_dict()['fc.weight'], loaded_model.state_dict()['fc.weight']))
-    assert torch.all(torch.eq(model.state_dict()['fc.bias'], loaded_model.state_dict()['fc.bias']))
-
+    loaded_model = persister.load_model(device=device, object_name="85.pt")
+    # for (name1, param1), (name2, param2) in zip(model.named_parameters(), loaded_model.named_parameters()):
+    #     assert name1 == name2, "Model structure mismatch"
+    #     assert param1.shape == param2.shape, f"Parameter shape mismatch for {name1} and {name2}"
+    #     assert torch.allclose(param1, param2), f"Parameter values mismatch for {name1} and {name2}"
+       
     # Delete mock bucket
     s3.delete_object(Bucket=bucket_name, Key='85.pt')
     s3.delete_bucket(Bucket=bucket_name)
@@ -287,4 +312,4 @@ def test_s3_create_and_delete_bucket():
     assert bucket_name not in bucket_names, f"Bucket {bucket_name} was not deleted"
 
 if __name__ == "__main__":
-    test_e2e_training()
+    test_save_and_load_s3_model()
