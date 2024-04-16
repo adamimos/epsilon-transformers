@@ -102,14 +102,16 @@ class S3Persister(Persister):
         state_dict = torch.load(download_buffer)
         # TODO: Check if there is a training config in the bucket, if not infer from state_dict
         config = _state_dict_to_model_config(state_dict=state_dict)
-        return config.to_hooked_transformer(device=device)
+        model = config.to_hooked_transformer(device=device)
+        model.load_state_dict(state_dict=state_dict)
+        return model
 
 def _state_dict_to_model_config(state_dict: OrderedDict, n_ctx: int = 10) -> RawModelConfig:
     _HOOKED_TRANSFORMER_MODULE_REGEXES_REGISTRY: Dict[str, List[Tuple[str, int]]] = {
         r"embed\.W_E": [('d_vocab', 0), ('d_model', 1)],
         r"pos_embed\.W_pos": [],
         r"blocks\.\d+\.ln\d+\.(w|b)": [],
-        r"blocks\.\d+\.attn\.W_Q": [('n_head', 0), ('d_head', 1)],
+        r"blocks\.\d+\.attn\.W_Q": [('n_head', 0), ('d_head', 2)],
         r"blocks\.\d+\.attn\.b_Q": [],
         r"blocks\.\d+\.attn\.W_K": [],
         r"blocks\.\d+\.attn\.b_K": [],
