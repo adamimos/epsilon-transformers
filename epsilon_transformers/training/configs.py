@@ -64,7 +64,7 @@ class RawModelConfig(Config):
     n_layers: int
 
     def to_hooked_transformer(
-        self, seed: int, device: torch.device
+        self, device: torch.device, seed: Optional[int] = None
     ) -> HookedTransformer:
         config = HookedTransformerConfig(
             d_model=self.d_model,
