@@ -1,4 +1,4 @@
-from typing import Iterator, List, Tuple
+from typing import Dict, Iterator, List, Literal, Tuple
 from sklearn.linear_model import LinearRegression
 from transformer_lens import HookedTransformer
 from jaxtyping import Float
@@ -59,9 +59,15 @@ def find_msp_subspace_in_residual_stream(model: HookedTransformer, process: Proc
     
     return ground_truth_belief_states_reshaped, predicted_beliefs
 
-if __name__ == "__main__":
-    model = HookedTransformer.from_pretrained('pythia-160m')
-    process = ZeroOneR()
-    num_samples = 12
+ModuleNames = Literal['mlp']
+def retrieve_splinecode(model: HookedTransformer, history: List[int], module_list: List[ModuleNames]=['mlp']) -> Dict[int, Dict[str, List[int]]]:
+    raise NotImplementedError
 
-    find_msp_subspace_in_residual_stream(model = model, process=process, num_sequences=num_samples)
+if __name__ == "__main__":
+    from epsilon_transformers.persistence import S3Persister
+    from transformer_lens import HookedTransformer
+
+    persister = S3Persister(collection_location="mess3-param-change")
+    model: HookedTransformer = persister.load_model(device='cpu', object_name='4800000.pt')
+
+    retrieve_splinecode
