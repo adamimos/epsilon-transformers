@@ -7,10 +7,10 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from transformer_lens import HookedTransformer
 
-from epsilon_transformers.persistence import Persister
-from epsilon_transformers.training.configs.training_configs import (
+from epsilon_transformers.training.configs import (
     TrainConfig,
     ProcessDatasetConfig,
+    PersistanceConfig,
     Log,
 )
 
@@ -76,7 +76,7 @@ def _evaluate_model(
 
 def _evaluate_log_and_persist(
     dataset_config: ProcessDatasetConfig,
-    persister: Persister,
+    persistance_config: PersistanceConfig,
     model: HookedTransformer,
     verbose: bool,
     log: Log,
@@ -98,8 +98,14 @@ def _evaluate_log_and_persist(
     
     log.persist()
     log.reset()
-    persister.save_model(model, tokens_trained)
+    persistance_config.save_model(model, tokens_trained)
     return log
+
+
+def _main(config_path: pathlib.Path):
+    config: TrainConfig = TrainConfig.from_yaml(config_path)
+    train_model(config)
+
 
 def train_model(config: TrainConfig) -> HookedTransformer:
     device = torch.device(
@@ -115,8 +121,7 @@ def train_model(config: TrainConfig) -> HookedTransformer:
     train_dataloader = config.dataset.to_dataloader(
         sequence_length=model.cfg.n_ctx, train=True
     )
-    
-    persister = config.persistance.init()
+
     log = config.init_logger()
     model.train()
     for batch_idx, (input_data, target_data) in enumerate(tqdm(train_dataloader, desc="Train Loop")):
@@ -143,7 +148,7 @@ def train_model(config: TrainConfig) -> HookedTransformer:
             model.eval()
             _evaluate_log_and_persist(
                 dataset_config=config.dataset,
-                persister=persister,
+                persistance_config=config.persistance,
                 model=model,
                 log=log,
                 verbose=config.verbose,
@@ -156,7 +161,7 @@ def train_model(config: TrainConfig) -> HookedTransformer:
     model.eval()
     _evaluate_log_and_persist(
         dataset_config=config.dataset,
-        persister=persister,
+        persistance_config=config.persistance,
         model=model,
         log=log,
         verbose=config.verbose,
@@ -167,10 +172,6 @@ def train_model(config: TrainConfig) -> HookedTransformer:
     config.logging.close()
     return model, log
 
-
-def _main(config_path: pathlib.Path):
-    config: TrainConfig = TrainConfig.from_yaml(config_path)
-    train_model(config)
 
 if __name__ == "__main__":
     fire.Fire(_main)
