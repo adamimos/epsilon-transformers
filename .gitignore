@@ -10,3 +10,6 @@ poetry.lock
 **.env
 wandb/
 .DS_Store
+*.pt
+**/*.pt
+./examples/downloaded_artifacts
