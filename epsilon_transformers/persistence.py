@@ -105,6 +105,26 @@ class S3Persister(Persister):
         model = config.to_hooked_transformer(device=device)
         model.load_state_dict(state_dict=state_dict)
         return model
+    
+    def list_objects(self) -> List[str]:
+        objects = []
+        continuation_token = None
+
+        while True:
+            kwargs = {'Bucket': self.collection_location}
+            if continuation_token:
+                kwargs['ContinuationToken'] = continuation_token
+
+            response = self.s3.list_objects_v2(**kwargs)
+            contents = response.get('Contents', [])
+            objects.extend([obj['Key'] for obj in contents])
+
+            if 'NextContinuationToken' in response:
+                continuation_token = response['NextContinuationToken']
+            else:
+                break
+
+        return objects
 
 def _state_dict_to_model_config(state_dict: OrderedDict, n_ctx: int = 10) -> RawModelConfig:
     _HOOKED_TRANSFORMER_MODULE_REGEXES_REGISTRY: Dict[str, List[Tuple[str, int]]] = {
