@@ -30,4 +30,5 @@ dependencies = [
     "wandb",
     "python-dotenv",
     "tqdm",
+    "boto3"
 ]
