@@ -6,8 +6,7 @@ from transformer_lens import HookedTransformer
 import tempfile
 
 from epsilon_transformers.process.dataset import ProcessDataset, process_dataset_collate_fn
-from epsilon_transformers.training.configs.training_configs import TrainConfig, OptimizerConfig, ProcessDatasetConfig, PersistanceConfig, LoggingConfig
-from epsilon_transformers.training.configs.model_configs import RawModelConfig
+from epsilon_transformers.training.configs import TrainConfig, RawModelConfig, OptimizerConfig, ProcessDatasetConfig, PersistanceConfig, LoggingConfig
 from epsilon_transformers.training.train import train_model, _check_if_action_batch, _set_random_seed
 
 # TODO: Paramaterize test_configs_throw_error_on_extra
@@ -85,7 +84,7 @@ def test_persistance():
 
     model = LinearModel()
     with tempfile.TemporaryDirectory() as temp_dir:
-        config = PersistanceConfig(location='local', collection_location=temp_dir, checkpoint_every_n_tokens=100)
+        config = PersistanceConfig(location='local', checkpoint_dir=temp_dir, checkpoint_every_n_tokens=100)
         config.save_model(model, 55)
 
         loaded_model = LinearModel()
@@ -130,7 +129,7 @@ def test_train_model_config_validator():
 
             persistance_config = PersistanceConfig(
                 location='local',
-                collection_location=temp_dir,
+                checkpoint_dir=temp_dir,
                 checkpoint_every_n_tokens=100
             )
 
@@ -171,7 +170,7 @@ def test_train_model():
 
         persistance_config = PersistanceConfig(
             location='local',
-            collection_location=temp_dir,
+            checkpoint_dir=temp_dir,
             checkpoint_every_n_tokens=100
         )
 
