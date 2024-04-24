@@ -144,7 +144,7 @@ class Process(ABC):
     
     # TODO: You can get rid of the stack, and just iterate through the nodes & the depth as tuples
     def derive_mixed_state_presentation(self, depth: int) -> MixedStateTree:
-        tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, children=set(), path=[])
+        tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, children=set(), path=[], path_probability=1.0)
         nodes = set([tree_root])
 
         stack = deque([(tree_root, self.steady_state_vector, [], 0)])
@@ -156,7 +156,8 @@ class Process(ABC):
                     if emission_probs[emission] > 0:
                         next_state_prob_vector = _compute_next_distribution(self.transition_matrix, state_prob_vector, emission)
                         child_path = current_path + [emission]
-                        child_node = MixedStateTreeNode(state_prob_vector=next_state_prob_vector, path=child_path, children=set())
+                        path_probability = current_node.path_probability * emission_probs[emission]
+                        child_node = MixedStateTreeNode(state_prob_vector=next_state_prob_vector, path=child_path, children=set(), path_probability=path_probability)
                         current_node.add_child(child_node)
 
                         stack.append((child_node, next_state_prob_vector, child_path, current_depth + 1))
