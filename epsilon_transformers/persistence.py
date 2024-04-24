@@ -9,6 +9,7 @@ import dotenv
 import torch
 from typing import Dict, List, OrderedDict, Tuple, TypeVar
 import json
+import pandas as pd
 
 from epsilon_transformers.training.configs.model_configs import RawModelConfig
 
@@ -95,6 +96,12 @@ class S3Persister(Persister):
         torch.save(model.state_dict(), buffer)
         buffer.seek(0)
         self.s3.upload_fileobj(buffer, self.collection_location, object_name)
+
+    def load_csv(self, object_name: str) -> str:
+        download_buffer = BytesIO()
+        self.s3.download_fileobj(self.collection_location, object_name, download_buffer)
+        download_buffer.seek(0)
+        return pd.read_csv(download_buffer)
 
     def load_model(self, object_name: str, device: str) -> TorchModule:
         download_buffer = BytesIO()
