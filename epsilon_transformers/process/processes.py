@@ -78,3 +78,12 @@ PROCESS_REGISTRY: Dict[str, Process] = {
     "rrxor": RRXOR(),
     "mess3": Mess3(),
 }
+
+
+class TransitionMatrixProcess(Process):
+    def __init__(self, transition_matrix: np.ndarray):
+        self.transition_matrix = transition_matrix
+        super().__init__()
+
+    def _create_hmm(self):
+        return self.transition_matrix, {i: i for i in range(self.transition_matrix.shape[0])}

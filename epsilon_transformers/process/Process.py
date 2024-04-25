@@ -90,6 +90,13 @@ class Process(ABC):
         """
         ...
 
+    def __str__(self):
+        return (f"{self.name} Process\n"
+            f"Number of states: {self.num_states}\n"
+            f"Vocabulary length: {self.vocab_len}\n"
+            f"Transition matrix shape: {self.transition_matrix.shape}")
+        
+
     def _sample_emission(self, current_state_idx: Optional[int] = None) -> int:
         if current_state_idx is None:
             current_state_idx = np.random.choice(
@@ -144,7 +151,7 @@ class Process(ABC):
     
     # TODO: You can get rid of the stack, and just iterate through the nodes & the depth as tuples
     def derive_mixed_state_presentation(self, depth: int) -> MixedStateTree:
-        tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, children=set(), path=[])
+        tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, children=set(), path=[], emission_prob=0)
         nodes = set([tree_root])
 
         stack = deque([(tree_root, self.steady_state_vector, [], 0)])
@@ -156,7 +163,7 @@ class Process(ABC):
                     if emission_probs[emission] > 0:
                         next_state_prob_vector = _compute_next_distribution(self.transition_matrix, state_prob_vector, emission)
                         child_path = current_path + [emission]
-                        child_node = MixedStateTreeNode(state_prob_vector=next_state_prob_vector, path=child_path, children=set())
+                        child_node = MixedStateTreeNode(state_prob_vector=next_state_prob_vector, path=child_path, children=set(), emission_prob=emission_probs[emission])
                         current_node.add_child(child_node)
 
                         stack.append((child_node, next_state_prob_vector, child_path, current_depth + 1))
