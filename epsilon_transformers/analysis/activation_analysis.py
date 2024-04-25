@@ -61,6 +61,10 @@ def find_msp_subspace_in_residual_stream(model: HookedTransformer, process: Proc
 
 ModuleNames = Literal['mlp']
 def retrieve_splinecode(model: HookedTransformer, history: List[int], module_list: List[ModuleNames]=['mlp']) -> Dict[int, Dict[str, List[int]]]:
+    # Check to see that it's a valid sequence of the process
+    # Run model w/ cache
+    # Extract relevant modules from cache
+    # Make sure
     raise NotImplementedError
 
 if __name__ == "__main__":
@@ -70,4 +74,4 @@ if __name__ == "__main__":
     persister = S3Persister(collection_location="mess3-param-change")
     model: HookedTransformer = persister.load_model(device='cpu', object_name='4800000.pt')
 
-    retrieve_splinecode
+    retrieve_splinecode(model=model, history=[0,1,0,1])
