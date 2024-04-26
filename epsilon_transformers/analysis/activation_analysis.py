@@ -5,7 +5,7 @@ from jaxtyping import Float
 import numpy as np
 import torch
 
-from epsilon_transformers.process.MixedStatePresentation import MixedStateTree
+from epsilon_transformers.process.MixedStateTree import MixedStateTree
 from epsilon_transformers.process.Process import Process
 from epsilon_transformers.process.processes import ZeroOneR
 from epsilon_transformers.training.configs.training_configs import ProcessDatasetConfig
@@ -25,11 +25,11 @@ from epsilon_transformers.training.configs.training_configs import ProcessDatase
 
 
 def get_beliefs_for_transformer_inputs(
-    transformer_inputs: torch.Tensor, 
+    transformer_inputs: Float[torch.Tensor, "batch n_ctx"], 
     msp_belief_index: Dict[Tuple[float, ...], int], 
     tree_paths: List[List[int]], 
     tree_beliefs: List[List[float]]
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[Float[torch.Tensor, "batch n_ctx belief_dim"], Float[torch.Tensor, "batch n_ctx"]]:
     batch, n_ctx = transformer_inputs.shape
     belief_dim = len(list(msp_belief_index.keys())[0])
     path_belief_dict = {tuple(path): belief for path, belief in zip(tree_paths, tree_beliefs)}

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from jaxtyping import Float
 from collections import deque
 
-from epsilon_transformers.process.MixedStatePresentation import MixedStateTree, MixedStateTreeNode
+from epsilon_transformers.process.MixedStateTree import MixedStateTree, MixedStateTreeNode
 
 # TODO: Test yield_emission_histories for different emissions in the emission history
 # TODO: Rename _create_hmm
@@ -88,14 +88,7 @@ class Process(ABC):
         numpy.ndarray: The transition tensor for the epsilon machine.
         dict: A dictionary mapping state names to indices.
         """
-        ...
-
-    def __str__(self):
-        return (f"{self.name} Process\n"
-            f"Number of states: {self.num_states}\n"
-            f"Vocabulary length: {self.vocab_len}\n"
-            f"Transition matrix shape: {self.transition_matrix.shape}")
-        
+        ...  
 
     def _sample_emission(self, current_state_idx: Optional[int] = None) -> int:
         if current_state_idx is None:
