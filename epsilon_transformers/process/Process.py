@@ -31,7 +31,6 @@ class Process(ABC):
     state_names_dict: Dict[str, int]
     vocab_len: int
     num_states: int
-    steady_state_vector: Float[np.ndarray, "num_states"]
 
     @property
     def steady_state_vector(self) -> Float[np.ndarray, "num_states"]:
@@ -88,7 +87,14 @@ class Process(ABC):
         numpy.ndarray: The transition tensor for the epsilon machine.
         dict: A dictionary mapping state names to indices.
         """
-        ...  
+        ...
+
+    def __str__(self):
+        return (f"{self.name} Process\n"
+            f"Number of states: {self.num_states}\n"
+            f"Vocabulary length: {self.vocab_len}\n"
+            f"Transition matrix shape: {self.transition_matrix.shape}")
+        
 
     def _sample_emission(self, current_state_idx: Optional[int] = None) -> int:
         if current_state_idx is None:
