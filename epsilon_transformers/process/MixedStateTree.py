@@ -34,7 +34,6 @@ class MixedStateTree:
 	def belief_states(self) -> Set[Float[np.ndarray, "num_states"]]:
 		return [x.state_prob_vector for x in self.nodes]
 	
-
 	@property
 	def paths(self) -> List[List[int]]:
 		return [x.path for x in self.nodes]
@@ -48,19 +47,10 @@ class MixedStateTree:
 	
 	@property
 	def block_entropy(self) -> Float[np.ndarray, "depth"]:
-		depth_emission_probs = [[] for _ in range(self.depth)]  # Initialize depth_emission_probs
-		depth_emission_probs = self._traverse(self.root_node, 0, 1.0, depth_emission_probs)
+		depth_emission_probs = self._traverse(node=self.root_node, depth=0, accumulated_prob=1.0)
 		block_entropy = np.array([entropy(probs) if probs else 0 for probs in depth_emission_probs])
 		return block_entropy
 
-	def _traverse(self, node: MixedStateTreeNode, depth: int, accumulated_prob: float, depth_emission_probs):
-		if depth < self.depth:
-			if node is not self.root_node:
-				depth_emission_probs[depth].append(accumulated_prob * node.emission_prob)
-			for child in node.children:
-				depth_emission_probs = self._traverse(child, depth + 1, accumulated_prob * node.emission_prob if node is not self.root_node else 1.0, depth_emission_probs)
-		return depth_emission_probs
-	
 	@property
 	def myopic_entropy(self) -> Float[np.ndarray, "depth-1"]:
 		return np.diff(self.block_entropy)
@@ -70,6 +60,20 @@ class MixedStateTree:
 		self.process = process
 		self.nodes = nodes
 		self.depth = depth
+
+	def _traverse(self, node: MixedStateTreeNode, depth: int, accumulated_prob: float) -> List[List[float]]:
+		stack = deque([(node, depth, accumulated_prob)])
+		depth_emission_probs = [[] for _ in range(self.depth)]
+    
+		while stack:
+			node, depth, accumulated_prob = stack.pop()
+			if depth < self.depth:
+				if node is not self.root_node:
+					depth_emission_probs[depth].append(accumulated_prob * node.emission_prob)
+				for child in node.children:
+					stack.append((child, depth + 1, accumulated_prob * node.emission_prob if node is not self.root_node else 1.0))
+		
+		return depth_emission_probs
 
 	def path_to_beliefs(self, path: List[int]) -> Float[np.ndarray, "path_length n_states"]:
 		assert len(path) <= self.depth, f"path length: {len(path)} is too long . Tree has depth of {self.depth}"
