@@ -1,6 +1,6 @@
 from multiprocessing.util import sub_debug
 from jaxtyping import Float
-from typing import List, Set, Tuple
+from typing import List, Set
 import numpy as np
 from collections import deque
 from scipy.stats import entropy
