@@ -8,6 +8,8 @@ import boto3
 import dotenv
 import torch
 from typing import Dict, List, OrderedDict, Tuple, TypeVar
+import json
+import pandas as pd
 
 from epsilon_transformers.training.configs.model_configs import RawModelConfig
 
@@ -95,16 +97,70 @@ class S3Persister(Persister):
         buffer.seek(0)
         self.s3.upload_fileobj(buffer, self.collection_location, object_name)
 
+    def load_csv(self, object_name: str) -> str:
+        download_buffer = BytesIO()
+        self.s3.download_fileobj(self.collection_location, object_name, download_buffer)
+        download_buffer.seek(0)
+        return pd.read_csv(download_buffer)
+
     def load_model(self, object_name: str, device: str) -> TorchModule:
         download_buffer = BytesIO()
         self.s3.download_fileobj(self.collection_location, object_name, download_buffer)
         download_buffer.seek(0)
         state_dict = torch.load(download_buffer)
-        # TODO: Check if there is a training config in the bucket, if not infer from state_dict
-        config = _state_dict_to_model_config(state_dict=state_dict)
+
+        train_config = self.load_json('train_config.json')
+        if train_config is not None:
+            # TODO: refactor this
+            required_fields = ['d_vocab', 'd_model', 'n_ctx', 'd_head', 'n_heads', 'n_layers']
+            config_dict = {k: v for k, v in train_config.items() if k in required_fields}
+            config_dict['d_mlp'] = 4 * config_dict['d_model']
+            # change key n_heads to n_head
+            config_dict['n_head'] = config_dict.pop('n_heads')
+            config = RawModelConfig(**config_dict)
+        else:
+            print("No train_config.json found, inferring from state_dict")
+            config = _state_dict_to_model_config(state_dict=state_dict)
+
         model = config.to_hooked_transformer(device=device)
         model.load_state_dict(state_dict=state_dict)
         return model
+    
+    def list_objects(self) -> List[str]:
+        objects = []
+        continuation_token = None
+
+        while True:
+            kwargs = {'Bucket': self.collection_location}
+            if continuation_token:
+                kwargs['ContinuationToken'] = continuation_token
+
+            response = self.s3.list_objects_v2(**kwargs)
+            contents = response.get('Contents', [])
+            objects.extend([obj['Key'] for obj in contents])
+
+            if 'NextContinuationToken' in response:
+                continuation_token = response['NextContinuationToken']
+            else:
+                break
+
+        return objects
+    
+    def load_json(self, object_name: str) -> Dict:
+        try:
+            json_str = self.load_object(object_name)
+            return json.loads(json_str)
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                return None
+            else:
+                raise e
+    
+    def load_object(self, object_name: str) -> str:
+        download_buffer = BytesIO()
+        self.s3.download_fileobj(self.collection_location, object_name, download_buffer)
+        download_buffer.seek(0)
+        return download_buffer.read().decode('utf-8')
 
 def _state_dict_to_model_config(state_dict: OrderedDict, n_ctx: int = 10) -> RawModelConfig:
     _HOOKED_TRANSFORMER_MODULE_REGEXES_REGISTRY: Dict[str, List[Tuple[str, int]]] = {

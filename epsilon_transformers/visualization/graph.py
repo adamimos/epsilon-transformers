@@ -9,7 +9,9 @@ from typing import List
 from matplotlib import colors
 import networkx as nx
 import matplotlib.pyplot as plt
-
+from typing import Optional, Dict
+import numpy as np
+from jaxtyping import Float
 
 def determine_layout(G, layout_type):
     """Determine the layout of the graph."""
@@ -267,3 +269,45 @@ def plot_empirical_conditional_entropy_diagram(
     plt.title("Empirical Conditional Entropy Diagram")
     plt.grid(True)
     plt.show()
+
+def transition_matrix_to_graph(transition_matrix: Float[np.ndarray, "vocab_len num_states num_states"],
+                               state_names: Optional[Dict[str, int]] = None) -> nx.DiGraph:
+    """
+    Convert a transition matrix to a graph.
+
+    Parameters:
+    transition_matrix (np.ndarray): The transition matrix of shape (n_outputs, n_states, n_states).
+                                    n_states is the number of states in the machine.
+                                    transition_matrix[i, j, k] is the probability of transitioning from state j to state k on output i.
+    state_names (Dict[str, int], optional): A dictionary mapping state names to state indices.
+
+    Returns:
+    nx.DiGraph: The graph representation of the transition matrix.
+    """
+    # Get the number of outputs and states
+    n_outputs, n_states, _ = transition_matrix.shape
+
+    # Create an empty directed graph
+    G = nx.MultiDiGraph()
+
+    # Invert the state_names dictionary if it's provided
+    if state_names:
+        state_names = {v: k for k, v in state_names.items()}
+
+    # Add nodes to the graph
+    for i in range(n_states):
+        node_label = state_names[i] if state_names else i
+        G.add_node(node_label)
+
+    # Add edges to the graph for each transition in the epsilon machine
+    for i in range(n_outputs):
+        for j in range(n_states):
+            for k in range(n_states):
+                # Add an edge from state j to state k with label i and weight equal to the transition probability
+                # only if the transition probability is not zero
+                if transition_matrix[i, j, k] != 0:
+                    from_node = state_names[j] if state_names else j
+                    to_node = state_names[k] if state_names else k
+                    G.add_edge(from_node, to_node, label=str(i), weight=transition_matrix[i, j, k])
+
+    return G

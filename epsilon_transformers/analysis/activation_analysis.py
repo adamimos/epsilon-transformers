@@ -1,11 +1,11 @@
-from typing import Iterator, List, Tuple
+from typing import Iterator, List, Tuple, Dict
 from sklearn.linear_model import LinearRegression
 from transformer_lens import HookedTransformer
 from jaxtyping import Float
 import numpy as np
 import torch
 
-from epsilon_transformers.process.MixedStatePresentation import MixedStateTree
+from epsilon_transformers.process.MixedStateTree import MixedStateTree
 from epsilon_transformers.process.Process import Process
 from epsilon_transformers.process.processes import ZeroOneR
 from epsilon_transformers.training.configs.training_configs import ProcessDatasetConfig
@@ -22,6 +22,29 @@ from epsilon_transformers.training.configs.training_configs import ProcessDatase
 # TODO: Refactor this whole mess so that you only have to iterate through the samples list once foo
 # TODO: Generalize for the case when we have to extract multiple different parts of the residual stream
 # TODO: Add batch_size to generate_belief_state_and_activations
+
+
+def get_beliefs_for_transformer_inputs(
+    transformer_inputs: Float[torch.Tensor, "batch n_ctx"], 
+    msp_belief_index: Dict[Tuple[float, ...], int], 
+    tree_paths: List[List[int]], 
+    tree_beliefs: List[List[float]]
+) -> Tuple[Float[torch.Tensor, "batch n_ctx belief_dim"], Float[torch.Tensor, "batch n_ctx"]]:
+    batch, n_ctx = transformer_inputs.shape
+    belief_dim = len(list(msp_belief_index.keys())[0])
+    path_belief_dict = {tuple(path): belief for path, belief in zip(tree_paths, tree_beliefs)}
+    X_beliefs = torch.zeros(batch, n_ctx, belief_dim, device=transformer_inputs.device)
+    X_belief_indices = torch.zeros(batch, n_ctx, dtype=torch.int, device=transformer_inputs.device)
+    
+    for i in range(batch):
+        for j in range(n_ctx):
+            input_substring = transformer_inputs[i, :j+1].cpu().numpy()
+            belief_state = path_belief_dict[tuple(input_substring)]
+            belief_state = np.round(belief_state, 5)
+            X_beliefs[i, j] = torch.tensor(belief_state, dtype=torch.float32, device=transformer_inputs.device)
+            X_belief_indices[i, j] = msp_belief_index[tuple(belief_state)]
+    
+    return X_beliefs, X_belief_indices
 
 def generate_belief_state_and_activations(model: HookedTransformer, process: Process, num_sequences: int) -> Tuple[Float[np.ndarray, "num_samples n_ctx num_states"], Float[np.ndarray, "num_samples n_ctx d_model"]]:
     device = torch.device(
