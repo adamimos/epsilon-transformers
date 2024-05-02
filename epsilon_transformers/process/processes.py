@@ -1,9 +1,11 @@
 import numpy as np
 from typing import Dict
+import inspect
 
 from epsilon_transformers.process.Process import Process
 
-# TODO: Automatically generate PROCESS_REGISTRY using the inspect module
+# TODO: Write test for PROCESS_REGISTRY
+# TODO: Think if you really need PROCESS_REGSITRY (if only getting called during dataloader creation, it may be better to have the dataloader take in a process)
 # TODO: Add test to make sure that all members of this module are a member of Process
 # TODO: Find paper where mess3 process is introduced
 # TODO: Think through whether self.name is necessary (review it's usage in derive_mixed_state_presentation)
@@ -72,13 +74,6 @@ class Mess3(Process):
 
         return T, state_names
 
-PROCESS_REGISTRY: Dict[str, type] = {
-    "z1r": ZeroOneR,
-    "rrxor": RRXOR,
-    "mess3": Mess3,
-}
-
-
 class TransitionMatrixProcess(Process):
     def __init__(self, transition_matrix: np.ndarray):
         self.transition_matrix = transition_matrix
@@ -86,3 +81,5 @@ class TransitionMatrixProcess(Process):
 
     def _create_hmm(self):
         return self.transition_matrix, {i: i for i in range(self.transition_matrix.shape[0])}
+
+PROCESS_REGISTRY: Dict[str, type] = {key: value for key, value in inspect.currentframe().f_locals.items() if isinstance(value, type) and issubclass(value, Process) and key != 'Process'}
