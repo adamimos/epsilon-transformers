@@ -15,6 +15,7 @@ from epsilon_transformers.training.configs.model_configs import RawModelConfig
 
 
 TorchModule = TypeVar("TorchModule", bound=torch.nn.modules.Module)
+# TODO: Add create_bucket option in S3 persister
 
 # TODO: Add "check for versioning" in S3
 # TODO: Persist list of buckets on init
