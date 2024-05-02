@@ -72,11 +72,11 @@ class Mess3(Process):
 
         return T, state_names
 
-
+# TODO: Fix Process class typing
 PROCESS_REGISTRY: Dict[str, Process] = {
-    "z1r": ZeroOneR(),
-    "rrxor": RRXOR(),
-    "mess3": Mess3(),
+    "z1r": ZeroOneR,
+    "rrxor": RRXOR,
+    "mess3": Mess3,
 }
 
 

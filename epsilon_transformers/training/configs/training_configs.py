@@ -1,5 +1,5 @@
 from io import BytesIO
-from typing import Literal
+from typing import Dict, Literal
 from pydantic import BaseModel, model_validator
 import pathlib
 import yaml
@@ -89,6 +89,7 @@ class PersistanceConfig(Config):
 
 class ProcessDatasetConfig(Config):
     process: str
+    process_params: Dict[str, float]
     batch_size: int
     num_tokens: int
     test_split: float
@@ -96,6 +97,7 @@ class ProcessDatasetConfig(Config):
     def to_dataloader(self, sequence_length: int, train: bool) -> DataLoader:
         dataset = ProcessDataset(
             process_name=self.process,
+            process_params=self.process_params,
             sequence_length=sequence_length,
             num_samples=(
                 self.num_tokens
@@ -175,7 +177,7 @@ class TrainConfig(Config):
     def validate_model(self):
         dataset_process = self.dataset.process
         if dataset_process:
-            process_vocab_len = PROCESS_REGISTRY[dataset_process].vocab_len
+            process_vocab_len = PROCESS_REGISTRY[dataset_process]().vocab_len
             if self.model.d_vocab != process_vocab_len:
                 raise ValueError(f"Model's d_vocab ({self.model.d_vocab}) doesn't match dataset process's vocab_len ({process_vocab_len})")
         return self
