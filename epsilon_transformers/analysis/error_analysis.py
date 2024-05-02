@@ -1,34 +1,14 @@
-from scipy.optimize import minimize_scalar
+from scipy.optimize import minimize_scalar # type: ignore
 from typing import List
 import numpy as np
-from epsilon_transformers.markov_utilities import calculate_steady_state_distribution
+
+# TODO: Check w/ Adam on which of these to keep
 
 NUM_SYMBOLS = 2
 
 
 def compute_minimum_error(epsilon_machine: np.ndarray) -> float:
-    """Compute the minimum error for predicting the next symbol based on the epsilon machine."""
-    # Compute the steady state distribution for the epsilon machine
-    steady_state_distribution = calculate_steady_state_distribution(
-        sum(epsilon_machine)
-    )
-
-    # Initialize the minimum error
-    min_error = 0
-
-    # Iterate over each state
-    for state, state_prob in enumerate(steady_state_distribution):
-        # For each state, get the maximum emission probability
-        max_emission_prob = max(
-            [
-                np.sum(epsilon_machine[emission][state, :])
-                for emission in range(NUM_SYMBOLS)
-            ]
-        )
-        # Update the minimum error based on the state's contribution
-        min_error += state_prob * (1 - max_emission_prob)
-
-    return min_error
+    raise NotImplementedError
 
 
 def binary_entropy(p: float) -> float:
