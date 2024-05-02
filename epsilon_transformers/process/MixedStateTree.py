@@ -3,7 +3,7 @@ from jaxtyping import Float
 from typing import List, Set, Tuple
 import numpy as np
 from collections import deque
-from scipy.stats import entropy
+from scipy.stats import entropy # type: ignore
 
 
 # TODO: Move the derive MSP function to be in the MSP init
@@ -31,7 +31,7 @@ class MixedStateTree:
 	nodes: Set[MixedStateTreeNode]
 
 	@property
-	def belief_states(self) -> Set[Float[np.ndarray, "num_states"]]:
+	def belief_states(self) -> List[Float[np.ndarray, "num_states"]]:
 		return [x.state_prob_vector for x in self.nodes]
 	
 	@property
@@ -39,7 +39,7 @@ class MixedStateTree:
 		return [x.path for x in self.nodes]
 	
 	@property
-	def paths_and_belief_states(self) -> List[Tuple[List[int], Float[np.ndarray, "n_states"]]]:
+	def paths_and_belief_states(self) -> Tuple[List[List[int]], Float[np.ndarray, "n_states"]]:
 		paths_and_beliefs = [(x.path, x.state_prob_vector) for x in self.nodes]
 		paths = [x[0] for x in paths_and_beliefs]
 		beliefs = [x[1] for x in paths_and_beliefs]
@@ -63,7 +63,7 @@ class MixedStateTree:
 
 	def _traverse(self, node: MixedStateTreeNode, depth: int, accumulated_prob: float) -> List[List[float]]:
 		stack = deque([(node, depth, accumulated_prob)])
-		depth_emission_probs = [[] for _ in range(self.depth)]
+		depth_emission_probs: List[List[float]] = [[] for _ in range(self.depth)]
     
 		while stack:
 			node, depth, accumulated_prob = stack.pop()

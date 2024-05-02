@@ -1,6 +1,6 @@
 from typing import Iterator, List, Tuple, Dict
-from sklearn.linear_model import LinearRegression
-from transformer_lens import HookedTransformer
+from sklearn.linear_model import LinearRegression # type: ignore
+from transformer_lens import HookedTransformer # type: ignore
 from jaxtyping import Float
 import numpy as np
 import torch
@@ -64,10 +64,10 @@ def generate_belief_state_and_activations(model: HookedTransformer, process: Pro
         activations.append(cache['ln_final.hook_normalized'].squeeze(0).cpu())
     
     # Turn into tensors
-    belief_states = np.stack(belief_states)
-    activations = np.array(activations)
+    belief_states_tensor = np.stack(belief_states)
+    activations_tensor = np.array(activations)
 
-    return belief_states, activations
+    return belief_states_tensor, activations_tensor
 
 def find_msp_subspace_in_residual_stream(model: HookedTransformer, process: Process, num_sequences: int) -> Tuple[Float[np.ndarray, "num_tokens num_states"], Float[np.ndarray, "num_tokens num_states"]]:
     ground_truth_belief_states, activations = generate_belief_state_and_activations(model=model, process=process, num_sequences=num_sequences)

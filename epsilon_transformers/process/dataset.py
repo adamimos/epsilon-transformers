@@ -40,7 +40,7 @@ class ProcessDataset(IterableDataset):
     def __len__(self):
         return self.num_samples
 
-    def __iter__(self) -> Iterable[Tuple[List[int]]]:
+    def __iter__(self) -> Iterable[Tuple[List[int], List[int]]]:
         for _ in range(self.num_samples):
             process_history = [
                 next(self.samples) for _ in range(self.sequence_length + 1)
@@ -49,7 +49,7 @@ class ProcessDataset(IterableDataset):
 
 
 def process_dataset_collate_fn(
-    batch: List[Tuple[List[int]]],
+    batch: List[Tuple[List[int], List[int]]],
 ) -> Tuple[
     Float[torch.Tensor, "batch_size sequence_length"],
     Float[torch.Tensor, "batch_size sequence_length"],

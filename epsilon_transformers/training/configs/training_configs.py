@@ -5,7 +5,6 @@ import pathlib
 import yaml
 import torch
 from torch.utils.data import DataLoader
-from transformer_lens import HookedTransformer, HookedTransformerConfig
 from typing import Union, Optional
 import wandb
 import os
@@ -78,8 +77,10 @@ class PersistanceConfig(Config):
 
     def init(self) -> Persister:
         if self.location == "local":
+            assert isinstance(self.collection_location, pathlib.Path)
             return LocalPersister(collection_location=self.collection_location)
         elif self.location == "s3":
+            assert isinstance(self.collection_location, str)
             return S3Persister(collection_location=self.collection_location)
         else:
             raise ValueError(

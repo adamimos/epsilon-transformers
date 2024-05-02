@@ -1,11 +1,11 @@
-import fire
+import fire # type: ignore
 import pathlib
 import random
 import numpy as np
 import torch
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from transformer_lens import HookedTransformer
+from transformer_lens import HookedTransformer # type: ignore
 
 from epsilon_transformers.persistence import Persister
 from epsilon_transformers.training.configs.training_configs import (

@@ -1,10 +1,10 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from io import BytesIO
 import os
 import pathlib
 import re
-from botocore.exceptions import ClientError
-import boto3
+from botocore.exceptions import ClientError # type: ignore
+import boto3 #type: ignore
 import dotenv
 import torch
 from typing import Dict, List, OrderedDict, Tuple, TypeVar
@@ -34,12 +34,15 @@ TorchModule = TypeVar("TorchModule", bound=torch.nn.modules.Module)
 class Persister(ABC):
     collection_location: pathlib.Path | str
 
+    @abstractmethod
     def save_model(self, model: TorchModule, num_tokens_trained: int):
         ...
-
+    
+    @abstractmethod
     def load_model(self, model_class: TorchModule, object_name: str) -> TorchModule:
         ...
     
+    @abstractmethod
     def _save_overwrite_protection(self, object_name: pathlib.Path | str):
         ...
 
