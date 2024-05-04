@@ -45,7 +45,7 @@ def get_model_hyperparams(state_dict):
     return hyperparams
 
 def fetch_run_config(user_or_org, project_name, run_id):
-    api = wandb.Api()
+    api = wandb.Api(timeout=10000)
     run_path = f"{user_or_org}/{project_name}/{run_id}"
     run = api.run(run_path)
     return run.config
@@ -56,36 +56,34 @@ def save_log_data_to_s3(persister, csv_file):
 
 import torch
 
-def load_model_artifact(
-    user_or_org,
-    project_name,
+def load_model_artifact_data(
     artifact_name,
-    artifact_type,
-    artifact_version,
-    config,
-    device="cpu",
 ):
-    api = wandb.Api()
-    artifact_reference = f"{user_or_org}/{project_name}/{artifact_name}"
-    print(f"Loading artifact {artifact_reference}")
-    artifact = wandb.use_artifact(artifact_reference, type=artifact_type)
+    api = wandb.Api(timeout=10000)
 
-    artifact_dir = artifact.download()
     # print(f"Artifact downloaded to: {artifact_dir}")
     # get rid of the part after the : in the artifact name
     artifact_file_name = f"{artifact_name.split(':')[0]}.pt"
 
     # get the number, its between the final _ and the .pt
     epoch_number = artifact_file_name.split('_')[-1].split('.')[0]
+
+    return artifact_file_name, epoch_number
+
+
+def load_model_artifact(artifact_file_name, config, device, artifact_name, user_or_org, project_name, artifact_type):
+    artifact_reference = f"{user_or_org}/{project_name}/{artifact_name}"
+    artifact = wandb.use_artifact(artifact_reference, type=artifact_type)
+
+    artifact_dir = artifact.download()
     artifact_file = os.path.join(artifact_dir, artifact_file_name)
+
+    print(f"Loading artifact {artifact_file}")
 
     model = build_network(config, torch.device(device))
     model.load_state_dict(torch.load(artifact_file, map_location=device))
-
-    # delete the artifact_dir
-    shutil.rmtree(artifact_dir)
-
-    return model, epoch_number
+    #shutil.rmtree(artifact_dir)
+    return model
 
 def build_network(config, device):
     model_config = RawModelConfig(
@@ -100,7 +98,7 @@ def build_network(config, device):
     return model_config.to_hooked_transformer(seed=1337, device=device)
 
 def fetch_artifacts_for_run(user_or_org, project_name, run_id):
-    api = wandb.Api()
+    api = wandb.Api(timeout=10000)
     run_path = f"{user_or_org}/{project_name}/runs/{run_id}"
     run = api.run(run_path)
     artifacts = run.logged_artifacts()
@@ -146,7 +144,7 @@ if __name__ == '__main__':
 
     device = "cpu"
     wandb.init()
-    api = wandb.Api()
+    api = wandb.Api(timeout=10000)
 
     user_or_org = "adamimos"
     project_name = "transformer-MSPs"
@@ -154,6 +152,7 @@ if __name__ == '__main__':
     run_id = 's6p0aaci' # zero one random
     # run_id = "halvkdvk"  # mess3 param change long run, I CANT FIND THIS ON WANDB ANYMORE
     #run_id = "vfs4q106"  # rrxor adamimos/transformer-MSPs/vfs4q106, https://wandb.ai/adamimos/transformer-MSPs/runs/vfs4q106/overview?nw=nwuseradamimos
+    run_id = "gydimwxn" # mess3 long run params = 0.05 0.85
 
     if run_id == "s6p0aaci":
         persister = S3Persister(collection_location='zero-one-random')
@@ -161,6 +160,8 @@ if __name__ == '__main__':
         persister = S3Persister(collection_location='rrxor')
     elif run_id == "2zulyhrv":
         persister = S3Persister(collection_location='mess3-param-change')
+    elif run_id == "gydimwxn":
+        persister = S3Persister(collection_location='mess3-0.05-0.85-longrun')
     else:
         raise ValueError(f"Unknown run_id: {run_id}")
 
@@ -187,15 +188,14 @@ if __name__ == '__main__':
         save_log_data_to_s3(persister, f"train_log.csv")
 
     # loop over artifacts
-    for artifact in tqdm(arts):
-        model, epoch_number = load_model_artifact(user_or_org,
-                                         project_name,
-                                         artifact.name,
-                                         artifact.type,
-                                         artifact.version,
-                                         config,
-                                         device)
+    final_1000_ind = len(arts) - 1000
+    for index, artifact in enumerate(tqdm(arts)):
+        if index < final_1000_ind:
+            continue
+        artifact_file_name, epoch_number = load_model_artifact_data(artifact.name)
         tokens = int(config['n_iters']) * int(config['batch_size'])* int(config['n_ctx']) * (int(epoch_number)+1)
         if not persister.check_if_file_exists(f"{tokens}.pt"):
+            # load model from artifact_dir
+            model = load_model_artifact(artifact_file_name, config, device, artifact.name, user_or_org, project_name, artifact.type)
             persister.save_model(model, tokens)
         
