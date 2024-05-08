@@ -9,6 +9,7 @@ import torch
 from typing import TypeVar
 import git
 import json
+from typing import List
 
 # from epsilon_transformers.training.configs import Config
 
@@ -128,4 +129,24 @@ class S3Persister(Persister):
         self.s3.download_fileobj(self.collection_location, object_name, download_buffer)
         download_buffer.seek(0)
         return model_class.load_state_dict(torch.load(download_buffer))
+    
+    def list_objects(self) -> List[str]:
+        objects = []
+        continuation_token = None
+
+        while True:
+            kwargs = {'Bucket': self.collection_location}
+            if continuation_token:
+                kwargs['ContinuationToken'] = continuation_token
+
+            response = self.s3.list_objects_v2(**kwargs)
+            contents = response.get('Contents', [])
+            objects.extend([obj['Key'] for obj in contents])
+
+            if 'NextContinuationToken' in response:
+                continuation_token = response['NextContinuationToken']
+            else:
+                break
+
+        return objects
     
