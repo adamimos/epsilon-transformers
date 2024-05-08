@@ -55,17 +55,17 @@ def plot_ground_truth_and_evaluated_2d_simplex(
     ground_truth_data_frame = pd.DataFrame({'x': bs_x, 'y': bs_y, 'r': ground_truth_tensor[:, 0], 'g': ground_truth_tensor[:, 1], 'b': ground_truth_tensor[:, 2]})
 
     pb_x, pb_y = _project_to_simplex(np.array(predicted_beliefs))
-    predicted_belief_vector_data_frame = pd.DataFrame({'x': pb_x, 'y': pb_y, 'r': predicted_beliefs[:, 0], 'g': predicted_beliefs[:, 1], 'b': predicted_beliefs[:, 2]})
+    predicted_belief_vector_data_frame = pd.DataFrame({'x': pb_x, 'y': pb_y, 'r': ground_truth_tensor[:, 0], 'g': ground_truth_tensor[:, 1], 'b': ground_truth_tensor[:, 2]})
 
     # Create canvas
-    canvas = ds.Canvas(plot_width=1000, plot_height=1000, x_range=(-0.1, 1.1), y_range=(-0.1, np.sqrt(3)/2 + 0.1))
+    canvas = ds.Canvas(plot_width=3000, plot_height=3000, x_range=(-0.1, 1.1), y_range=(-0.1, np.sqrt(3)/2 + 0.1))
     
     # Aggregate each RGB channel separately for ground truth and predicted beliefs
     colours = ['r', 'g', 'b']
     ground_truth_aggregated = {color: canvas.points(ground_truth_data_frame, 'x', 'y', ds.mean(color)) for color in colours}
     predited_belief_vector_aggregated = {color: canvas.points(predicted_belief_vector_data_frame, 'x', 'y', ds.mean(color)) for color in colours}
 
-    img_gt = _combine_channels_to_rgb(ground_truth_aggregated['r'], ground_truth_aggregated['g'], ground_truth_aggregated['b'], px=px)
+    img_gt = _combine_channels_to_rgb(ground_truth_aggregated['r'], ground_truth_aggregated['g'], ground_truth_aggregated['b'], px=3*px)
     img_pb = _combine_channels_to_rgb(predited_belief_vector_aggregated['r'], predited_belief_vector_aggregated['g'], predited_belief_vector_aggregated['b'], px=px)
 
     # Visualization with Matplotlib
