@@ -1,6 +1,6 @@
 from typing import Optional
 import torch
-from transformer_lens import HookedTransformer, HookedTransformerConfig
+from transformer_lens import HookedTransformer, HookedTransformerConfig # type: ignore
 
 from epsilon_transformers.training.configs.base_config import Config
 

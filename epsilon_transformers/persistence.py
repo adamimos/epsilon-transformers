@@ -1,10 +1,10 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from io import BytesIO
 import os
 import pathlib
 import re
-from botocore.exceptions import ClientError
-import boto3
+from botocore.exceptions import ClientError # type: ignore
+import boto3 #type: ignore
 import dotenv
 import torch
 from typing import Dict, List, OrderedDict, Tuple, TypeVar
@@ -15,6 +15,7 @@ from epsilon_transformers.training.configs.model_configs import RawModelConfig
 
 
 TorchModule = TypeVar("TorchModule", bound=torch.nn.modules.Module)
+# TODO: LocalPersister.load_model
 # TODO: Add create_bucket option in S3 persister
 
 # TODO: Add "check for versioning" in S3
@@ -34,12 +35,15 @@ TorchModule = TypeVar("TorchModule", bound=torch.nn.modules.Module)
 class Persister(ABC):
     collection_location: pathlib.Path | str
 
+    @abstractmethod
     def save_model(self, model: TorchModule, num_tokens_trained: int):
         ...
-
+    
+    @abstractmethod
     def load_model(self, model_class: TorchModule, object_name: str) -> TorchModule:
         ...
     
+    @abstractmethod
     def _save_overwrite_protection(self, object_name: pathlib.Path | str):
         ...
 
@@ -47,20 +51,21 @@ class LocalPersister(Persister):
     def __init__(self, collection_location: pathlib.Path):
         assert collection_location.is_dir()
         assert collection_location.exists()
-        self.collection_location = collection_location        
+        self.collection_location: pathlib.Path = collection_location        
 
-    def _save_overwrite_protection(self, object_name: pathlib.Path):
+    def _save_overwrite_protection(self, object_name: pathlib.Path): # type: ignore[override]
         if object_name.exists():
             raise ValueError(f"Overwrite Protection: {object_name} already exists.")
 
     def save_model(self, model: TorchModule, num_tokens_trained: int):
-        save_path: pathlib.Path = self.collection_location / f"{num_tokens_trained}.pt"
+        save_path = self.collection_location / f"{num_tokens_trained}.pt"
         self._save_overwrite_protection(object_name=save_path)
 
         print(f"Saving model to {save_path}")
         torch.save(model.state_dict(), save_path)
 
     def load_model(self, model: TorchModule, object_name: str) -> TorchModule:
+        raise NotImplementedError
         state_dict = torch.load(self.collection_location / object_name)
         model.load_state_dict(state_dict=state_dict)
         return model
@@ -75,9 +80,9 @@ class S3Persister(Persister):
         buckets = [x['Name'] for x in self.s3.list_buckets()['Buckets']]
         if collection_location not in buckets:
             raise ValueError(f"{collection_location} is not an existing bucket. Either use one of the existing buckets or create a new bucket")
-        self.collection_location = collection_location
+        self.collection_location: str = collection_location
 
-    def _save_overwrite_protection(self, object_name: str):
+    def _save_overwrite_protection(self, object_name: str): # type: ignore[override]
         try:
             self.s3.head_object(Bucket=self.collection_location, Key=object_name)
             raise ValueError(f"Overwrite Protection: {self.collection_location}/{object_name} already exists")
@@ -104,7 +109,7 @@ class S3Persister(Persister):
         download_buffer.seek(0)
         return pd.read_csv(download_buffer)
 
-    def load_model(self, object_name: str, device: str) -> TorchModule:
+    def load_model(self, object_name: str, device: torch.device) -> TorchModule:
         download_buffer = BytesIO()
         self.s3.download_fileobj(self.collection_location, object_name, download_buffer)
         download_buffer.seek(0)
@@ -212,10 +217,9 @@ def _state_dict_to_model_config(state_dict: OrderedDict, n_ctx: int = 10) -> Raw
             if param_dict[key] is None:
                 param_dict[key] = module.size()[dim]
     assert all([value is not None for value in param_dict.values()])
-    return RawModelConfig(**param_dict)
+    return RawModelConfig(**param_dict) # type: ignore[arg-type]
 
 if __name__ == "__main__":
+    from transformer_lens import HookedTransformer # type: ignore
     persister = S3Persister(collection_location="mess3-param-change")
-    model_class = None
-    from transformer_lens import HookedTransformer
-    model: HookedTransformer = persister.load_model(device='cpu', object_name='4800000.pt')
+    model: HookedTransformer = persister.load_model(device=torch.device('cpu'), object_name='4800000.pt')

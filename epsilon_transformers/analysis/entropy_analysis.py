@@ -2,7 +2,7 @@ import numpy as np
 from typing import List, Tuple
 from collections import Counter
 import matplotlib.pyplot as plt
-from scipy.optimize import minimize_scalar
+from scipy.optimize import minimize_scalar # type: ignore
 
 
 def compute_block_entropy(sequence: List[int], max_block_length: int) -> np.ndarray:
@@ -69,7 +69,7 @@ def compute_empirical_conditional_entropy(
         )
 
         # Conditional entropy computation
-        entropy = 0
+        entropy = 0.0
         for block, block_count in block_counts.items():
             for symbol in range(NUM_SYMBOLS):
                 # Empirical conditional probability p(symbol | block)

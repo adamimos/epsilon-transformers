@@ -1,15 +1,15 @@
 from typing import Literal
-import datashader as ds
-import datashader.transfer_functions as tf
-from colorcet import fire
+import datashader as ds # type: ignore
+import datashader.transfer_functions as tf # type: ignore
 from matplotlib.figure import Figure
 import pandas as pd
 from PIL import Image
 import numpy as np
 from matplotlib import pyplot as plt
 from jaxtyping import Float
-from epsilon_transformers.analysis.activation_analysis import find_msp_subspace_in_residual_stream
+import torch
 
+from epsilon_transformers.analysis.activation_analysis import find_msp_subspace_in_residual_stream
 from epsilon_transformers.process.processes import ZeroOneR
 from epsilon_transformers.training.configs.model_configs import RawModelConfig
 
@@ -101,8 +101,8 @@ if __name__ == "__main__":
         d_mlp=12,
         n_layers=2,
     )
-    model = model_config.to_hooked_transformer(seed=13, device='cpu')
+    model = model_config.to_hooked_transformer(seed=13, device=torch.device('cpu'))
     process = ZeroOneR()
 
     belief_states_reshaped, predicted_beliefs = find_msp_subspace_in_residual_stream(model=model, process=process, num_sequences=5)
-    plot_ground_truth_and_evaluated_2d_simplex(ground_truth_tensor=belief_states_reshaped, predicted_beliefs=predicted_beliefs, plot_triangles=True)
+    plot_ground_truth_and_evaluated_2d_simplex(ground_truth_tensor=belief_states_reshaped, predicted_beliefs=predicted_beliefs, plot_triangles=True, facecolor='black', px=20)

@@ -3,7 +3,7 @@ import pytest
 from torch.utils.data import DataLoader
 import numpy as np
 
-from epsilon_transformers.process.MixedStatePresentation import MixedStateTreeNode
+from epsilon_transformers.process.MixedStateTree import MixedStateTreeNode
 from epsilon_transformers.process.Process import ProcessHistory
 from epsilon_transformers.process.processes import ZeroOneR
 from epsilon_transformers.process.dataset import ProcessDataset, process_dataset_collate_fn

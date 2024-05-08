@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-import networkx as nx
+import networkx as nx # type: ignore
 from epsilon_transformers.analysis.entropy_analysis import (
     compute_block_entropy,
     compute_conditional_entropy,
