@@ -10,7 +10,6 @@ from epsilon_transformers.process.processes import PROCESS_REGISTRY
 # TODO: Create a custom dataloader so you don't have to import the collate_function everywehre
 # TODO: Assert they are in the correct vocabulary
 # TODO: Make the dataset parallel distributed (??)
-# TODO: Figure out padding for batching
 # TODO: Figure out the device allocation for batching
 # TODO: Test the ProcessDataset __iter__ for robustness against StopIter
 
