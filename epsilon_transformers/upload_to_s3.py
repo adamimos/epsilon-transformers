@@ -149,10 +149,11 @@ if __name__ == '__main__':
     user_or_org = "adamimos"
     project_name = "transformer-MSPs"
     #run_id = '2zulyhrv' # mess3 param change
-    run_id = 's6p0aaci' # zero one random
+    #run_id = 's6p0aaci' # zero one random
     # run_id = "halvkdvk"  # mess3 param change long run, I CANT FIND THIS ON WANDB ANYMORE
     #run_id = "vfs4q106"  # rrxor adamimos/transformer-MSPs/vfs4q106, https://wandb.ai/adamimos/transformer-MSPs/runs/vfs4q106/overview?nw=nwuseradamimos
-    run_id = "gydimwxn" # mess3 long run params = 0.05 0.85
+    #run_id = "gydimwxn" # mess3 long run params = 0.05 0.85
+    run_id = "f6gnm1we" # mess3 original params = 
 
     if run_id == "s6p0aaci":
         persister = S3Persister(collection_location='zero-one-random')
@@ -162,6 +163,8 @@ if __name__ == '__main__':
         persister = S3Persister(collection_location='mess3-param-change')
     elif run_id == "gydimwxn":
         persister = S3Persister(collection_location='mess3-0.05-0.85-longrun')
+    elif run_id == "f6gnm1we":
+        persister = S3Persister(collection_location='mess3-0.15-0.6-longrun')
     else:
         raise ValueError(f"Unknown run_id: {run_id}")
 
@@ -187,15 +190,16 @@ if __name__ == '__main__':
         save_log_data_to_s3(persister, f"val_log.csv")
         save_log_data_to_s3(persister, f"train_log.csv")
 
-    # loop over artifacts
-    final_1000_ind = len(arts) - 1000
-    for index, artifact in enumerate(tqdm(arts)):
-        if index < final_1000_ind:
-            continue
+    # loop over artifacts with threading
+    from tqdm.contrib.concurrent import thread_map
+
+    def process_artifact(artifact):
         artifact_file_name, epoch_number = load_model_artifact_data(artifact.name)
-        tokens = int(config['n_iters']) * int(config['batch_size'])* int(config['n_ctx']) * (int(epoch_number)+1)
+        tokens = int(config['n_iters']) * int(config['batch_size']) * int(config['n_ctx']) * (int(epoch_number) + 1)
+        print(f"Processing artifact {artifact.name} with {tokens} tokens")
         if not persister.check_if_file_exists(f"{tokens}.pt"):
             # load model from artifact_dir
             model = load_model_artifact(artifact_file_name, config, device, artifact.name, user_or_org, project_name, artifact.type)
             persister.save_model(model, tokens)
-        
+
+    thread_map(process_artifact, arts, max_workers=24, desc="Processing Artifacts")
