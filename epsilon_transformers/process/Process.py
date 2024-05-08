@@ -89,13 +89,6 @@ class Process(ABC):
         """
         ...
 
-    def __str__(self):
-        return (f"{self.name} Process\n"
-            f"Number of states: {self.num_states}\n"
-            f"Vocabulary length: {self.vocab_len}\n"
-            f"Transition matrix shape: {self.transition_matrix.shape}")
-        
-
     def _sample_emission(self, current_state_idx: Optional[int] = None) -> int:
         if current_state_idx is None:
             current_state_idx = np.random.choice(
