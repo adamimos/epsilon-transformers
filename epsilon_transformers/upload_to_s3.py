@@ -202,4 +202,4 @@ if __name__ == '__main__':
             model = load_model_artifact(artifact_file_name, config, device, artifact.name, user_or_org, project_name, artifact.type)
             persister.save_model(model, tokens)
 
-    thread_map(process_artifact, arts, max_workers=24, desc="Processing Artifacts")
+    thread_map(process_artifact, arts, max_workers=10, desc="Processing Artifacts")
