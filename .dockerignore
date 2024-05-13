@@ -1,0 +1,11 @@
+*
+
+!pyproject.toml
+!README.md
+!.gitignore
+
+!epsilon_transformers/**/*.py
+!examples/**/*.ipynb
+!experiments/**/*.py
+!scripts/**/*.sh
+!tests/**/*.py
