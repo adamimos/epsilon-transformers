@@ -1,0 +1,11 @@
+services:
+  dev:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    image: simplex/epsilon-transformers:dev
+    runtime: nvidia
+    volumes:
+      - ..:/home/simplex/app:cached
+      - ${HOME}/.aws:/home/simplex/.aws
+    command: [sleep, infinity]
