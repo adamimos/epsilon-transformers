@@ -32,10 +32,11 @@ def _combine_channels_to_rgb(agg_r, agg_g, agg_b, px:int):
     img_g = tf.spread(img_g, px=px, shape='circle')
     img_b = tf.spread(img_b, px=px, shape='circle')
 
-    # Combine using numpy
+    # Combine using numpyß
     r_array = np.array(img_r.to_pil()).astype(np.float64)
     g_array = np.array(img_g.to_pil()).astype(np.float64)
     b_array = np.array(img_b.to_pil()).astype(np.float64)
+
     
     # Stack arrays into an RGB image (ignoring alpha channel for simplicity)
     rgb_image = np.stack([r_array[:,:,0], g_array[:,:,1], b_array[:,:,2]], axis=-1)
@@ -58,14 +59,14 @@ def plot_ground_truth_and_evaluated_2d_simplex(
     predicted_belief_vector_data_frame = pd.DataFrame({'x': pb_x, 'y': pb_y, 'r': ground_truth_tensor[:, 0], 'g': ground_truth_tensor[:, 1], 'b': ground_truth_tensor[:, 2]})
 
     # Create canvas
-    canvas = ds.Canvas(plot_width=3000, plot_height=3000, x_range=(-0.1, 1.1), y_range=(-0.1, np.sqrt(3)/2 + 0.1))
+    canvas = ds.Canvas(plot_width=1000, plot_height=1000, x_range=(-0.1, 1.1), y_range=(-0.1, np.sqrt(3)/2 + 0.1))
     
     # Aggregate each RGB channel separately for ground truth and predicted beliefs
     colours = ['r', 'g', 'b']
     ground_truth_aggregated = {color: canvas.points(ground_truth_data_frame, 'x', 'y', ds.mean(color)) for color in colours}
     predited_belief_vector_aggregated = {color: canvas.points(predicted_belief_vector_data_frame, 'x', 'y', ds.mean(color)) for color in colours}
 
-    img_gt = _combine_channels_to_rgb(ground_truth_aggregated['r'], ground_truth_aggregated['g'], ground_truth_aggregated['b'], px=3*px)
+    img_gt = _combine_channels_to_rgb(ground_truth_aggregated['r'], ground_truth_aggregated['g'], ground_truth_aggregated['b'], px=2*px)
     img_pb = _combine_channels_to_rgb(predited_belief_vector_aggregated['r'], predited_belief_vector_aggregated['g'], predited_belief_vector_aggregated['b'], px=px)
 
     # Visualization with Matplotlib
