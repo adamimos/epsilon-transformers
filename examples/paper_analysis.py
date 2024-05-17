@@ -240,8 +240,7 @@ for b in range(n_batch):
 
 # go row by row and compute the L2 distance between the ground truth belief and the transformer belief
 for i in range(len(df)):
-    df.loc[i, 'Error'] = np.linalg.norm(df.loc[i, 'Ground Truth Belief'] - df.loc[i, 'Transformer Belief'])
-
+    df.loc[i, 'Error'] = np.mean((df.loc[i, 'Ground Truth Belief'] - df.loc[i, 'Transformer Belief']) ** 2)
 
 #%%
 import seaborn as sns
@@ -255,6 +254,7 @@ plt.show()
 import pandas as pd
 import numpy as np
 from scipy.spatial.distance import cdist
+
 
 # Assuming df is your existing DataFrame and is populated
 n_rows = len(df)  # Ensure we have the correct number of rows
@@ -298,7 +298,7 @@ for i, v in distance_data.items():
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
-
+#palette = sns.color_palette("viridis", n_colors=len(mean_errors)-1)[::-1] + ["black"]
 sns.set_context("talk")
 
 dims = 4
@@ -376,9 +376,12 @@ for s in powerset(set_inds):
 
 activations
 # %%
+from tqdm import tqdm
+# import pallete
+palette = sns.color_palette("viridis", n_colors=len(mean_errors)-1)[::-1] + ["black"]
 
 results_df = pd.DataFrame(columns=["Input", "Ground Truth Belief", "Ground Truth Next Token Prediction", "Transformer Belief", 'Error', 'activation_type'])
-for acts_ in activations:
+for acts_ in tqdm(activations):
     acts = activations[acts_]
     regression, belief_predictions = run_activation_to_beliefs_regression(acts, transformer_input_beliefs)
 
@@ -405,8 +408,7 @@ for acts_ in activations:
 
     # go row by row and compute the L2 distance between the ground truth belief and the transformer belief
     for i in range(len(df)):
-        df.loc[i, 'Error'] = np.linalg.norm(df.loc[i, 'Ground Truth Belief'] - df.loc[i, 'Transformer Belief'])
-
+        df.loc[i, 'Error'] = np.mean((df.loc[i, 'Ground Truth Belief'] - df.loc[i, 'Transformer Belief']) ** 2)
     df['activation_type'] = key_legend_dict[acts_]
 
     # add the results to the results_df
@@ -439,7 +441,7 @@ for b in range(n_batch):
 
 # go row by row and compute the L2 distance between the ground truth belief and the transformer belief
 for i in range(len(df)):
-    df.loc[i, 'Error'] = np.linalg.norm(df.loc[i, 'Ground Truth Belief'] - df.loc[i, 'Transformer Belief'])
+    df.loc[i, 'Error'] = np.mean((df.loc[i, 'Ground Truth Belief'] - df.loc[i, 'Transformer Belief']) ** 2)
 
 df['activation_type'] = 'concat'
 
@@ -451,7 +453,8 @@ g.map(sns.histplot, 'Error', kde=False, alpha=1., stat='density', fill=True, bin
 #plt.xlim(0, 1)
 plt.show()
 
-# make a box plot of mean error for each actipalette = sns.color_palette("viridis", n_colors=len(mean_errors)-1)[::-1] + ["black"]
+# make a box plot of mean error for each activation type
+palette = sns.color_palette("viridis", n_colors=len(results_df['activation_type'].unique())-1)[::-1] + ["black"]
 sns.boxplot(x='activation_type', y='Error', data=results_df, palette=palette)
 plt.show()
 
@@ -516,26 +519,88 @@ g.map(sns.kdeplot, 'Error', vertical=True, fill=True)
 # make plot wide
 palette = sns.color_palette("viridis", n_colors=len(mean_errors)-1)[::-1] + ["black"]
 g = sns.displot(data=results_df, y='Error', col='activation_type', kind='hist', 
-                fill=True, aspect=.3, log_scale=False, bins=20, palette=palette, hue='activation_type',
+                fill=True, aspect=.3, log_scale=True, bins=20, palette=palette, hue='activation_type',
                 alpha=.7, linewidth=0)
 #ylim
-g.set(ylim=(0, 1.0))
+g.set(ylim=(0, 1.5))
 
 g.set(xticks=[])
-g.set(yticks=[])  # Remove y-axis ticks
-g.fig.subplots_adjust(wspace=-0.6)  # Make plots closer to each other
+#g.set(yticks=[])  # Remove y-axis ticks
+g.fig.subplots_adjust(wspace=-0.)  # Make plots closer to each other
 
 # %%
 
 palette = sns.color_palette("viridis", n_colors=len(mean_errors)-1)[::-1] + ["black"]
 g = sns.displot(data=results_df, x='Error', row='activation_type', kind='hist', 
-                fill=True, log_scale=2, bins=20, palette=palette, hue='activation_type',
+                fill=True, log_scale=True, bins=20, palette=palette, hue='activation_type',
                 linewidth=0, aspect=1/.3, facet_kws={'sharex': True}, legend=False, height=.7)
 # remove titles
 g.set_titles("")
 g.set(yticks=[])  # Remove y-axis ticks
-g.set(xticks=[0, 0.1,, 1.0])
+g.set(xticks=[0, .01,0.1, 1.0])
+g.set(xlim=(0, .5))
+# get rid of x lines
+g.fig.subplots_adjust(wspace=-1.6)  # Make plots closer to each other
+# %%
+palette = sns.color_palette("viridis", n_colors=len(mean_errors)-1)[::-1] + ["black"]
+g = sns.displot(data=results_df, x='Error', row='activation_type', kind='hist', 
+                fill=True, log_scale=False, bins=20, palette=palette, hue='activation_type',
+                linewidth=0, aspect=1/.3, facet_kws={'sharex': True}, legend=False, height=.7)
+# remove titles
+g.set_titles("")
+g.set(yticks=[])  # Remove y-axis ticks
+g.set(xticks=[0, .01,0.1, 1.0])
 g.set(xlim=(0, 1.0))
 # get rid of x lines
 g.fig.subplots_adjust(wspace=-1.6)  # Make plots closer to each other
+# %%
+# plot mean error vs. activation type with error bars
+order = ['0', '1', '2', '3', '4', 'ln_final', 'concat']
+mean_errors = results_df.groupby('activation_type')['Error'].median().reindex(order)
+error_bar = .25
+lower_error = results_df.groupby('activation_type')['Error'].quantile(error_bar).reindex(order)
+upper_error = results_df.groupby('activation_type')['Error'].quantile(1-error_bar).reindex(order)
+error_bars = [mean_errors - lower_error, upper_error - mean_errors]
+
+palette = sns.color_palette("viridis", n_colors=len(mean_errors))[::-1] + ["black"]
+colors = palette[:len(mean_errors)]
+labels = ['Embed', 'Layer 1', 'Layer 2', 'Layer 3', 'Layer 4', 'LN Final', 'Concat']
+for a, activation_type in enumerate(mean_errors.index):
+    plt.errorbar(x=a, y=mean_errors[activation_type], yerr=[[error_bars[0][activation_type]], [error_bars[1][activation_type]]], fmt='o', color=colors[a], ecolor=colors[a], capsize=5, markersize=5)
+plt.xlabel('Activation Type')
+plt.ylabel('Mean Squared Error')
+plt.xticks(ticks=range(len(mean_errors)), labels=labels, rotation=45)
+plt.show()
+# %%
+# plot mean error vs. activation type with error bars
+order = ['0', '1', '2', '3', '4', 'ln_final', 'concat']
+mean_errors = results_df.groupby('activation_type')['Error'].mean().reindex(order)
+std_errors = results_df.groupby('activation_type')['Error'].sem().reindex(order)
+
+palette = sns.color_palette("viridis", n_colors=len(mean_errors))[::-1] + ["black"]
+colors = palette[:len(mean_errors)]
+labels = ['Embed', 'Layer 1', 'Layer 2', 'Layer 3', 'Layer 4', 'LN Final', 'Concat']
+for a, activation_type in enumerate(mean_errors.index):
+    plt.errorbar(x=a, y=mean_errors[activation_type], yerr=std_errors[activation_type], fmt='o', color=colors[a], ecolor=colors[a], capsize=5, markersize=5)
+plt.xlabel('Activation Type')
+plt.ylabel('Mean Squared Error')
+plt.xticks(ticks=range(len(mean_errors)), labels=labels, rotation=45)
+#plt.ylim(0, 0.15)
+
+# %%
+# %%
+# plot mean error vs. activation type with error bars
+order = ['0', '1', '2', '3', '4', 'ln_final', 'concat']
+mean_errors = results_df.groupby('activation_type')['Error'].mean().reindex(order)
+std_errors = results_df.groupby('activation_type')['Error'].sem().reindex(order)
+
+palette = sns.color_palette("viridis", n_colors=len(mean_errors))[::-1] + ["black"]
+colors = palette[:len(mean_errors)]
+labels = ['Embed', 'Layer 1', 'Layer 2', 'Layer 3', 'Layer 4', 'LN Final', 'Concat']
+for a, activation_type in enumerate(mean_errors.index):
+    plt.errorbar(x=a, y=mean_errors[activation_type], yerr=std_errors[activation_type], fmt='o', color='k', ecolor='k', capsize=5, markersize=5)
+plt.xlabel('Activation Type')
+plt.ylabel('Mean Squared Error')
+plt.xticks(ticks=range(len(mean_errors)), labels=labels, rotation=45)
+#plt.ylim(0, 0.15)
 # %%
