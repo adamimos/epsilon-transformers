@@ -2,8 +2,8 @@ import json
 import pathlib
 from typing import List
 from dataclasses import dataclass
-
 import torch
+
 from epsilon_transformers.persistence import S3Persister
 
 def get_model_checkpoints(persister: S3Persister):
@@ -12,7 +12,6 @@ def get_model_checkpoints(persister: S3Persister):
     filenames_pt.sort(key=lambda x: int(x.split("_")[-1].split(".")[0]))
     return filenames_pt
 
-# TODO: Add train_config
 @dataclass
 class PersisterAndCheckpoints:
     persister: S3Persister
