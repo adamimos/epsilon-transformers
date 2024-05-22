@@ -1,3 +1,4 @@
+import json
 import pathlib
 from typing import List
 from dataclasses import dataclass
@@ -27,15 +28,24 @@ class PersisterAndCheckpoints:
             print(f"Saving model to {save_path}")
             torch.save(model.state_dict(), save_path)
 
+    def save_local_train_config(self, dir_path: pathlib.Path):
+        dir_path.mkdir(parents=True, exist_ok=True)
+
+        config = self.persister.load_json(object_name="train_config.json")
+        
+        with open(dir_path / 'train_config.json', 'w') as json_file:
+            json.dump(config, json_file)
+
 if __name__ == "__main__":
     mess3 = PersisterAndCheckpoints(
     persister = S3Persister(collection_location="mess3-0.05-0.85-longrun"),
     checkpoints = [6400, 64000, 640000, 915200, 3187200, 629209600])
 
-    mess3.save_model_local(pathlib.Path("./examples/models/mess3"))
+    # mess3.save_model_local(pathlib.Path("./examples/models/mess3"))
+    mess3.save_local_train_config(pathlib.Path("./examples/models/mess3"))
 
     rrxor_persister = S3Persister(collection_location="rrxor")
-
+    print()
 # rrxor is bull, come back and fix it
     # rrxor = PersisterAndCheckpoints(
     # persister = rrxor_persister,
