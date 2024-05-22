@@ -1,4 +1,5 @@
 from abc import ABC
+from dataclasses import dataclass
 from io import BytesIO
 import os
 import pathlib
@@ -12,6 +13,53 @@ import json
 import pandas as pd
 
 from epsilon_transformers.training.configs.model_configs import RawModelConfig
+
+class HackyPersister:
+    dir_path: pathlib.Path
+
+    def __init__(self, dir_path: pathlib.Path):
+        self.dir_path = dir_path
+
+    def get_model_checkpoints(self):
+        pt_files = [file for file in self.dir_path.glob('*.pt') if file.is_file()]
+        int_list = [int(path.stem) for path in pt_files]
+        sorted_int_list = sorted(int_list)
+        return sorted_int_list
+
+    def load_training_config(self):
+        with open(self.dir_path / 'train_config.json', 'r') as json_file:
+            return json.load(json_file)
+    
+    
+    def load_model(self, ckpt_num: int, device: str):
+
+        train_config = self.load_training_config()
+        
+        if train_config is None:
+            # print("No train_config.json found, inferring from state_dict")
+            # config = _state_dict_to_model_config(state_dict=state_dict)
+            raise ValueError("traing config not found")
+        else:
+            # TODO: refactor this
+            required_fields = ['d_vocab', 'd_model', 'n_ctx', 'd_head', 'n_heads', 'n_layers']
+            config_dict = {k: v for k, v in train_config.items() if k in required_fields}
+            config_dict['d_mlp'] = 4 * config_dict['d_model']
+            # change key n_heads to n_head
+            config_dict['n_head'] = config_dict.pop('n_heads')
+            config = RawModelConfig(**config_dict)
+
+        model = config.to_hooked_transformer(device=device)
+        model.load_state_dict(state_dict=torch.load(self.dir_path / f"{ckpt_num}.pt"))
+        
+        return model
+
+
+    def load_final_model(self):
+        checkpoint_filenames = self.get_model_checkpoints()
+        print(f"Checkpoints found: {len(checkpoint_filenames)}")
+        model = self.load_model(ckpt_num=checkpoint_filenames[-1], device='cpu')
+        print(f"Last checkpoint: {checkpoint_filenames[-1]}")
+        return model
 
 
 TorchModule = TypeVar("TorchModule", bound=torch.nn.modules.Module)
