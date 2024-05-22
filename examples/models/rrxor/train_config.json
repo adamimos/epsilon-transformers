@@ -1,0 +1,1 @@
+{"seed": 42, "n_ctx": 10, "act_fn": "relu", "d_head": 16, "d_model": 128, "d_vocab": 2, "n_heads": 4, "n_iters": 25, "n_layers": 4, "attn_only": false, "optimizer": "sgd", "batch_size": 64, "num_epochs": 150000000, "init_weights": true, "weight_decay": 0, "attention_dir": "causal", "learning_rate": 0.01, "use_attn_scale": true, "normalization_type": "LN"}

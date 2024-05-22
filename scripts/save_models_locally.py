@@ -41,14 +41,13 @@ if __name__ == "__main__":
     persister = S3Persister(collection_location="mess3-0.05-0.85-longrun"),
     checkpoints = [6400, 64000, 640000, 915200, 3187200, 629209600])
 
-    # mess3.save_model_local(pathlib.Path("./examples/models/mess3"))
+    mess3.save_model_local(pathlib.Path("./examples/models/mess3"))
     mess3.save_local_train_config(pathlib.Path("./examples/models/mess3"))
 
     rrxor_persister = S3Persister(collection_location="rrxor")
-    print()
-# rrxor is bull, come back and fix it
-    # rrxor = PersisterAndCheckpoints(
-    # persister = rrxor_persister,
-    # checkpoints = [get_model_checkpoints(rrxor_persister)[-1]])
+    rrxor = PersisterAndCheckpoints(
+    persister = rrxor_persister,
+    checkpoints = [int(get_model_checkpoints(rrxor_persister)[-1][:-3])])
 
-    # mess3.save_model_local(pathlib.Path("./examples/models/rrxor"))
+    rrxor.save_model_local(pathlib.Path("./examples/models/rrxor"))
+    rrxor.save_local_train_config(pathlib.Path("./examples/models/rrxor"))
