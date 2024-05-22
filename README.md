@@ -1,18 +1,13 @@
 # Epsilon Transformers
 
-This project contains Python code for generating process data and training transformer models on it. The codebase is organized into several Python scripts and Jupyter notebooks.
-
-## Codebase Structure
-
-### Folders
-- `epsilon_transformers`: source code for this repository.
-
-### Code
-- `run_sweeps.py`: run sweeps on wandb
+This repository contains code for Transformers Represent Belief State Geometry in their
+Residual Stream
 
 ## Usage
 
 To install, alongside all dependencies, run `pip install -e .` from the repository folder
+
+To reproduce the figures in the paper, you can step through the `Figure6.ipynb` and `Figure7.ipynb` notebooks
 
 ## Dev
 
