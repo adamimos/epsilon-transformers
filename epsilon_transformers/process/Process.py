@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Set, Tuple, Optional, Dict, List, Iterator
+from typing import Tuple, Optional, Dict, List, Iterator
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from jaxtyping import Float
@@ -8,8 +8,6 @@ from collections import deque
 from epsilon_transformers.process.MixedStateTree import MixedStateTree, MixedStateTreeNode
 
 # TODO: Test yield_emission_histories for different emissions in the emission history
-# TODO: Rename _create_hmm
-# TODO: Delete generate_process_history (??)
 
 @dataclass
 class ProcessHistory:
