@@ -9,6 +9,7 @@ from tqdm import tqdm
 import csv
 import tempfile
 import numpy as np
+import json
 
 def get_model_hyperparams(state_dict):
     # Vocabulary size (d_vocab)
@@ -50,9 +51,9 @@ def fetch_run_config(user_or_org, project_name, run_id):
     run = api.run(run_path)
     return run.config
 
-def save_log_data_to_s3(persister, csv_file):
-    persister.save_log_df(csv_file)
-    os.remove(csv_file)
+def save_log_data_to_local(local_folder, csv_file, log_type):
+    os.makedirs(local_folder, exist_ok=True)
+    shutil.move(csv_file, os.path.join(local_folder, f"{log_type}_log.csv"))
 
 import torch
 
@@ -153,21 +154,24 @@ if __name__ == '__main__':
     # run_id = "halvkdvk"  # mess3 param change long run, I CANT FIND THIS ON WANDB ANYMORE
     #run_id = "vfs4q106"  # rrxor adamimos/transformer-MSPs/vfs4q106, https://wandb.ai/adamimos/transformer-MSPs/runs/vfs4q106/overview?nw=nwuseradamimos
     #run_id = "gydimwxn" # mess3 long run params = 0.05 0.85
-    run_id = "f6gnm1we" # mess3 original params = 
-    #run_id = "54qc0vyb" # mess3 long_run new
+    #run_id = "f6gnm1we" # mess3 original params = 
+    run_id = "54qc0vyb" # mess3 long_run new
+
+    local_folder = run_id
+    os.makedirs(local_folder, exist_ok=True)
 
     if run_id == "s6p0aaci":
         persister = S3Persister(collection_location='zero-one-random')
-    elif run_id == "vfs4q106":
+    elif run_id == "vfs4q106": # USING THIS ONE
         persister = S3Persister(collection_location='rrxor')
-    elif run_id == "2zulyhrv":
+    elif run_id == "2zulyhrv": 
         persister = S3Persister(collection_location='mess3-param-change')
     elif run_id == "gydimwxn":
         persister = S3Persister(collection_location='mess3-0.05-0.85-longrun')
-    elif run_id == "f6gnm1we":
+    elif run_id == "f6gnm1we": # USING THIS ONE
         persister = S3Persister(collection_location='mess3-0.15-0.6-longrun')
-    elif run_id == "54qc0vyb":
-        persister = S3Persister(collection_location='mess3-new-longrun')
+    elif run_id == "54qc0vyb": # USING THIS ONE
+        persister = S3Persister(collection_location='zero-one-random')
     else:
         raise ValueError(f"Unknown run_id: {run_id}")
 
@@ -176,22 +180,24 @@ if __name__ == '__main__':
     print(f"the number of artifacts is {len(arts)}")
 
     config = fetch_run_config(user_or_org, project_name, run_id)
-    if not persister.check_if_file_exists('train_config.json'):
-        persister.save_train_config(config)
+    config_path = os.path.join(local_folder, 'train_config.json')
+    if not os.path.exists(config_path):
+        with open(config_path, 'w') as f:
+            json.dump(config, f)
     print(config)
 
     run_path = f"{user_or_org}/{project_name}/runs/{run_id}"
     run = api.run(run_path)
 
-    if not persister.check_if_file_exists('train_log.csv') or not persister.check_if_file_exists('val_log.csv'):
+    if not os.path.exists(os.path.join(local_folder, 'train_log.csv')) or not os.path.exists(os.path.join(local_folder, 'val_log.csv')):
         column_names, history_data = fetch_run_history(run)
         csv_file = create_csv_file(column_names, history_data)
         df_val, df_train = process_log_csv(csv_file)
         # save df_val and df_train
-        df_val.to_csv(f"val_log.csv", index=False)
-        df_train.to_csv(f"train_log.csv", index=False)
-        save_log_data_to_s3(persister, f"val_log.csv")
-        save_log_data_to_s3(persister, f"train_log.csv")
+        df_val.to_csv(os.path.join(local_folder, "val_log.csv"), index=False)
+        df_train.to_csv(os.path.join(local_folder, "train_log.csv"), index=False)
+        save_log_data_to_local(local_folder, os.path.join(local_folder, "val_log.csv"), "val")
+        save_log_data_to_local(local_folder, os.path.join(local_folder, "train_log.csv"), "train")
 
     # loop over artifacts with threading
     from tqdm.contrib.concurrent import thread_map
@@ -200,11 +206,12 @@ if __name__ == '__main__':
         artifact_file_name, epoch_number = load_model_artifact_data(artifact.name)
         tokens = int(config['n_iters']) * int(config['batch_size']) * int(config['n_ctx']) * (int(epoch_number) + 1)
         print(f"Processing artifact {artifact.name} with {tokens} tokens")
-        if not persister.check_if_file_exists(f"{tokens}.pt"):
+        model_path = os.path.join(local_folder, f"{tokens}.pt")
+        if not os.path.exists(model_path):
             if int(epoch_number) % stride == 0:  # Check if the epoch number is a multiple of stride
                 # load model from artifact_dir
                 model = load_model_artifact(artifact_file_name, config, device, artifact.name, user_or_org, project_name, artifact.type)
-                persister.save_model(model, tokens)
+                torch.save(model.state_dict(), model_path)
 
     stride = 1000  # Set the stride value here
     thread_map(process_artifact, arts, max_workers=10, desc="Processing Artifacts")
