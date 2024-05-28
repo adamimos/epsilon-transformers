@@ -72,11 +72,133 @@ class Mess3(Process):
 
         return T, state_names
 
+class EvenProcess(Process):
+    def __init__(self, p: float = 0.5):
+        self.name = "even"
+        if not 0 <= p <= 1:
+            raise ValueError("p must be a valid probability.")
+        self.p = p
+        super().__init__()
+
+    def _create_hmm(self):
+        # initialize the transition tensor
+        T = np.zeros((2, 2, 2))
+        state_names = {"E": 0, "O": 1}
+        T[1, state_names["E"], state_names["O"]] = 1 - self.p
+        T[0, state_names["E"], state_names["E"]] = self.p
+        T[1, state_names["O"], state_names["E"]] = 1.0
+
+        return T, state_names
+    
+
+class GoldenMean(Process):
+    def __init__(self, R: int = 4, k: int = 1, p: float = 0.5):
+        """
+        Initialize the Golden Mean HMM.
+
+        Parameters:
+        R (int): The number of states that output 1.
+        k (int): The number of states that output 0.
+        p (float): The probability of outputting 1 in the final state.
+        """
+        assert k <= R, "k must be less than or equal to R"
+        self.R = R
+        self.k = k
+        self.p = p
+        self.name = "golden_mean"
+        super().__init__()
+
+    def _create_hmm(self):
+        n_states = self.R + self.k
+        state_names = {chr(65 + i): i for i in range(n_states)}  # chr(65) is 'A'
+
+        T = np.zeros((2, n_states, n_states))
+
+        # First state
+        T[1, state_names["A"], state_names["B"]] = self.p
+        T[0, state_names["A"], state_names["A"]] = 1 - self.p
+
+        # States that output 1
+        for i in range(1, self.R):
+            T[1, state_names[chr(65 + i)], state_names[chr(65 + i + 1)]] = 1.0
+
+        # States that output 0
+        for i in range(self.R, self.R + self.k - 1):
+            T[0, state_names[chr(65 + i)], state_names[chr(65 + i + 1)]] = 1.0
+
+        # Last state
+        T[0, state_names[chr(65 + n_states - 1)], state_names["A"]] = 1.0
+
+        return T, state_names
+    
+class Nond(Process):
+    def __init__(self):
+        """
+        Initialize the nond HMM as defined by Marzen and Crutchfield.
+        Reference: https://arxiv.org/pdf/1702.08565.pdf
+        """
+        self.name = "nond"
+        super().__init__()
+
+    def _create_hmm(self):
+        T = np.zeros((2, 3, 3))
+        T[0, 0, 2] = 1.0
+        T[1, 1, 0] = 0.5
+        T[1, 1, 1] = 0.5
+        T[1, 2, :] = 1.0 / 3.0
+
+        state_names = {"A": 0, "B": 1, "C": 2}
+        return T, state_names
+
+# TODO: This does not work! Figure out why!!
+class Sierpinski(Process):
+    def __init__(self, a: float = 1.0 / 6.0, s: float = 6.0):
+        """
+        Initialize the Sierpinski HMM as defined by Jurgens and Crutchfield.
+        Reference: https://pubs.aip.org/aip/cha/article/31/8/083114/1059698
+        Parameters:
+        a (float): Parameter a in the model.
+        s (float): Parameter s in the model.
+        """
+        self.a = a
+        self.s = s
+        self.name = "sierpinski"
+        super().__init__()
+
+    def _create_hmm(self):
+        a_s = self.a * self.s
+        one_minus_a_s = 1 - a_s
+        one_minus_a_s_half = one_minus_a_s / 2
+        a_s_minus_one_half_s = (one_minus_a_s * (self.s - 1)) / (2 * self.s)
+
+        T = np.array(
+            [
+                [[self.a, 0, self.a * (self.s - 1)], [0, self.a, self.a * (self.s - 1)], [0, 0, a_s]],
+                [
+                    [one_minus_a_s_half, 0, 0],
+                    [a_s_minus_one_half_s, one_minus_a_s_half, 0],
+                    [a_s_minus_one_half_s, 0, one_minus_a_s_half],
+                ],
+                [
+                    [one_minus_a_s_half, a_s_minus_one_half_s, 0],
+                    [0, one_minus_a_s_half, 0],
+                    [0, a_s_minus_one_half_s, a_s_minus_one_half_s],
+                ],
+            ]
+        )
+
+        state_names = {0: "A", 1: "B", 2: "C"}
+        return T, state_names
+
 
 PROCESS_REGISTRY: Dict[str, Process] = {
     "z1r": ZeroOneR(),
     "rrxor": RRXOR(),
     "mess3": Mess3(),
+    "even": EvenProcess(),
+    "golden_mean": GoldenMean(),
+    "nond": Nond(),
+    #"sierpinski": Sierpinski()
 }
 
 
