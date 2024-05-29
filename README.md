@@ -11,6 +11,7 @@ The most important folders and files are:
     - `models`: contains saved checkpoints and log files for 3 experiments. Data must be downloaded from [this google drive](https://drive.google.com/drive/folders/1lSSkSXFS1fjsfvWIARF0qI0RHS8Be3Ja?usp=sharing), and placed in this folder. See more details in the Usage section.
     - This folder also contains python notebooks that serve as examples of the functionality of this library:
         - `compmech_process.ipynb`: Shows examples of a number of canonical Comp Mech HMMs that are available to use, and also how to instantiate a custom HMM.
+        - `load_experiment_data.ipynb`: shows how to load experiment data, using RRXOR as an example
         - `compmech_rrxor.ipynb`: Comp mech analysis of the RRXOR process, including entropy rates, MSPs, and visualizations.
         - `simplex_analysis_mess3_0.05_0.85.ipynb`: MSP analysis of the mess3 experiment, recreating the fractal from the blog post.
         - `simplex_analysis_mess3_0.15_0.6.ipynb`: same as above using different hyperparameters that create a different fractal.
