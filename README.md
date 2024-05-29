@@ -1,24 +1,37 @@
 # Epsilon Transformers
 
-This project contains Python code for generating process data and training transformer models on it. The codebase is organized into several Python scripts and Jupyter notebooks.
+This codebase contains the code for analyzing transformers from a Computational Mechanics point of view.
 
 ## Codebase Structure
 
-### Folders
-- `epsilon_transformers`: source code for this repository.
+The most important folders and files are:
 
-### Code
-- `run_sweeps.py`: run sweeps on wandb
+- `epsilon_transformers`: source code for this repository.
+- `examples`: examples of how to use the codebase.
+    - `models`: contains saved checkpoints and log files for 3 experiments. Data must be downloaded from [this google drive](https://drive.google.com/drive/folders/1lSSkSXFS1fjsfvWIARF0qI0RHS8Be3Ja?usp=sharing), and placed in this folder. See more details in the Usage section.
+    - This folder also contains python notebooks that serve as examples of the functionality of this library:
+        - `compmech_process.ipynb`: Shows examples of a number of canonical Comp Mech HMMs that are available to use, and also how to instantiate a custom HMM.
+        - `compmech_rrxor.ipynb`: Comp mech analysis of the RRXOR process, including entropy rates, MSPs, and visualizations.
+        - `simplex_analysis_mess3_0.05_0.85.ipynb`: MSP analysis of the mess3 experiment, recreating the fractal from the blog post.
+        - `simplex_analysis_mess3_0.15_0.6.ipynb`: same as above using different hyperparameters that create a different fractal.
+        - `simplex_analysis_rrxor.ipynb`: MSP analysis of the RRXOR experiment.
 
 ## Usage
 
-To install, alongside all dependencies, run `pip install -e .` from the repository folder
+### Installation
+To install, alongside all dependencies, run `pip install -e .` from the repository folder.
 
-## Persistence
+### Downloading Experiments
 
-This codebase provides functionality to persist models & other research artifact's to the S3 cloud provider. In order to use it, make sure that you have the `AWS_ACCESS_KEY_ID` `AWS_SECRET_ACCESS_KEY` environment variables set in a .env file.
+Experimental data including training hyperparameters, log files of losses for both training and validation data, and checkpoints of saved models, can be found in [this google drive](https://drive.google.com/drive/folders/1lSSkSXFS1fjsfvWIARF0qI0RHS8Be3Ja?usp=sharing).
 
-If you are a PIBBSS affiliate, or otherwise feel like you should have access to PIBBSS' S3 instance but currently don't, reach out to Lucas.
+That drive contains 4 zip files:
+- `models.zip` (931 MB): contains all of the data from all experiments. If you download this you shouldn't download anything else.
+- `vfs4q106-rrxor.zip` (174 MB): contains the data from the RRXOR experiment.
+- `f6gnm1we-mess3-0.15-0.6.zip` (196 MB): contains the data from the mess3 experiment, this is the fractal used in the blog post.
+- `vfs4q106-mess3-0.05-0.85.zip` (561 MB): a mess3 experiment with different hyperparameters from above so that it is a different fractal.
+
+You should unzip the data such that you have a folder called `models` in the `examples` folder, and inside `models` you have folders with the names of each of the experiments, and inside each of those folders you have the data.
 
 ## Dev
 
