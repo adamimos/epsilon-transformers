@@ -29,7 +29,12 @@ class HackyPersister:
     def load_training_config(self):
         with open(self.dir_path / 'train_config.json', 'r') as json_file:
             return json.load(json_file)
+        
+    def load_train_log(self):
+        return pd.read_csv(self.dir_path / 'train_log.csv')
     
+    def load_val_log(self):
+        return pd.read_csv(self.dir_path / 'val_log.csv')
     
     def load_model(self, ckpt_num: int, device: str):
 
@@ -49,7 +54,7 @@ class HackyPersister:
             config = RawModelConfig(**config_dict)
 
         model = config.to_hooked_transformer(device=device)
-        model.load_state_dict(state_dict=torch.load(self.dir_path / f"{ckpt_num}.pt"))
+        model.load_state_dict(state_dict=torch.load(self.dir_path / f"{ckpt_num}.pt", map_location=device))
         
         return model
 
