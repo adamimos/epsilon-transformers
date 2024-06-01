@@ -66,7 +66,7 @@ def get_steering_vector(per_layer_belief_activations,start_index,end_index,targe
     return steering_vectors
 
 def steering_hook(activation,hook,direction):
-    return activation-direction
+    return activation+direction
 
 def run_model_with_steering(model,inputs,steering_vector,multiplier):
     fwd_hooks = [(k,functools.partial(steering_hook,direction=multiplier*steering_vector[k])) for k in steering_vector.keys()]
