@@ -7,9 +7,6 @@ from collections import deque
 
 from epsilon_transformers.process.MixedStateTree import MixedStateTree, MixedStateTreeNode
 
-# TODO: Test yield_emission_histories for different emissions in the emission history
-# TODO: Rename _create_hmm
-# TODO: Delete generate_process_history (??)
 
 @dataclass
 class ProcessHistory:
@@ -17,13 +14,10 @@ class ProcessHistory:
     states: List[str]
 
     def __post_init__(self):
-        assert len(self.symbols) == len(
-            self.states
-        ), "length of symbols & states must be the same"
+        assert len(self.symbols) == len(self.states), "length of symbols & states must be the same"
 
     def __len__(self):
         return len(self.states)
-
 
 class Process(ABC):
     name: str
@@ -62,9 +56,7 @@ class Process(ABC):
             len(self.transition_matrix.shape) != 3
             or self.transition_matrix.shape[1] != self.transition_matrix.shape[2]
         ):
-            raise ValueError(
-                "Transition matrix should have 3 axes and the final two dims shoulds be square"
-            )
+            raise ValueError("Transition matrix should have 3 axes and the final two dims shoulds be square")
 
         if self.transition_matrix.shape[1] != self.transition_matrix.shape[2]:
             raise ValueError("Transition matrix should be square")
@@ -77,9 +69,7 @@ class Process(ABC):
         self.num_states = self.transition_matrix.shape[1]
 
     @abstractmethod
-    def _create_hmm(
-        self,
-    ) -> Tuple[Float[np.ndarray, "vocab_len num_states num_states"], Dict[str, int]]:
+    def _create_hmm(self) -> Tuple[Float[np.ndarray, "vocab_len num_states num_states"], Dict[str, int]]:
         """
         Create the HMM which defines the process.
 
@@ -91,20 +81,15 @@ class Process(ABC):
 
     def __str__(self):
         return (f"{self.name} Process\n"
-            f"Number of states: {self.num_states}\n"
-            f"Vocabulary length: {self.vocab_len}\n"
-            f"Transition matrix shape: {self.transition_matrix.shape}")
-        
+                f"Number of states: {self.num_states}\n"
+                f"Vocabulary length: {self.vocab_len}\n"
+                f"Transition matrix shape: {self.transition_matrix.shape}")
 
     def _sample_emission(self, current_state_idx: Optional[int] = None) -> int:
         if current_state_idx is None:
-            current_state_idx = np.random.choice(
-                self.num_states, p=self.steady_state_vector
-            )
+            current_state_idx = np.random.choice(self.num_states, p=self.steady_state_vector)
 
-        assert (
-            0 <= current_state_idx < self.num_states
-        ), "current_state_index must be positive & less than num_states"
+        assert 0 <= current_state_idx < self.num_states, "current_state_index must be positive & less than num_states"
 
         p = self.transition_matrix[:, current_state_idx, :].sum(axis=1)
         emission = np.random.choice(self.vocab_len, p=p)
@@ -148,10 +133,9 @@ class Process(ABC):
             
         return ProcessHistory(symbols=symbols, states=states)
     
-    # TODO: You can get rid of the stack, and just iterate through the nodes & the depth as tuples
-    def derive_mixed_state_presentation(self, depth: int) -> MixedStateTree:
-        tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, children=set(), path=[], emission_prob=0)
-        nodes = set([tree_root])
+    def derive_mixed_state_presentation(self, depth: int) -> 'MixedStateTree':
+        tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, children=[], path=[], emission_prob=0)
+        nodes = [tree_root]
 
         stack = deque([(tree_root, self.steady_state_vector, [], 0)])
         while stack:
@@ -162,18 +146,19 @@ class Process(ABC):
                     if emission_probs[emission] > 0:
                         next_state_prob_vector = _compute_next_distribution(self.transition_matrix, state_prob_vector, emission)
                         child_path = current_path + [emission]
-                        child_node = MixedStateTreeNode(state_prob_vector=next_state_prob_vector, path=child_path, children=set(), emission_prob=emission_probs[emission])
+                        child_node = MixedStateTreeNode(state_prob_vector=next_state_prob_vector, path=child_path, children=[], emission_prob=emission_probs[emission])
                         current_node.add_child(child_node)
 
                         stack.append((child_node, next_state_prob_vector, child_path, current_depth + 1))
-            nodes.add(current_node)
-        
+            nodes.append(current_node)
+
+        print(f"Total nodes generated: {len(nodes)}")  # Debug print statement
+        for node in nodes:
+            print(f"Node path: {node.path}, state_prob_vector: {node.state_prob_vector}")  # Debug print statement
+
         return MixedStateTree(root_node=tree_root, process=self.name, nodes=nodes, depth=depth)
 
-def _compute_emission_probabilities(
-    hmm: Process, 
-    state_prob_vector: Float[np.ndarray, "num_states"]
-) -> Float[np.ndarray, "vocab_len"]:
+def _compute_emission_probabilities(hmm: Process, state_prob_vector: Float[np.ndarray, "num_states"]) -> Float[np.ndarray, "vocab_len"]:
     """
     Compute the probabilities associated with each emission given the current mixed state.
     """
@@ -182,11 +167,7 @@ def _compute_emission_probabilities(
     emission_probs /= emission_probs.sum()
     return emission_probs
 
-def _compute_next_distribution(
-    epsilon_machine: Float[np.ndarray, "vocab_len num_states num_states"],
-    current_state_prob_vector: Float[np.ndarray, "num_states"], 
-    current_emission: int
-) -> Float[np.ndarray, "num_states"]:
+def _compute_next_distribution(epsilon_machine: Float[np.ndarray, "vocab_len num_states num_states"], current_state_prob_vector: Float[np.ndarray, "num_states"], current_emission: int) -> Float[np.ndarray, "num_states"]:
     """
     Compute the next mixed state distribution for a given output.
     """
