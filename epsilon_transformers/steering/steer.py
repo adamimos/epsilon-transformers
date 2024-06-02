@@ -148,7 +148,7 @@ def steer_and_analyse_transformer(model : HookedTransformer, steering_dict: Dict
     fig.show()
 
 
-def steer_and_analyse_transformer_hist(model : HookedTransformer, steering_dict: Dict[str, torch.Tensor], transformer_inputs, transformer_input_belief_indices, state_1=21, state_2=31, mult=1, save=False, path="./results", title=""):
+def steer_and_analyse_transformer_hist(model : HookedTransformer, steering_dict: Dict[str, torch.Tensor], transformer_inputs, transformer_input_belief_indices, state_1=21, state_2=31, mult=1, save=False, path="./results", title="", state_1_target_value=0, state_2_target_value=1):
     prompts_with_belief_state_1 = get_inputs_ending_in_belief(transformer_inputs,transformer_input_belief_indices,state_1)
     prompts_with_belief_state_2 = get_inputs_ending_in_belief(transformer_inputs,transformer_input_belief_indices,state_2)
 
@@ -197,17 +197,22 @@ def steer_and_analyse_transformer_hist(model : HookedTransformer, steering_dict:
         """
         data = [x for x in data if x is not None]
         if not data:
-            raise ValueError("The input list is empty")
+            return None
         
         counter = Counter(data)
         mode_value = counter.most_common(1)[0][0]
         return round(mode_value,2)
+    if prompts_with_belief_state_1.shape[-1]>0 and most_frequent_value(ones["state_1"]) is not None:
+        state_1_target_value = most_frequent_value(ones["state_1"])
+    if prompts_with_belief_state_2.shape[-1]>0 and most_frequent_value(ones["state_2"]) is not None:
+        state_2_target_value = most_frequent_value(ones["state_2"])
+
     
-    plt.hist(ones["corrupted_state_1"], bins=20, alpha=0.5, label='corrupted_state_1', range=range, color="b") 
-    plt.title(f'Output probabilities: steering in layers {",".join([ key.removeprefix("blocks.").removesuffix(".hook_resid_post") for key in steering_dict.keys()])}. Should output {most_frequent_value(ones["state_2"])}')
-    plt.show()
-    plt.hist(ones["corrupted_state_2"], bins=20, alpha=0.5, label="corrupted_state_2", range=range, color="b")
-    plt.title(f'Output probabilities: steering in layers {",".join([ key.removeprefix("blocks.").removesuffix(".hook_resid_post") for key in steering_dict.keys()])}. Should output {most_frequent_value(ones["state_1"])}')
+    plt.hist(ones["corrupted_state_1"], bins=20, alpha=0.5, label=f'corrupted_state_1. Should be {state_2_target_value}', range=range, color="b") 
+    # plt.title(f'Output probabilities: steering in layers {",".join([ key.removeprefix("blocks.").removesuffix(".hook_resid_post") for key in steering_dict.keys()])}. Should output {state_2_target_value}')
+    plt.hist(ones["corrupted_state_2"], bins=20, alpha=0.5, label=f"corrupted_state_2. Should be {state_1_target_value}", range=range, color="r")
+    # plt.title(f'Output probabilities: steering in layers {",".join([ key.removeprefix("blocks.").removesuffix(".hook_resid_post") for key in steering_dict.keys()])}. Should output {state_1_target_value}')
+    plt.legend(loc='upper right')
     plt.show()
     
 
