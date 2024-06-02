@@ -9,20 +9,22 @@ from transformer_lens import HookedTransformer
 def organize_activations(activations, belief_indices,all_positions=False):
 
     number_of_distinct_beliefs = len(set(belief_indices.ravel().numpy()))
-
-    belief_activations = {k:[] for k in np.arange(number_of_distinct_beliefs+1)}
-
-    per_layer_belief_activations = {k:belief_activations.copy() for k in activations.keys()}
-
+    per_layer_belief_activations = {}
+    for layer_name in activations.keys():
+        per_layer_belief_activations[layer_name] = {k:[] for k in np.arange(number_of_distinct_beliefs+1)}
+    counter = 0 
     for layer_name in activations.keys():
         layer_activations = activations[layer_name]
         #layer_activations is [batch, n_ctx, d_model]
         for i,activation in enumerate(layer_activations):
             #activation is [n_ctx, d_model]
+           
             if all_positions:
                 for j in range(activation.shape[0]):
                     belief_index = belief_indices[i,j].item()
                     per_layer_belief_activations[layer_name][belief_index].append(activation[j])
+                    counter+=1
+                    
             else:
                 #get the last activation
                 last_activations = activation[-1] 
@@ -49,7 +51,7 @@ def get_steering_vector_per_layer(layer_activations,start_index,end_index):
     average_second_index_activations = torch.mean(second_index_activations, dim=0)
 
     #computes the steering vector, which is the difference between the average activations
-    steering_vector = average_first_index_activations - average_second_index_activations
+    steering_vector = average_second_index_activations-average_first_index_activations
     #the steering vector is the direction in the activation space that brings you from the 
     #start belief state to the end belief state
     return steering_vector
