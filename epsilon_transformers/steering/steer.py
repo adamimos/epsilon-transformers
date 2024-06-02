@@ -1,5 +1,6 @@
 import torch
 import functools
+from collections import defaultdict, Counter
 import numpy as np
 from typing import Dict, Any
 from plotly.subplots import make_subplots
@@ -7,6 +8,7 @@ from plotly import graph_objects as go
 from transformer_lens import HookedTransformer
 import hashlib
 import json
+import matplotlib.pyplot as plt
 
 def hash_dict(d : Dict[Any, torch.Tensor]):
     return hash(sum([hash(k) for k in d.keys()]) + sum([int.from_bytes(hashlib.sha256(tensor.numpy()).digest(), "big") for tensor in d.values()]))
@@ -144,3 +146,91 @@ def steer_and_analyse_transformer(model : HookedTransformer, steering_dict: Dict
     if save:
         fig.write_html(f"{path}/steering_analysis_{title}_{hash_dict(steering_dict)}.html")
     fig.show()
+
+
+def steer_and_analyse_transformer_hist(model : HookedTransformer, steering_dict: Dict[str, torch.Tensor], transformer_inputs, transformer_input_belief_indices, state_1=21, state_2=31, mult=1, save=False, path="./results", title=""):
+    prompts_with_belief_state_1 = get_inputs_ending_in_belief(transformer_inputs,transformer_input_belief_indices,state_1)
+    prompts_with_belief_state_2 = get_inputs_ending_in_belief(transformer_inputs,transformer_input_belief_indices,state_2)
+
+    steered_to_1=run_model_with_steering(model, prompts_with_belief_state_2, steering_dict,1 * mult)
+    steered_to_2=run_model_with_steering(model, prompts_with_belief_state_1, steering_dict,-1 * mult)
+    
+
+    normal_1 = model(prompts_with_belief_state_1)
+    normal_2 = model(prompts_with_belief_state_2)
+    output_state_1 = normal_1[:,-1,:].softmax(1).detach()
+    output_state_2 = normal_2[:,-1,:].softmax(1).detach()
+    corrupted_output_state_1 = steered_to_2[:,-1,:].softmax(1).detach()
+    corrupted_output_state_2 = steered_to_1[:,-1,:].softmax(1).detach()
+
+    output_state_1 = normal_1[:,-1,:].softmax(1).detach()
+    output_state_2 = normal_2[:,-1,:].softmax(1).detach()
+    corrupted_output_state_1 = steered_to_2[:,-1,:].softmax(1).detach()
+    corrupted_output_state_2 = steered_to_1[:,-1,:].softmax(1).detach()
+
+
+    outputs =[output_state_1,output_state_2,corrupted_output_state_1,corrupted_output_state_2]
+    labels = ["state_1","state_2","corrupted_state_1","corrupted_state_2"]
+    one_bars = {"state_1":0,"state_2":0,"corrupted_state_1":0,"corrupted_state_2":0}
+    ones = defaultdict(list)
+
+    for label, output in zip(labels,outputs):
+        ones[label] = output[:,0].numpy()
+    
+    # for i,output in enumerate(outputs):
+    #     key = list(one_bars.keys())[i]
+
+    #     ones[key].append(output[:,0].numpy())
+    
+    range=[0,1]
+    # plt.hist(ones["state_1"], bins=20, alpha=0.5, label='state_1', range=range)
+    # determine if 1 or 0 is more often in state 1:
+    def most_frequent_value(data):
+        """
+        Returns the value that occurs most often in a list.
+        
+        Parameters:
+        data (list): The input list.
+
+        Returns:
+        mode_value: The most frequent value in the list.
+        """
+        data = [x for x in data if x is not None]
+        if not data:
+            raise ValueError("The input list is empty")
+        
+        counter = Counter(data)
+        mode_value = counter.most_common(1)[0][0]
+        return round(mode_value,2)
+    
+    plt.hist(ones["corrupted_state_1"], bins=20, alpha=0.5, label='corrupted_state_1', range=range, color="b") 
+    plt.title(f'Output probabilities: steering in layers {",".join([ key.removeprefix("blocks.").removesuffix(".hook_resid_post") for key in steering_dict.keys()])}. Should output {most_frequent_value(ones["state_2"])}')
+    plt.show()
+    plt.hist(ones["corrupted_state_2"], bins=20, alpha=0.5, label="corrupted_state_2", range=range, color="b")
+    plt.title(f'Output probabilities: steering in layers {",".join([ key.removeprefix("blocks.").removesuffix(".hook_resid_post") for key in steering_dict.keys()])}. Should output {most_frequent_value(ones["state_1"])}')
+    plt.show()
+    
+
+def shuffle_tensor(tensor):
+    """
+    Shuffle all entries in an n-dimensional tensor while maintaining its original shape.
+    
+    Parameters:
+    tensor (torch.Tensor): The input tensor to shuffle.
+    
+    Returns:
+    torch.Tensor: The shuffled tensor with the same shape as the input.
+    """
+    # Flatten the tensor
+    flattened_tensor = tensor.view(-1)
+
+    # Generate a random permutation of indices for the flattened tensor
+    indices = torch.randperm(flattened_tensor.size(0))
+
+    # Shuffle the flattened tensor using the random indices
+    shuffled_flattened_tensor = flattened_tensor[indices]
+
+    # Reshape the shuffled flattened tensor back to the original shape
+    shuffled_tensor = shuffled_flattened_tensor.view(tensor.size())
+
+    return shuffled_tensor
