@@ -126,7 +126,7 @@ class S3Persister(Persister):
             config = RawModelConfig(**config_dict)
         else:
             print("No train_config.json found, inferring from state_dict")
-            config = _state_dict_to_model_config(state_dict=state_dict)
+            config = state_dict_to_model_config(state_dict=state_dict)
 
         model = config.to_hooked_transformer(device=device)
         model.load_state_dict(state_dict=state_dict)
@@ -168,7 +168,7 @@ class S3Persister(Persister):
         download_buffer.seek(0)
         return download_buffer.read().decode('utf-8')
 
-def _state_dict_to_model_config(state_dict: OrderedDict, n_ctx: int = 10) -> RawModelConfig:
+def state_dict_to_model_config(state_dict: OrderedDict, n_ctx: int = 10) -> RawModelConfig:
     _HOOKED_TRANSFORMER_MODULE_REGEXES_REGISTRY: Dict[str, List[Tuple[str, int]]] = {
         r"embed\.W_E": [('d_vocab', 0), ('d_model', 1)],
         r"pos_embed\.W_pos": [],
