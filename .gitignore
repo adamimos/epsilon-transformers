@@ -12,3 +12,4 @@ wandb/
 .DS_Store
 *.pt
 examples/models
+examples/results

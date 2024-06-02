@@ -1,10 +1,18 @@
 import torch
 import functools
 import numpy as np
-from typing import Dict
+from typing import Dict, Any
 from plotly.subplots import make_subplots
 from plotly import graph_objects as go
 from transformer_lens import HookedTransformer
+import hashlib
+import json
+
+def hash_dict(d : Dict[Any, torch.Tensor]):
+    return hash(sum([hash(k) for k in d.keys()]) + sum([int.from_bytes(hashlib.sha256(tensor.numpy()).digest(), "big") for tensor in d.values()]))
+
+
+    
 
 def organize_activations(activations, belief_indices,all_positions=False):
 
@@ -87,7 +95,7 @@ def get_inputs_ending_in_belief(inputs,belief_indices,belief_index):
     return inputs[relevant_indices]
 
 
-def steer_and_analyse_transformer(model : HookedTransformer, steering_dict: Dict[str, torch.Tensor], transformer_inputs, transformer_input_belief_indices, state_1=21, state_2=31, mult=1):
+def steer_and_analyse_transformer(model : HookedTransformer, steering_dict: Dict[str, torch.Tensor], transformer_inputs, transformer_input_belief_indices, state_1=21, state_2=31, mult=1, save=False, path="./results", title=""):
     prompts_with_belief_state_1 = get_inputs_ending_in_belief(transformer_inputs,transformer_input_belief_indices,state_1)
     prompts_with_belief_state_2 = get_inputs_ending_in_belief(transformer_inputs,transformer_input_belief_indices,state_2)
 
@@ -127,10 +135,12 @@ def steer_and_analyse_transformer(model : HookedTransformer, steering_dict: Dict
     fig.add_trace(go.Bar(x=["State T","State F", "State T->State F","State F-> State T"], y=list(one_bars.values()),
                             name=f'Probability to output 1'),
                 row=1, col=2)
-    fig.update_layout(title='Output probabilities',
+    fig.update_layout(title=f'Output probabilities: steering in layers {",".join([ key.removeprefix("blocks.").removesuffix(".hook_resid_post") for key in steering_dict.keys()])}',
                     yaxis_title='Probabilities', xaxis_title='Model belief state',
                     width=800, height=400,
                     )
     fig.update_yaxes(range=[0, 1], row=1, col=2)
     fig.update_yaxes(range=[0, 1], row=1, col=1)
+    if save:
+        fig.write_html(f"{path}/steering_analysis_{title}_{hash_dict(steering_dict)}.html")
     fig.show()
