@@ -1,5 +1,5 @@
 import torch
-from abc import ABC, abstractclassmethod, classmethod
+from abc import ABC, abstractclassmethod
 import pathlib
 
 # TODO: Test _tensor_fetcher to make sure it works when there isn't a .
@@ -42,6 +42,6 @@ class Measurement(ABC):
     def save_to_disk(self, outpath: pathlib.Path):
         raise NotImplementedError
 
-    @classmethod @abstractclassmethod
+    @classmethod
     def from_model():
         ...

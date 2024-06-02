@@ -5,7 +5,7 @@ from typing import Literal, List, Dict, Optional
 from dataclasses import dataclass
 from datasets import load_dataset
 
-from .measurement import Measurement
+from epsilon_transformers.analysis.training_dynamics.measurement import Measurement
 
 # TODO: Double check whether attn_eff_dim language is correct in the write up.
 # TODO: Include mathematical description of attn_eff_dim in description

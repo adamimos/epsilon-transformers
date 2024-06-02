@@ -4,7 +4,7 @@ from jaxtyping import Float
 from dataclasses import dataclass
 from typing import Literal, Optional, List
 
-from .measurement import Measurement
+from epsilon_transformers.analysis.training_dynamics.measurement import Measurement
 
 # TODO: Test for Memory Leakages
 # TODO: Change dataclass into pydantic??

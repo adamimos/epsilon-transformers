@@ -4,8 +4,8 @@ from typing import List, Dict
 from dataclasses import dataclass
 import numpy as np
 
-from .metrics.weight_metrics import AttnCircuit, AttnCircuitsMeasurements, Metric
-from .metrics.activation_metrics import Extracted, activation_effective_dimension
+from epsilon_transformers.analysis.training_dynamics.weight_metrics import AttnCircuit, AttnCircuitsMeasurements, Metric
+from epsilon_transformers.analysis.training_dynamics.activation_metrics import Extracted, activation_effective_dimension
 
 # TODO: Test plot_attn_circuit_measurements()
 # TODO: Rename Line to something sensible
