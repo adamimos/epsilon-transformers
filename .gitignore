@@ -9,4 +9,5 @@ poetry.lock
 .pytest_cache
 **.env
 wandb/
+**.pt
 .DS_Store
