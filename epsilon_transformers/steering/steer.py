@@ -1,6 +1,10 @@
 import torch
 import functools
 import numpy as np
+from typing import Dict
+from plotly.subplots import make_subplots
+from plotly import graph_objects as go
+from transformer_lens import HookedTransformer
 
 def organize_activations(activations, belief_indices,all_positions=False):
 
@@ -79,3 +83,52 @@ def get_inputs_ending_in_belief(inputs,belief_indices,belief_index):
     end_belief_indices = belief_indices[:,-1]
     relevant_indices = torch.where(end_belief_indices == belief_index)
     return inputs[relevant_indices]
+
+
+def steer_and_analyse_transformer(model : HookedTransformer, steering_dict: Dict[str, torch.Tensor], transformer_inputs, transformer_input_belief_indices, state_1=21, state_2=31, mult=1):
+    prompts_with_belief_state_1 = get_inputs_ending_in_belief(transformer_inputs,transformer_input_belief_indices,state_1)
+    prompts_with_belief_state_2 = get_inputs_ending_in_belief(transformer_inputs,transformer_input_belief_indices,state_2)
+
+    steered_to_1=run_model_with_steering(model, prompts_with_belief_state_2, steering_dict,1 * mult)
+    steered_to_2=run_model_with_steering(model, prompts_with_belief_state_1, steering_dict,-1 * mult)
+    
+
+    normal_1 = model(prompts_with_belief_state_1)
+    normal_2 = model(prompts_with_belief_state_2)
+    print(torch.norm(normal_1- steered_to_2))
+    output_state_1 = normal_1[:,-1,:].softmax(1).detach()
+    output_state_2 = normal_2[:,-1,:].softmax(1).detach()
+    corrupted_output_state_1 = steered_to_2[:,-1,:].softmax(1).detach()
+    corrupted_output_state_2 = steered_to_1[:,-1,:].softmax(1).detach()
+
+    output_state_1 = normal_1[:,-1,:].softmax(1).detach()
+    output_state_2 = normal_2[:,-1,:].softmax(1).detach()
+    corrupted_output_state_1 = steered_to_2[:,-1,:].softmax(1).detach()
+    corrupted_output_state_2 = steered_to_1[:,-1,:].softmax(1).detach()
+
+
+    outputs =[output_state_1,output_state_2,corrupted_output_state_1,corrupted_output_state_2]
+    zero_bars = {"state_1":0,"state_2":0,"corrupted_state_1":0,"corrupted_state_2":0}
+    one_bars = {"state_1":0,"state_2":0,"corrupted_state_1":0,"corrupted_state_2":0}
+    for i,output in enumerate(outputs):
+        total = len(output)
+        key = list(one_bars.keys())[i]
+        one_bars[key] = sum(output[:,0].numpy())/total
+        zero_bars[key] = sum(output[:,1].numpy())/total
+    # Create a subplot with two scatter plots
+    fig = make_subplots(rows=1, cols=2, specs=[[{'type': 'scatter'}, {'type': 'scatter'}]])
+
+    # Plot the ground truth beliefs on the left
+    fig.add_trace(go.Bar(x=["State T","State F", "State T->State F","State F-> State T"], y=list(zero_bars.values()),
+                            name=f'Probability to output 0'),
+                row=1, col=1)
+    fig.add_trace(go.Bar(x=["State T","State F", "State T->State F","State F-> State T"], y=list(one_bars.values()),
+                            name=f'Probability to output 1'),
+                row=1, col=2)
+    fig.update_layout(title='Output probabilities',
+                    yaxis_title='Probabilities', xaxis_title='Model belief state',
+                    width=800, height=400,
+                    )
+    fig.update_yaxes(range=[0, 1], row=1, col=2)
+    fig.update_yaxes(range=[0, 1], row=1, col=1)
+    fig.show()
