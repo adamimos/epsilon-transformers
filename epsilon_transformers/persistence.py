@@ -64,6 +64,16 @@ class LocalPersister(Persister):
         print(f"Saving model to {save_path}")
         torch.save(model.state_dict(), save_path)
 
+    def save_config(self, config):
+        save_path = self.collection_location / "train_config.json"
+        self._save_overwrite_protection(object_name=save_path)
+
+        print(f"Saving config to {save_path}")
+        with open(save_path, "w") as f:
+            config = config.model_dump()
+            config.pop('persistance')
+            json.dump(config, f)
+
     def load_model(self, model: TorchModule, object_name: str) -> TorchModule:
         raise NotImplementedError
         state_dict = torch.load(self.collection_location / object_name)
