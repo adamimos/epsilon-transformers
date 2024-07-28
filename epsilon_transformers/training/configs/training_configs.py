@@ -1,8 +1,6 @@
-from io import BytesIO
 from typing import Dict, Literal
-from pydantic import BaseModel, model_validator
+from pydantic import model_validator
 import pathlib
-import yaml
 import torch
 from torch.utils.data import DataLoader
 from typing import Union, Optional
@@ -140,9 +138,16 @@ class Log:
 
     def persist(self):
         if self.config.wandb:
-            wandb.log({k: v for k, v in asdict(self).items() if v is not None and not isinstance(v, LoggingConfig)})
+            wandb.log(
+                {
+                    k: v
+                    for k, v in asdict(self).items()
+                    if v is not None and not isinstance(v, LoggingConfig)
+                }
+            )
         if self.config.local is not None:
             raise NotImplementedError
+
 
 class LoggingConfig(Config):
     local: Optional[pathlib.Path] = None
@@ -174,13 +179,15 @@ class TrainConfig(Config):
     seed: int
     verbose: bool
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_model(self):
         dataset_process = self.dataset.process
         if dataset_process:
             process_vocab_len = PROCESS_REGISTRY[dataset_process]().vocab_len
             if self.model.d_vocab != process_vocab_len:
-                raise ValueError(f"Model's d_vocab ({self.model.d_vocab}) doesn't match dataset process's vocab_len ({process_vocab_len})")
+                raise ValueError(
+                    f"Model's d_vocab ({self.model.d_vocab}) doesn't match dataset process's vocab_len ({process_vocab_len})"
+                )
         return self
 
     def init_logger(self) -> Log:

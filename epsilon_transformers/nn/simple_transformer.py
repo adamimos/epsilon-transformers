@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class Head(nn.Module):
     def __init__(self, input_size, d_model, d_head):
         super().__init__()

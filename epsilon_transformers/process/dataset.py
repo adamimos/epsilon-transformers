@@ -1,8 +1,7 @@
 import torch
-from itertools import islice
 from typing import Dict, Iterable, Tuple, List
 from jaxtyping import Float
-from torch.utils.data import IterableDataset, DataLoader
+from torch.utils.data import IterableDataset
 
 from epsilon_transformers.process.Process import Process
 from epsilon_transformers.process.processes import PROCESS_REGISTRY
@@ -20,7 +19,13 @@ class ProcessDataset(IterableDataset):
     sequence_length: int
     num_samples: int
 
-    def __init__(self, process_name: str, process_params: Dict[str, float], sequence_length: int, num_samples: int):
+    def __init__(
+        self,
+        process_name: str,
+        process_params: Dict[str, float],
+        sequence_length: int,
+        num_samples: int,
+    ):
         super(ProcessDataset).__init__()
 
         process_class = PROCESS_REGISTRY.get(process_name, None)

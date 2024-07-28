@@ -1,6 +1,6 @@
 from typing import Optional
 import torch
-from transformer_lens import HookedTransformer, HookedTransformerConfig # type: ignore
+from transformer_lens import HookedTransformer, HookedTransformerConfig  # type: ignore
 
 from epsilon_transformers.training.configs.base_config import Config
 
@@ -30,4 +30,3 @@ class RawModelConfig(Config):
             act_fn="relu",
         )
         return HookedTransformer(config)
-

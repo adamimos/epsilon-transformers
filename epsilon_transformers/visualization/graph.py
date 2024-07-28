@@ -1,17 +1,15 @@
 import matplotlib.pyplot as plt
-import networkx as nx # type: ignore
+import networkx as nx  # type: ignore
 from epsilon_transformers.analysis.entropy_analysis import (
     compute_block_entropy,
     compute_conditional_entropy,
     compute_empirical_conditional_entropy,
 )
 from typing import List
-from matplotlib import colors
-import networkx as nx
-import matplotlib.pyplot as plt
 from typing import Optional, Dict
 import numpy as np
 from jaxtyping import Float
+
 
 def determine_layout(G, layout_type):
     """Determine the layout of the graph."""
@@ -270,8 +268,11 @@ def plot_empirical_conditional_entropy_diagram(
     plt.grid(True)
     plt.show()
 
-def transition_matrix_to_graph(transition_matrix: Float[np.ndarray, "vocab_len num_states num_states"],
-                               state_names: Optional[Dict[str, int]] = None) -> nx.DiGraph:
+
+def transition_matrix_to_graph(
+    transition_matrix: Float[np.ndarray, "vocab_len num_states num_states"],
+    state_names: Optional[Dict[str, int]] = None,
+) -> nx.DiGraph:
     """
     Convert a transition matrix to a graph.
 
@@ -308,6 +309,11 @@ def transition_matrix_to_graph(transition_matrix: Float[np.ndarray, "vocab_len n
                 if transition_matrix[i, j, k] != 0:
                     from_node = state_names[j] if state_names else j
                     to_node = state_names[k] if state_names else k
-                    G.add_edge(from_node, to_node, label=str(i), weight=transition_matrix[i, j, k])
+                    G.add_edge(
+                        from_node,
+                        to_node,
+                        label=str(i),
+                        weight=transition_matrix[i, j, k],
+                    )
 
     return G

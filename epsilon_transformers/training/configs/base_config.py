@@ -9,4 +9,3 @@ class Config(BaseModel, extra="forbid"):
         with open(config_path, "r") as file:
             config_data = yaml.safe_load(file)
         return cls(**config_data)
-

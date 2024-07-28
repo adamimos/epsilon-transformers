@@ -1,15 +1,19 @@
 import numpy as np
-from typing import Set, Tuple, Optional, Dict, List, Iterator
+from typing import Tuple, Optional, Dict, List, Iterator
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from jaxtyping import Float
 from collections import deque
 
-from epsilon_transformers.process.MixedStateTree import MixedStateTree, MixedStateTreeNode
+from epsilon_transformers.process.MixedStateTree import (
+    MixedStateTree,
+    MixedStateTreeNode,
+)
 
 # TODO: Test yield_emission_histories for different emissions in the emission history
 # TODO: Rename _create_hmm
 # TODO: Delete generate_process_history (??)
+
 
 @dataclass
 class ProcessHistory:
@@ -90,11 +94,12 @@ class Process(ABC):
         ...
 
     def __str__(self):
-        return (f"{self.name} Process\n"
+        return (
+            f"{self.name} Process\n"
             f"Number of states: {self.num_states}\n"
             f"Vocabulary length: {self.vocab_len}\n"
-            f"Transition matrix shape: {self.transition_matrix.shape}")
-        
+            f"Transition matrix shape: {self.transition_matrix.shape}"
+        )
 
     def _sample_emission(self, current_state_idx: Optional[int] = None) -> int:
         if current_state_idx is None:
@@ -110,69 +115,114 @@ class Process(ABC):
         emission = np.random.choice(self.vocab_len, p=p)
         return emission
 
-    def yield_emissions(self, sequence_len: int, current_state_idx: Optional[int] = None) -> Iterator[int]:
+    def yield_emissions(
+        self, sequence_len: int, current_state_idx: Optional[int] = None
+    ) -> Iterator[int]:
         if current_state_idx is None:
-            current_state_idx = np.random.choice(self.num_states, p=self.steady_state_vector)
-        assert 0 <= current_state_idx < self.num_states, "current_state_index must be positive & less than num_states"
+            current_state_idx = np.random.choice(
+                self.num_states, p=self.steady_state_vector
+            )
+        assert (
+            0 <= current_state_idx < self.num_states
+        ), "current_state_index must be positive & less than num_states"
         for _ in range(sequence_len):
-            emission, next_state_idx = self._sample_emission_and_next_state(current_state_idx)
+            emission, next_state_idx = self._sample_emission_and_next_state(
+                current_state_idx
+            )
             yield emission
             current_state_idx = next_state_idx
 
-    def _sample_emission_and_next_state(self, current_state_idx: int) -> Tuple[int, int]:
+    def _sample_emission_and_next_state(
+        self, current_state_idx: int
+    ) -> Tuple[int, int]:
         transition_probs = self.transition_matrix[:, current_state_idx, :]
-        emission_next_state_idx = np.random.choice(transition_probs.size, p=transition_probs.ravel())
+        emission_next_state_idx = np.random.choice(
+            transition_probs.size, p=transition_probs.ravel()
+        )
         emission = emission_next_state_idx // self.num_states
         next_state_idx = emission_next_state_idx % self.num_states
         return emission, next_state_idx
 
-    def yield_emission_histories(self, sequence_len: int, num_sequences: int) -> Iterator[List[int]]:
+    def yield_emission_histories(
+        self, sequence_len: int, num_sequences: int
+    ) -> Iterator[List[int]]:
         for _ in range(num_sequences):
             yield [x for x in self.yield_emissions(sequence_len=sequence_len)]
 
-    def generate_process_history(self, total_length: int, current_state_idx: Optional[int] = None) -> ProcessHistory:
+    def generate_process_history(
+        self, total_length: int, current_state_idx: Optional[int] = None
+    ) -> ProcessHistory:
         if current_state_idx is None:
-            current_state_idx = np.random.choice(self.num_states, p=self.steady_state_vector)
-        assert 0 <= current_state_idx < self.num_states, "current_state_index must be positive & less than num_states"
-        
+            current_state_idx = np.random.choice(
+                self.num_states, p=self.steady_state_vector
+            )
+        assert (
+            0 <= current_state_idx < self.num_states
+        ), "current_state_index must be positive & less than num_states"
+
         index_to_state_names_dict = {v: k for k, v in self.state_names_dict.items()}
-        
+
         symbols = []
         states = []
-        
+
         for _ in range(total_length):
             states.append(index_to_state_names_dict[current_state_idx])
-            emission, next_state_idx = self._sample_emission_and_next_state(current_state_idx)
+            emission, next_state_idx = self._sample_emission_and_next_state(
+                current_state_idx
+            )
             symbols.append(emission)
             current_state_idx = next_state_idx
-            
+
         return ProcessHistory(symbols=symbols, states=states)
-    
+
     # TODO: You can get rid of the stack, and just iterate through the nodes & the depth as tuples
     def derive_mixed_state_presentation(self, depth: int) -> MixedStateTree:
-        tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, children=set(), path=[], emission_prob=0)
+        tree_root = MixedStateTreeNode(
+            state_prob_vector=self.steady_state_vector,
+            children=set(),
+            path=[],
+            emission_prob=0,
+        )
         nodes = set([tree_root])
 
         stack = deque([(tree_root, self.steady_state_vector, [], 0)])
         while stack:
             current_node, state_prob_vector, current_path, current_depth = stack.pop()
             if current_depth < depth:
-                emission_probs = _compute_emission_probabilities(self, state_prob_vector)
+                emission_probs = _compute_emission_probabilities(
+                    self, state_prob_vector
+                )
                 for emission in range(self.vocab_len):
                     if emission_probs[emission] > 0:
-                        next_state_prob_vector = _compute_next_distribution(self.transition_matrix, state_prob_vector, emission)
+                        next_state_prob_vector = _compute_next_distribution(
+                            self.transition_matrix, state_prob_vector, emission
+                        )
                         child_path = current_path + [emission]
-                        child_node = MixedStateTreeNode(state_prob_vector=next_state_prob_vector, path=child_path, children=set(), emission_prob=emission_probs[emission])
+                        child_node = MixedStateTreeNode(
+                            state_prob_vector=next_state_prob_vector,
+                            path=child_path,
+                            children=set(),
+                            emission_prob=emission_probs[emission],
+                        )
                         current_node.add_child(child_node)
 
-                        stack.append((child_node, next_state_prob_vector, child_path, current_depth + 1))
+                        stack.append(
+                            (
+                                child_node,
+                                next_state_prob_vector,
+                                child_path,
+                                current_depth + 1,
+                            )
+                        )
             nodes.add(current_node)
-        
-        return MixedStateTree(root_node=tree_root, process=self.name, nodes=nodes, depth=depth)
+
+        return MixedStateTree(
+            root_node=tree_root, process=self.name, nodes=nodes, depth=depth
+        )
+
 
 def _compute_emission_probabilities(
-    hmm: Process, 
-    state_prob_vector: Float[np.ndarray, "num_states"]
+    hmm: Process, state_prob_vector: Float[np.ndarray, "num_states"]
 ) -> Float[np.ndarray, "vocab_len"]:
     """
     Compute the probabilities associated with each emission given the current mixed state.
@@ -182,13 +232,16 @@ def _compute_emission_probabilities(
     emission_probs /= emission_probs.sum()
     return emission_probs
 
+
 def _compute_next_distribution(
     epsilon_machine: Float[np.ndarray, "vocab_len num_states num_states"],
-    current_state_prob_vector: Float[np.ndarray, "num_states"], 
-    current_emission: int
+    current_state_prob_vector: Float[np.ndarray, "num_states"],
+    current_emission: int,
 ) -> Float[np.ndarray, "num_states"]:
     """
     Compute the next mixed state distribution for a given output.
     """
-    X_next = np.einsum("sd, s -> d", epsilon_machine[current_emission], current_state_prob_vector)
+    X_next = np.einsum(
+        "sd, s -> d", epsilon_machine[current_emission], current_state_prob_vector
+    )
     return X_next / np.sum(X_next) if np.sum(X_next) != 0 else X_next
