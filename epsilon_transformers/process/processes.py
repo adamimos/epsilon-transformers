@@ -11,6 +11,7 @@ from epsilon_transformers.process.Process import Process
 # TODO: Think through whether self.name is necessary (review it's usage in derive_mixed_state_presentation)
 # TODO: Move _create_hmm into the init function prior to super()__init__()
 
+
 class ZeroOneR(Process):
     def __init__(self, prob_of_zero_from_r_state: float = 0.5):
         self.name = "z1r"
@@ -74,12 +75,20 @@ class Mess3(Process):
 
         return T, state_names
 
+
 class TransitionMatrixProcess(Process):
     def __init__(self, transition_matrix: np.ndarray):
         self.transition_matrix = transition_matrix
         super().__init__()
 
     def _create_hmm(self):
-        return self.transition_matrix, {i: i for i in range(self.transition_matrix.shape[0])}
+        return self.transition_matrix, {
+            i: i for i in range(self.transition_matrix.shape[0])
+        }
 
-PROCESS_REGISTRY: Dict[str, type] = {key: value for key, value in inspect.currentframe().f_locals.items() if isinstance(value, type) and issubclass(value, Process) and key != 'Process'}
+
+PROCESS_REGISTRY: Dict[str, type] = {
+    key: value
+    for key, value in inspect.currentframe().f_locals.items()
+    if isinstance(value, type) and issubclass(value, Process) and key != "Process"
+}

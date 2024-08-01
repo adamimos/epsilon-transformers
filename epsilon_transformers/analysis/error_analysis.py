@@ -1,5 +1,4 @@
-from scipy.optimize import minimize_scalar # type: ignore
-from typing import List
+from scipy.optimize import minimize_scalar  # type: ignore
 import numpy as np
 
 # TODO: Check w/ Adam on which of these to keep

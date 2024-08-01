@@ -1,8 +1,7 @@
 import numpy as np
-from typing import List, Tuple
+from typing import List
 from collections import Counter
-import matplotlib.pyplot as plt
-from scipy.optimize import minimize_scalar # type: ignore
+from scipy.optimize import minimize_scalar  # type: ignore
 
 
 def compute_block_entropy(sequence: List[int], max_block_length: int) -> np.ndarray:
