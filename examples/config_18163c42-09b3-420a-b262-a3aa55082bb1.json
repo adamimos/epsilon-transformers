@@ -1,0 +1,1 @@
+{"seed": 42, "n_ctx": 16, "act_fn": "relu", "d_head": 16, "d_model": 32, "d_vocab": 2, "n_heads": 2, "n_layers": 2, "attn_only": false, "optimizer": "adam", "batch_size": 1000, "num_epochs": 1000, "weight_decay": 0.0, "attention_dir": "causal", "learning_rate": 0.001, "normalization_type": "LN", "fixed_train_dataset": false, "num_train_samples": 65238}
