@@ -170,6 +170,14 @@ class Process(ABC):
         
         return MixedStateTree(root_node=tree_root, process=self.name, nodes=nodes, depth=depth)
 
+    def reverse(self) -> 'Process':
+        reverse_transition_matrix = _reverse_transition_matrix(self.transition_matrix)
+        reverse_state_names_dict = {name + "_R": idx for name, idx in self.state_names_dict.items()}
+        reverse_process = ReversedTransitionMatrixProcess(transition_matrix=reverse_transition_matrix, state_names_dict=reverse_state_names_dict)
+        reverse_process.name = self.name + "_reverse"
+        return reverse_process
+
+
 def _compute_emission_probabilities(
     hmm: Process, 
     state_prob_vector: Float[np.ndarray, "num_states"]
@@ -192,3 +200,49 @@ def _compute_next_distribution(
     """
     X_next = np.einsum("sd, s -> d", epsilon_machine[current_emission], current_state_prob_vector)
     return X_next / np.sum(X_next) if np.sum(X_next) != 0 else X_next
+
+
+
+
+def _reverse_transition_matrix(T):
+    """
+    Reverse and renormalize a transition matrix T.
+    
+    T_ijk = P(to_state_k, emit_i | from_state_j)
+    
+    Parameters:
+    T (numpy.ndarray): 3D transition matrix with shape (num_emissions, num_states, num_states)
+    
+    Returns:
+    numpy.ndarray: Reversed and renormalized transition matrix
+    """
+    num_emissions, num_states, _ = T.shape
+    
+    # Step 1: Calculate the stationary distribution
+    T_combined = np.sum(T, axis=0)  # Sum over all emissions
+    eigenvalues, eigenvectors = np.linalg.eig(T_combined.T)
+    stationary_dist = eigenvectors[:, np.isclose(eigenvalues, 1)].real
+    stationary_dist = stationary_dist / np.sum(stationary_dist)
+    
+    # Step 2: Transpose the matrix (reverse arrows) and apply stationary distribution
+    T_reversed = np.transpose(T, (0, 2, 1)) * stationary_dist
+    
+    # Step 3: Renormalize
+    T_reversed /= np.sum(T_reversed, axis=(0, 2), keepdims=True)
+    
+    return T_reversed
+
+def _reverse_process(process: Process) -> Process:
+    reverse_transition_matrix = _reverse_transition_matrix(process.transition_matrix)
+    return Process(transition_matrix=reverse_transition_matrix, state_names_dict=process.state_names_dict)
+
+
+class ReversedTransitionMatrixProcess(Process):
+    def __init__(self, transition_matrix: np.ndarray, state_names_dict: Dict[str, int], name: str = "reversed"):
+        self.transition_matrix = transition_matrix
+        self.state_names_dict = state_names_dict
+        self.name = name
+        super().__init__()
+
+    def _create_hmm(self):
+        return self.transition_matrix, self.state_names_dict

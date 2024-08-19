@@ -149,6 +149,24 @@ class Nond(Process):
 
         state_names = {"A": 0, "B": 1, "C": 2}
         return T, state_names
+    
+class RIP(Process):
+    def __init__(self, p: float = 0.5, q: float = 0.5):
+        self.name = "rip"
+        self.p = p
+        self.q = q
+        super().__init__()
+
+    def _create_hmm(self):
+        s = {"A": 0, "B": 1, "C": 2}
+        T = np.zeros((2, 3, 3))
+        T[0, s["A"], s["B"]] = self.p
+        T[0, s["B"], s["C"]] = self.q
+        T[1, s["B"], s["C"]] = 1 - self.q
+        T[1, s["C"], s["A"]] = 1.0
+        T[1, s["A"], s["C"]] = 1 - self.p
+
+        return T, s
 
 # TODO: This does not work! Figure out why!!
 class Sierpinski(Process):
@@ -187,7 +205,7 @@ class Sierpinski(Process):
             ]
         )
 
-        state_names = {0: "A", 1: "B", 2: "C"}
+        state_names = {"A": 0, "B": 1, "C": 2}
         return T, state_names
 
 
