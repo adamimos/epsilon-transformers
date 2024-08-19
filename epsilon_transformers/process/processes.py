@@ -221,9 +221,11 @@ PROCESS_REGISTRY: Dict[str, Process] = {
 
 
 class TransitionMatrixProcess(Process):
-    def __init__(self, transition_matrix: np.ndarray):
+    def __init__(self, transition_matrix: np.ndarray, state_names: Dict[str, int] = None, name: str = "transition_matrix_process"):
         self.transition_matrix = transition_matrix
+        self.state_names = state_names if state_names is not None else {str(i): i for i in range(transition_matrix.shape[1])}
+        self.name = name
         super().__init__()
 
     def _create_hmm(self):
-        return self.transition_matrix, {i: i for i in range(self.transition_matrix.shape[0])}
+        return self.transition_matrix, self.state_names
