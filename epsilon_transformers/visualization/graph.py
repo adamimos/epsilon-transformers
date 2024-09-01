@@ -291,13 +291,12 @@ def transition_matrix_to_graph(
     # Create an empty directed graph
     G = nx.MultiDiGraph()
 
-    # Invert the state_names dictionary if it's provided
     if state_names:
-        state_names = {v: k for k, v in state_names.items()}
+        inverted_state_names = {v: k for k, v in state_names.items()}
 
     # Add nodes to the graph
     for i in range(n_states):
-        node_label = state_names[i] if state_names else i
+        node_label = inverted_state_names[i] if inverted_state_names else i
         G.add_node(node_label)
 
     # Add edges to the graph for each transition in the epsilon machine
@@ -307,8 +306,8 @@ def transition_matrix_to_graph(
                 # Add an edge from state j to state k with label i and weight equal to the transition probability
                 # only if the transition probability is not zero
                 if transition_matrix[i, j, k] != 0:
-                    from_node = state_names[j] if state_names else j
-                    to_node = state_names[k] if state_names else k
+                    from_node = inverted_state_names[j] if inverted_state_names else j
+                    to_node = inverted_state_names[k] if inverted_state_names else k
                     G.add_edge(
                         from_node,
                         to_node,

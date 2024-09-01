@@ -7,14 +7,14 @@ from botocore.exceptions import ClientError  # type: ignore
 import boto3  # type: ignore
 import dotenv
 import torch
-from typing import Dict, List, OrderedDict, Tuple, TypeVar
+from typing import Dict, List, OrderedDict, Tuple, Optional
 import json
 import pandas as pd
 
 from epsilon_transformers.training.configs.model_configs import RawModelConfig
 
+from torch.nn.modules import Module as TorchModule
 
-TorchModule = TypeVar("TorchModule", bound=torch.nn.modules.Module)
 # TODO: LocalPersister.load_model
 # TODO: Add create_bucket option in S3 persister
 
@@ -38,9 +38,6 @@ class Persister(ABC):
 
     @abstractmethod
     def save_model(self, model: TorchModule, num_tokens_trained: int): ...
-
-    @abstractmethod
-    def load_model(self, model_class: TorchModule, object_name: str) -> TorchModule: ...
 
     @abstractmethod
     def _save_overwrite_protection(self, object_name: pathlib.Path | str): ...
@@ -107,7 +104,7 @@ class S3Persister(Persister):
         buffer.seek(0)
         self.s3.upload_fileobj(buffer, self.collection_location, object_name)
 
-    def load_csv(self, object_name: str) -> str:
+    def load_csv(self, object_name: str) -> pd.DataFrame:
         download_buffer = BytesIO()
         self.s3.download_fileobj(self.collection_location, object_name, download_buffer)
         download_buffer.seek(0)
@@ -165,7 +162,7 @@ class S3Persister(Persister):
 
         return objects
 
-    def load_json(self, object_name: str) -> Dict:
+    def load_json(self, object_name: str) -> Optional[Dict]:
         try:
             json_str = self.load_object(object_name)
             return json.loads(json_str)
@@ -217,17 +214,21 @@ def _state_dict_to_model_config(
         ), f"{out} does not fit one of the expected module regexs: {_HOOKED_TRANSFORMER_MODULE_REGEXES_REGISTRY}"
         return out[0]
 
-    def _extract_n_layers(state_dict: OrderedDict) -> int:
+    def _extract_n_layers(state_dict: OrderedDict) -> Optional[int]:
         highest_block_idx = None
         for key in state_dict.keys():
-            if not bool(re.match(r"blocks\.\d+\.", key)):
+            # see if the key is of the form "blocks.12.", where 12 can be any sequence of digits
+            # and capture the digit sequence
+            match = re.match(r"blocks\.(\d+)\.", key)
+            if match is None:
                 continue
-            local_block_idx = int(re.search(r"\d+", key).group())
+            # get just the digit part and convert it to int
+            local_block_idx = int(match.group(1))
             if highest_block_idx is None:
                 highest_block_idx = local_block_idx
             elif local_block_idx > highest_block_idx:
                 highest_block_idx = local_block_idx
-        return highest_block_idx + 1
+        return highest_block_idx + 1 if highest_block_idx else None
 
     param_dict = dict(
         d_vocab=None,

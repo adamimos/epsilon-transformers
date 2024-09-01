@@ -43,8 +43,7 @@ def get_beliefs_for_transformer_inputs(
     for i in range(batch):
         for j in range(n_ctx):
             input_substring = transformer_inputs[i, : j + 1].cpu().numpy()
-            belief_state = path_belief_dict[tuple(input_substring)]
-            belief_state = np.round(belief_state, 5)
+            belief_state = np.round(path_belief_dict[tuple(input_substring)], 5)
             X_beliefs[i, j] = torch.tensor(
                 belief_state, dtype=torch.float32, device=transformer_inputs.device
             )

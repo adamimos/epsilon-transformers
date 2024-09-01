@@ -1,5 +1,5 @@
 from jaxtyping import Float
-from typing import List, Set, Tuple
+from typing import List, Set, Tuple, cast
 import numpy as np
 from collections import deque
 from scipy.stats import entropy  # type: ignore
@@ -48,11 +48,8 @@ class MixedStateTree:
     @property
     def paths_and_belief_states(
         self,
-    ) -> Tuple[List[List[int]], Float[np.ndarray, "n_states"]]:
-        paths_and_beliefs = [(x.path, x.state_prob_vector) for x in self.nodes]
-        paths = [x[0] for x in paths_and_beliefs]
-        beliefs = [x[1] for x in paths_and_beliefs]
-        return paths, beliefs
+    ) -> Tuple[List[List[int]], List[Float[np.ndarray, "n_states"]]]:
+        return self.paths, self.belief_states
 
     @property
     def block_entropy(self) -> Float[np.ndarray, "depth"]:
@@ -137,7 +134,7 @@ class MixedStateTree:
             -1
         )  # To keep track of the last index assigned to a unique state
         queue = deque(
-            [(self.root_node, None, -1, 0)]
+            [(self.root_node, cast(int | None, None), -1, 0.0)]
         )  # (node, emitted_symbol, parent_state_index, emission_prob)
         # get the number of symbols by looking at all entries of all paths and finding the max index
         num_symbols = len(np.unique(np.concatenate([np.unique(x) for x in self.paths])))

@@ -3,7 +3,7 @@ from pydantic import model_validator
 import pathlib
 import torch
 from torch.utils.data import DataLoader
-from typing import Union, Optional
+from typing import Union, Optional, cast
 import wandb
 import os
 import dotenv
@@ -54,6 +54,8 @@ class OptimizerConfig(Config):
     weight_decay: float
 
     def from_model(self, model: torch.nn.Module, device: torch.device) -> Optimizer:
+        optimizer: type[torch.optim.Adam | torch.optim.SGD]
+
         if self.optimizer_type == "adam":
             optimizer = torch.optim.Adam
         elif self.optimizer_type == "sgd":
@@ -130,8 +132,10 @@ class Log:
 
     def update_metrics(self, train_or_test: Literal["train", "test"], loss: float):
         if train_or_test == "train" and self.config.test_loss:
+            assert self.train_loss is not None
             self.train_loss += loss
         elif train_or_test == "test" and self.config.train_loss:
+            assert self.test_loss is not None
             self.test_loss += loss
         else:
             raise ValueError

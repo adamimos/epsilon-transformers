@@ -1,5 +1,5 @@
 import torch
-from typing import Dict, Iterable, Tuple, List
+from typing import Dict, Iterator, Tuple, List
 from jaxtyping import Float
 from torch.utils.data import IterableDataset
 
@@ -14,7 +14,7 @@ from epsilon_transformers.process.processes import PROCESS_REGISTRY
 
 
 class ProcessDataset(IterableDataset):
-    samples: Iterable[int]
+    samples: Iterator[int]
     process_params: Dict[str, float]
     sequence_length: int
     num_samples: int
@@ -26,7 +26,7 @@ class ProcessDataset(IterableDataset):
         sequence_length: int,
         num_samples: int,
     ):
-        super(ProcessDataset).__init__()
+        super().__init__()
 
         process_class = PROCESS_REGISTRY.get(process_name, None)
         if process_class is None:
@@ -44,7 +44,7 @@ class ProcessDataset(IterableDataset):
     def __len__(self):
         return self.num_samples
 
-    def __iter__(self) -> Iterable[Tuple[List[int], List[int]]]:
+    def __iter__(self) -> Iterator[Tuple[List[int], List[int]]]:
         for _ in range(self.num_samples):
             process_history = [
                 next(self.samples) for _ in range(self.sequence_length + 1)

@@ -185,7 +185,9 @@ class Process(ABC):
         )
         nodes = set([tree_root])
 
-        stack = deque([(tree_root, self.steady_state_vector, [], 0)])
+        stack: deque[
+            tuple[MixedStateTreeNode, Float[np.ndarray, "num_states"], List[int], int]
+        ] = deque([(tree_root, self.steady_state_vector, [], 0)])
         while stack:
             current_node, state_prob_vector, current_path, current_depth = stack.pop()
             if current_depth < depth:
