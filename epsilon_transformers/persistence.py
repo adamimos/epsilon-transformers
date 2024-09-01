@@ -7,7 +7,7 @@ from botocore.exceptions import ClientError  # type: ignore
 import boto3  # type: ignore
 import dotenv
 import torch
-from typing import Dict, List, OrderedDict, Tuple, Optional
+from typing import OrderedDict
 import json
 import pandas as pd
 
@@ -142,7 +142,7 @@ class S3Persister(Persister):
         model.load_state_dict(state_dict=state_dict)
         return model
 
-    def list_objects(self) -> List[str]:
+    def list_objects(self) -> list[str]:
         objects = []
         continuation_token = None
 
@@ -162,7 +162,7 @@ class S3Persister(Persister):
 
         return objects
 
-    def load_json(self, object_name: str) -> Optional[Dict]:
+    def load_json(self, object_name: str) -> dict | None:
         try:
             json_str = self.load_object(object_name)
             return json.loads(json_str)
@@ -182,7 +182,7 @@ class S3Persister(Persister):
 def _state_dict_to_model_config(
     state_dict: OrderedDict, n_ctx: int = 10
 ) -> RawModelConfig:
-    _HOOKED_TRANSFORMER_MODULE_REGEXES_REGISTRY: Dict[str, List[Tuple[str, int]]] = {
+    _HOOKED_TRANSFORMER_MODULE_REGEXES_REGISTRY: dict[str, list[tuple[str, int]]] = {
         r"embed\.W_E": [("d_vocab", 0), ("d_model", 1)],
         r"pos_embed\.W_pos": [],
         r"blocks\.\d+\.ln\d+\.(w|b)": [],
@@ -204,7 +204,7 @@ def _state_dict_to_model_config(
         r"unembed\.(W_U|b_U)": [],
     }
 
-    def _extract_true_key(dictionary: Dict[str, bool]) -> str:
+    def _extract_true_key(dictionary: dict[str, bool]) -> str:
         out = []
         for key, value in dictionary.items():
             if value:
@@ -214,7 +214,7 @@ def _state_dict_to_model_config(
         ), f"{out} does not fit one of the expected module regexs: {_HOOKED_TRANSFORMER_MODULE_REGEXES_REGISTRY}"
         return out[0]
 
-    def _extract_n_layers(state_dict: OrderedDict) -> Optional[int]:
+    def _extract_n_layers(state_dict: OrderedDict) -> int | None:
         highest_block_idx = None
         for key in state_dict.keys():
             # see if the key is of the form "blocks.12.", where 12 can be any sequence of digits

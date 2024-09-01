@@ -1,5 +1,5 @@
 import torch
-from typing import Dict, Iterator, Tuple, List
+from typing import Iterator
 from jaxtyping import Float
 from torch.utils.data import IterableDataset
 
@@ -15,14 +15,14 @@ from epsilon_transformers.process.processes import PROCESS_REGISTRY
 
 class ProcessDataset(IterableDataset):
     samples: Iterator[int]
-    process_params: Dict[str, float]
+    process_params: dict[str, float]
     sequence_length: int
     num_samples: int
 
     def __init__(
         self,
         process_name: str,
-        process_params: Dict[str, float],
+        process_params: dict[str, float],
         sequence_length: int,
         num_samples: int,
     ):
@@ -44,7 +44,7 @@ class ProcessDataset(IterableDataset):
     def __len__(self):
         return self.num_samples
 
-    def __iter__(self) -> Iterator[Tuple[List[int], List[int]]]:
+    def __iter__(self) -> Iterator[tuple[list[int], list[int]]]:
         for _ in range(self.num_samples):
             process_history = [
                 next(self.samples) for _ in range(self.sequence_length + 1)
@@ -53,8 +53,8 @@ class ProcessDataset(IterableDataset):
 
 
 def process_dataset_collate_fn(
-    batch: List[Tuple[List[int], List[int]]],
-) -> Tuple[
+    batch: list[tuple[list[int], list[int]]],
+) -> tuple[
     Float[torch.Tensor, "batch_size sequence_length"],
     Float[torch.Tensor, "batch_size sequence_length"],
 ]:

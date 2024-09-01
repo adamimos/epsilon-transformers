@@ -1,5 +1,5 @@
 from jaxtyping import Float
-from typing import List, Set, Tuple, cast
+from typing import cast
 import numpy as np
 from collections import deque
 from scipy.stats import entropy  # type: ignore
@@ -11,15 +11,15 @@ from scipy.stats import entropy  # type: ignore
 
 class MixedStateTreeNode:
     state_prob_vector: Float[np.ndarray, "n_states"]
-    path: List[int]
-    children: Set["MixedStateTreeNode"]
+    path: list[int]
+    children: set["MixedStateTreeNode"]
     emission_prob: float
 
     def __init__(
         self,
         state_prob_vector: Float[np.ndarray, "n_states"],
-        children: Set["MixedStateTreeNode"],
-        path: List[int],
+        children: set["MixedStateTreeNode"],
+        path: list[int],
         emission_prob: float,
     ):
         self.state_prob_vector = state_prob_vector
@@ -35,20 +35,20 @@ class MixedStateTree:
     root_node: MixedStateTreeNode
     process: str
     depth: int
-    nodes: Set[MixedStateTreeNode]
+    nodes: set[MixedStateTreeNode]
 
     @property
-    def belief_states(self) -> List[Float[np.ndarray, "num_states"]]:
+    def belief_states(self) -> list[Float[np.ndarray, "num_states"]]:
         return [x.state_prob_vector for x in self.nodes]
 
     @property
-    def paths(self) -> List[List[int]]:
+    def paths(self) -> list[list[int]]:
         return [x.path for x in self.nodes]
 
     @property
     def paths_and_belief_states(
         self,
-    ) -> Tuple[List[List[int]], List[Float[np.ndarray, "n_states"]]]:
+    ) -> tuple[list[list[int]], list[Float[np.ndarray, "n_states"]]]:
         return self.paths, self.belief_states
 
     @property
@@ -69,7 +69,7 @@ class MixedStateTree:
         self,
         root_node: MixedStateTreeNode,
         process: str,
-        nodes: Set[MixedStateTreeNode],
+        nodes: set[MixedStateTreeNode],
         depth: int,
     ):
         self.root_node = root_node
@@ -79,9 +79,9 @@ class MixedStateTree:
 
     def _traverse(
         self, node: MixedStateTreeNode, depth: int, accumulated_prob: float
-    ) -> List[List[float]]:
+    ) -> list[list[float]]:
         stack = deque([(node, depth, accumulated_prob)])
-        depth_emission_probs: List[List[float]] = [[] for _ in range(self.depth)]
+        depth_emission_probs: list[list[float]] = [[] for _ in range(self.depth)]
 
         while stack:
             node, depth, accumulated_prob = stack.pop()
@@ -106,7 +106,7 @@ class MixedStateTree:
         return depth_emission_probs
 
     def path_to_beliefs(
-        self, path: List[int]
+        self, path: list[int]
     ) -> Float[np.ndarray, "path_length n_states"]:
         assert (
             len(path) <= self.depth
@@ -134,7 +134,9 @@ class MixedStateTree:
             -1
         )  # To keep track of the last index assigned to a unique state
         queue = deque(
-            [(self.root_node, cast(int | None, None), -1, 0.0)]
+            [
+                (self.root_node, cast(int | None, None), -1, 0.0)
+            ]  # cast None as a value that could be an int
         )  # (node, emitted_symbol, parent_state_index, emission_prob)
         # get the number of symbols by looking at all entries of all paths and finding the max index
         num_symbols = len(np.unique(np.concatenate([np.unique(x) for x in self.paths])))
@@ -178,5 +180,5 @@ class MixedStateTree:
 
         return M
 
-    def _get_nodes_at_depth(self, depth: int) -> Set[MixedStateTreeNode]:
+    def _get_nodes_at_depth(self, depth: int) -> set[MixedStateTreeNode]:
         return {n for n in self.nodes if len(n.path) == depth}

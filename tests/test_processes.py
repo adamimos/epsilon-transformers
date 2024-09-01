@@ -1,4 +1,3 @@
-from typing import List, Tuple
 import pytest
 from torch.utils.data import DataLoader
 import numpy as np
@@ -86,7 +85,7 @@ def test_msp_creation():
         paths_and_probs[0][1], np.array([1 / 3, 1 / 3, 1 / 3])
     )
 
-    def _query_path(list_of_tuples, path: list) -> Tuple[List[int], np.ndarray]:
+    def _query_path(list_of_tuples, path: list) -> tuple[list[int], np.ndarray]:
         for tup in list_of_tuples:
             if path == tup[0]:
                 return tup

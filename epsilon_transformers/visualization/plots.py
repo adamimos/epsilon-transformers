@@ -1,4 +1,4 @@
-from typing import Literal, Tuple, cast
+from typing import Literal, cast
 import datashader as ds  # type: ignore
 import datashader.transfer_functions as tf  # type: ignore
 from matplotlib.figure import Figure

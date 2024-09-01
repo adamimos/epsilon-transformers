@@ -5,8 +5,6 @@ from epsilon_transformers.analysis.entropy_analysis import (
     compute_conditional_entropy,
     compute_empirical_conditional_entropy,
 )
-from typing import List
-from typing import Optional, Dict
 import numpy as np
 from jaxtyping import Float
 
@@ -222,7 +220,7 @@ def visualize_graph(
         plt.show()
 
 
-def plot_block_entropy_diagram(sequence: List[int], max_block_length: int):
+def plot_block_entropy_diagram(sequence: list[int], max_block_length: int):
     """Plot the block entropy diagram."""
     block_entropies = compute_block_entropy(sequence, max_block_length)
 
@@ -235,7 +233,7 @@ def plot_block_entropy_diagram(sequence: List[int], max_block_length: int):
     plt.show()
 
 
-def plot_conditional_entropy_diagram(sequence: List[int], max_block_length: int):
+def plot_conditional_entropy_diagram(sequence: list[int], max_block_length: int):
     """Plot the conditional entropy diagram."""
     conditional_entropies = compute_conditional_entropy(sequence, max_block_length)
 
@@ -251,7 +249,7 @@ def plot_conditional_entropy_diagram(sequence: List[int], max_block_length: int)
 
 
 def plot_empirical_conditional_entropy_diagram(
-    sequence: List[int], max_block_length: int
+    sequence: list[int], max_block_length: int
 ):
     """Plot the empirical conditional entropy diagram."""
     conditional_entropies = compute_empirical_conditional_entropy(
@@ -271,7 +269,7 @@ def plot_empirical_conditional_entropy_diagram(
 
 def transition_matrix_to_graph(
     transition_matrix: Float[np.ndarray, "vocab_len num_states num_states"],
-    state_names: Optional[Dict[str, int]] = None,
+    state_names: dict[str, int] | None = None,
 ) -> nx.DiGraph:
     """
     Convert a transition matrix to a graph.
@@ -280,7 +278,7 @@ def transition_matrix_to_graph(
     transition_matrix (np.ndarray): The transition matrix of shape (n_outputs, n_states, n_states).
                                     n_states is the number of states in the machine.
                                     transition_matrix[i, j, k] is the probability of transitioning from state j to state k on output i.
-    state_names (Dict[str, int], optional): A dictionary mapping state names to state indices.
+    state_names (dict[str, int], optional): A dictionary mapping state names to state indices.
 
     Returns:
     nx.DiGraph: The graph representation of the transition matrix.

@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Dict, cast
+from typing import cast
 from types import FrameType
 import inspect
 
@@ -88,7 +88,7 @@ class TransitionMatrixProcess(Process):
         }
 
 
-PROCESS_REGISTRY: Dict[str, type] = {
+PROCESS_REGISTRY: dict[str, type] = {
     key: value
     # cast because we know the current frame has the above classes
     for key, value in cast(FrameType, inspect.currentframe()).f_locals.items()

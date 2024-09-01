@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Tuple, Optional, Dict, List, Iterator
+from typing import Iterator
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from jaxtyping import Float
@@ -17,8 +17,8 @@ from epsilon_transformers.process.MixedStateTree import (
 
 @dataclass
 class ProcessHistory:
-    symbols: List[int]
-    states: List[str]
+    symbols: list[int]
+    states: list[str]
 
     def __post_init__(self):
         assert len(self.symbols) == len(
@@ -32,7 +32,7 @@ class ProcessHistory:
 class Process(ABC):
     name: str
     transition_matrix: Float[np.ndarray, "vocab_len num_states num_states"]
-    state_names_dict: Dict[str, int]
+    state_names_dict: dict[str, int]
     vocab_len: int
     num_states: int
 
@@ -83,7 +83,7 @@ class Process(ABC):
     @abstractmethod
     def _create_hmm(
         self,
-    ) -> Tuple[Float[np.ndarray, "vocab_len num_states num_states"], Dict[str, int]]:
+    ) -> tuple[Float[np.ndarray, "vocab_len num_states num_states"], dict[str, int]]:
         """
         Create the HMM which defines the process.
 
@@ -101,7 +101,7 @@ class Process(ABC):
             f"Transition matrix shape: {self.transition_matrix.shape}"
         )
 
-    def _sample_emission(self, current_state_idx: Optional[int] = None) -> int:
+    def _sample_emission(self, current_state_idx: int | None = None) -> int:
         if current_state_idx is None:
             current_state_idx = np.random.choice(
                 self.num_states, p=self.steady_state_vector
@@ -116,7 +116,7 @@ class Process(ABC):
         return emission
 
     def yield_emissions(
-        self, sequence_len: int, current_state_idx: Optional[int] = None
+        self, sequence_len: int, current_state_idx: int | None = None
     ) -> Iterator[int]:
         if current_state_idx is None:
             current_state_idx = np.random.choice(
@@ -134,7 +134,7 @@ class Process(ABC):
 
     def _sample_emission_and_next_state(
         self, current_state_idx: int
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         transition_probs = self.transition_matrix[:, current_state_idx, :]
         emission_next_state_idx = np.random.choice(
             transition_probs.size, p=transition_probs.ravel()
@@ -145,12 +145,12 @@ class Process(ABC):
 
     def yield_emission_histories(
         self, sequence_len: int, num_sequences: int
-    ) -> Iterator[List[int]]:
+    ) -> Iterator[list[int]]:
         for _ in range(num_sequences):
             yield [x for x in self.yield_emissions(sequence_len=sequence_len)]
 
     def generate_process_history(
-        self, total_length: int, current_state_idx: Optional[int] = None
+        self, total_length: int, current_state_idx: int | None = None
     ) -> ProcessHistory:
         if current_state_idx is None:
             current_state_idx = np.random.choice(
@@ -186,7 +186,7 @@ class Process(ABC):
         nodes = set([tree_root])
 
         stack: deque[
-            tuple[MixedStateTreeNode, Float[np.ndarray, "num_states"], List[int], int]
+            tuple[MixedStateTreeNode, Float[np.ndarray, "num_states"], list[int], int]
         ] = deque([(tree_root, self.steady_state_vector, [], 0)])
         while stack:
             current_node, state_prob_vector, current_path, current_depth = stack.pop()
