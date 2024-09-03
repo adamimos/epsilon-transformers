@@ -1,4 +1,3 @@
-from typing import List, Tuple, Dict
 from sklearn.linear_model import LinearRegression  # type: ignore
 from transformer_lens import HookedTransformer  # type: ignore
 from jaxtyping import Float
@@ -24,10 +23,10 @@ from epsilon_transformers.process.processes import ZeroOneR
 
 def get_beliefs_for_transformer_inputs(
     transformer_inputs: Float[torch.Tensor, "batch n_ctx"],
-    msp_belief_index: Dict[Tuple[float, ...], int],
-    tree_paths: List[List[int]],
-    tree_beliefs: List[List[float]],
-) -> Tuple[
+    msp_belief_index: dict[tuple[float, ...], int],
+    tree_paths: list[list[int]],
+    tree_beliefs: list[list[float]],
+) -> tuple[
     Float[torch.Tensor, "batch n_ctx belief_dim"], Float[torch.Tensor, "batch n_ctx"]
 ]:
     batch, n_ctx = transformer_inputs.shape
@@ -43,8 +42,7 @@ def get_beliefs_for_transformer_inputs(
     for i in range(batch):
         for j in range(n_ctx):
             input_substring = transformer_inputs[i, : j + 1].cpu().numpy()
-            belief_state = path_belief_dict[tuple(input_substring)]
-            belief_state = np.round(belief_state, 5)
+            belief_state = np.round(path_belief_dict[tuple(input_substring)], 5)
             X_beliefs[i, j] = torch.tensor(
                 belief_state, dtype=torch.float32, device=transformer_inputs.device
             )
@@ -55,7 +53,7 @@ def get_beliefs_for_transformer_inputs(
 
 def generate_belief_state_and_activations(
     model: HookedTransformer, process: Process, num_sequences: int
-) -> Tuple[
+) -> tuple[
     Float[np.ndarray, "num_samples n_ctx num_states"],
     Float[np.ndarray, "num_samples n_ctx d_model"],
 ]:
@@ -88,7 +86,7 @@ def generate_belief_state_and_activations(
 
 def find_msp_subspace_in_residual_stream(
     model: HookedTransformer, process: Process, num_sequences: int
-) -> Tuple[
+) -> tuple[
     Float[np.ndarray, "num_tokens num_states"],
     Float[np.ndarray, "num_tokens num_states"],
 ]:

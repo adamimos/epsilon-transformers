@@ -1,10 +1,9 @@
 import numpy as np
-from typing import List
 from collections import Counter
 from scipy.optimize import minimize_scalar  # type: ignore
 
 
-def compute_block_entropy(sequence: List[int], max_block_length: int) -> np.ndarray:
+def compute_block_entropy(sequence: list[int], max_block_length: int) -> np.ndarray:
     """Compute the block entropy for blocks of varying lengths."""
     block_entropies = []
 
@@ -27,7 +26,7 @@ def compute_block_entropy(sequence: List[int], max_block_length: int) -> np.ndar
 
 
 def compute_conditional_entropy(
-    sequence: List[int], max_block_length: int
+    sequence: list[int], max_block_length: int
 ) -> np.ndarray:
     """Compute the conditional entropy H(next symbol | previous L symbols) for varying L."""
     conditional_entropies = []
@@ -47,8 +46,8 @@ def compute_conditional_entropy(
 
 
 def compute_empirical_conditional_entropy(
-    sequence: List[int], max_block_length: int
-) -> List[float]:
+    sequence: list[int], max_block_length: int
+) -> list[float]:
     """Compute the empirical conditional entropy H(next symbol | previous L symbols) for varying L."""
     NUM_SYMBOLS = 2
     conditional_entropies = []

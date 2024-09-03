@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, cast
 import datashader as ds  # type: ignore
 import datashader.transfer_functions as tf  # type: ignore
 from matplotlib.figure import Figure
@@ -115,8 +115,11 @@ def plot_ground_truth_and_evaluated_2d_simplex(
     )
 
     # Visualization with Matplotlib
-    fig, axs = plt.subplots(
-        1, 2, figsize=(10, 5), sharex=True, sharey=True, facecolor=facecolor
+    fig, axs = cast(
+        tuple[plt.Figure, list[plt.Axes]],
+        plt.subplots(
+            1, 2, figsize=(10, 5), sharex=True, sharey=True, facecolor=facecolor
+        ),
     )
     for ax in axs:
         ax.tick_params(axis="x", colors=facecolor)

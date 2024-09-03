@@ -1,5 +1,6 @@
 import numpy as np
-from typing import Dict
+from typing import cast
+from types import FrameType
 import inspect
 
 from epsilon_transformers.process.Process import Process
@@ -87,8 +88,9 @@ class TransitionMatrixProcess(Process):
         }
 
 
-PROCESS_REGISTRY: Dict[str, type] = {
+PROCESS_REGISTRY: dict[str, type] = {
     key: value
-    for key, value in inspect.currentframe().f_locals.items()
+    # cast because we know the current frame has the above classes
+    for key, value in cast(FrameType, inspect.currentframe()).f_locals.items()
     if isinstance(value, type) and issubclass(value, Process) and key != "Process"
 }

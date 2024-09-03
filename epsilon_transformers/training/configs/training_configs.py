@@ -1,9 +1,8 @@
-from typing import Dict, Literal
+from typing import Literal
 from pydantic import model_validator
 import pathlib
 import torch
 from torch.utils.data import DataLoader
-from typing import Union, Optional
 import wandb
 import os
 import dotenv
@@ -45,7 +44,7 @@ from epsilon_transformers.training.configs.model_configs import RawModelConfig
 # TODO: Add epoch training
 
 
-Optimizer = Union[torch.optim.Adam, torch.optim.SGD]
+Optimizer = torch.optim.Adam | torch.optim.SGD
 
 
 class OptimizerConfig(Config):
@@ -54,6 +53,8 @@ class OptimizerConfig(Config):
     weight_decay: float
 
     def from_model(self, model: torch.nn.Module, device: torch.device) -> Optimizer:
+        optimizer: type[torch.optim.Adam | torch.optim.SGD]
+
         if self.optimizer_type == "adam":
             optimizer = torch.optim.Adam
         elif self.optimizer_type == "sgd":
@@ -88,7 +89,7 @@ class PersistanceConfig(Config):
 
 class ProcessDatasetConfig(Config):
     process: str
-    process_params: Dict[str, float]
+    process_params: dict[str, float]
     batch_size: int
     num_tokens: int
     test_split: float
@@ -113,8 +114,8 @@ class ProcessDatasetConfig(Config):
 
 @dataclass
 class Log:
-    train_loss: Optional[float]
-    test_loss: Optional[float]
+    train_loss: float | None
+    test_loss: float | None
     config: "LoggingConfig"
 
     def reset(self):
@@ -130,8 +131,10 @@ class Log:
 
     def update_metrics(self, train_or_test: Literal["train", "test"], loss: float):
         if train_or_test == "train" and self.config.test_loss:
+            assert self.train_loss is not None
             self.train_loss += loss
         elif train_or_test == "test" and self.config.train_loss:
+            assert self.test_loss is not None
             self.test_loss += loss
         else:
             raise ValueError
@@ -150,9 +153,9 @@ class Log:
 
 
 class LoggingConfig(Config):
-    local: Optional[pathlib.Path] = None
+    local: pathlib.Path | None = None
     wandb: bool = True
-    project_name: Optional[str]
+    project_name: str | None
     train_loss: bool = True
     test_loss: bool = True
 
