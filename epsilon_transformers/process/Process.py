@@ -149,9 +149,9 @@ class Process(ABC):
         return ProcessHistory(symbols=symbols, states=states)
     
     # TODO: You can get rid of the stack, and just iterate through the nodes & the depth as tuples
-    def derive_mixed_state_presentation(self, depth: int) -> MixedStateTree:
-        tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, children=set(), path=[], emission_prob=0)
-        nodes = set([tree_root])
+    def derive_mixed_state_tree(self, depth: int) -> MixedStateTree:
+        tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, children=[], path=[], emission_prob=0)
+        nodes = list([tree_root])
 
         stack = deque([(tree_root, self.steady_state_vector, [], 0)])
         while stack:
@@ -162,15 +162,13 @@ class Process(ABC):
                     if emission_probs[emission] > 0:
                         next_state_prob_vector = _compute_next_distribution(self.transition_matrix, state_prob_vector, emission)
                         child_path = current_path + [emission]
-                        child_node = MixedStateTreeNode(state_prob_vector=next_state_prob_vector, path=child_path, children=set(), emission_prob=emission_probs[emission])
+                        child_node = MixedStateTreeNode(state_prob_vector=next_state_prob_vector, path=child_path, children=[], emission_prob=emission_probs[emission])
                         current_node.add_child(child_node)
 
                         stack.append((child_node, next_state_prob_vector, child_path, current_depth + 1))
-            nodes.add(current_node)
+            nodes.append(current_node)
         
         return MixedStateTree(root_node=tree_root, process=self.name, nodes=nodes, depth=depth)
-
-
 
 
 def _compute_emission_probabilities(
@@ -186,12 +184,12 @@ def _compute_emission_probabilities(
     return emission_probs
 
 def _compute_next_distribution(
-    epsilon_machine: Float[np.ndarray, "vocab_len num_states num_states"],
+    transition_matrix: Float[np.ndarray, "vocab_len num_states num_states"],
     current_state_prob_vector: Float[np.ndarray, "num_states"], 
     current_emission: int
 ) -> Float[np.ndarray, "num_states"]:
     """
     Compute the next mixed state distribution for a given output.
     """
-    X_next = np.einsum("sd, s -> d", epsilon_machine[current_emission], current_state_prob_vector)
+    X_next = np.einsum("sd, s -> d", transition_matrix[current_emission], current_state_prob_vector)
     return X_next / np.sum(X_next) if np.sum(X_next) != 0 else X_next

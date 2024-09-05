@@ -1,10 +1,9 @@
 from multiprocessing.util import sub_debug
 from jaxtyping import Float
-from typing import List, Set, Tuple
+from typing import List, Tuple, Set, Dict
 import numpy as np
 from collections import deque
 from scipy.stats import entropy
-
 
 # TODO: Move the derive MSP function to be in the MSP init
 # TODO: Add
@@ -12,26 +11,26 @@ from scipy.stats import entropy
 class MixedStateTreeNode:
 	state_prob_vector: Float[np.ndarray, "n_states"]
 	path: List[int]
-	children: Set['MixedStateTreeNode']
+	children: List['MixedStateTreeNode']
 	emission_prob: float
 	
-	def __init__(self, state_prob_vector: Float[np.ndarray, "n_states"], children: Set['MixedStateTreeNode'], path: List[int], emission_prob: float):
+	def __init__(self, state_prob_vector: Float[np.ndarray, "n_states"], children: List['MixedStateTreeNode'], path: List[int], emission_prob: float):
 		self.state_prob_vector = state_prob_vector
 		self.path = path
 		self.children = children
 		self.emission_prob = emission_prob
 	
 	def add_child(self, child: 'MixedStateTreeNode'):
-		self.children.add(child)
+		self.children.append(child)
 
 class MixedStateTree:
 	root_node: MixedStateTreeNode
 	process: str
 	depth: int
-	nodes: Set[MixedStateTreeNode]
+	nodes: List[MixedStateTreeNode]
 
 	@property
-	def belief_states(self) -> Set[Float[np.ndarray, "num_states"]]:
+	def belief_states(self) -> List[Float[np.ndarray, "num_states"]]:
 		return [x.state_prob_vector for x in self.nodes]
 	
 	@property
@@ -55,7 +54,7 @@ class MixedStateTree:
 	def myopic_entropy(self) -> Float[np.ndarray, "depth-1"]:
 		return np.diff(self.block_entropy)
 	
-	def __init__(self, root_node: MixedStateTreeNode, process: str, nodes: Set[MixedStateTreeNode], depth: int):
+	def __init__(self, root_node: MixedStateTreeNode, process: str, nodes: List[MixedStateTreeNode], depth: int):
 		self.root_node = root_node
 		self.process = process
 		self.nodes = nodes
@@ -93,7 +92,7 @@ class MixedStateTree:
 		return np.stack(belief_states)
 	
 
-	def build_msp_transition_matrix(self) -> Float[np.ndarray, "num_emission num_msp_nodes num_msp_nodes"]:
+	def build_msp_transition_matrix(self) -> Tuple[Float[np.ndarray, "num_emission num_msp_nodes num_msp_nodes"], Dict[int, np.ndarray]]:
 		seen_prob_vectors = {}
 		max_state_index = -1  # To keep track of the last index assigned to a unique state
 		queue = deque([(self.root_node, None, -1, 0)])  # (node, emitted_symbol, parent_state_index, emission_prob)
@@ -103,6 +102,7 @@ class MixedStateTree:
 		
 		# Assuming we know the number of symbols and maximum states to expect
 		M = np.zeros((num_symbols, num_nodes, num_nodes))  # Adjust size appropriately
+		belief_distributions = {}  # Dictionary to store belief distributions
 
 		while queue:
 			current_node, emitted_symbol, from_state_index, emission_prob = queue.popleft()
@@ -114,6 +114,7 @@ class MixedStateTree:
 				max_state_index += 1
 				seen_prob_vectors[vector_tuple] = max_state_index
 				to_state_index = max_state_index
+				belief_distributions[to_state_index] = current_node.state_prob_vector
 			else:
 				to_state_index = seen_prob_vectors[vector_tuple]
 
@@ -131,7 +132,7 @@ class MixedStateTree:
 		# delete entries that were never visited
 		M = M[:, :max_state_index + 1, :max_state_index + 1]
 
-		return M
+		return M, belief_distributions
 	
-	def _get_nodes_at_depth(self, depth: int) -> Set[MixedStateTreeNode]:
-		return {n for n in self.nodes if len(n.path) == depth}
+	def _get_nodes_at_depth(self, depth: int) -> List[MixedStateTreeNode]:
+		return [n for n in self.nodes if len(n.path) == depth]
