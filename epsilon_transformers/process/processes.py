@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Dict
 
-from epsilon_transformers.process.Process import Process
+from epsilon_transformers.process.Process import Process, GHMM
 
 # TODO: Automatically generate PROCESS_REGISTRY using the inspect module
 # TODO: Add test to make sure that all members of this module are a member of Process
@@ -201,6 +201,13 @@ PROCESS_REGISTRY: Dict[str, Process] = {
     #"sierpinski": Sierpinski()
 }
 
+class TransitionMatrixGHMM(GHMM):
+    def __init__(self, transition_matrix: np.ndarray):
+        self.transition_matrix = transition_matrix
+        super().__init__()
+
+    def _create_ghmm(self):
+        return self.transition_matrix, {i: i for i in range(self.transition_matrix.shape[1])}
 
 class TransitionMatrixProcess(Process):
     def __init__(self, transition_matrix: np.ndarray):

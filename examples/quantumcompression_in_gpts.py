@@ -255,7 +255,11 @@ class GHMM:
         """
         #current_state_vec = zeros(self.latent_dim)
         #current_state_vec[self.current_state] = 1.
-        x_t = random.choice(self.alphabet_size, p= [(self.current_distr @ self.transition_matrices[x]).sum() for x in range(self.alphabet_size)] )  # NOTE: assumes tau = self.one
+        x_t = random.choice(
+            self.alphabet_size,
+            p=[(self.current_distr @ self.transition_matrices[x]).sum()
+               for x in range(self.alphabet_size)]
+        )  # NOTE: assumes tau = self.one
         new_vec = self.current_distr @ self.transition_matrices[x_t]
         self.current_distr = new_vec / new_vec.sum()  # NOTE: assumes tau = self.one
         return self.tokens[x_t]
