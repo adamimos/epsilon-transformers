@@ -98,15 +98,21 @@ class GHMM(ABC):
         if latent_state is None:
             latent_state = self.steady_state_vector
         else:
-            assert isinstance(latent_state, np.ndarray) and latent_state.shape == (self.latent_dim,), \
-                "latent_state must be a 1D array with length equal to latent_dim"
-            assert np.isclose(np.sum(latent_state), 1.0), "latent_state must sum to 1"
+            assert isinstance(latent_state, np.ndarray) and latent_state.shape == (1,self.latent_dim), \
+                "latent_state must be a row vector with length equal to latent_dim"
+            
+        ones = self.right_eigenvector
+            
+        # emission probs is (eta @ T @ ones) / (eta @ ones)
+        emission_probs = latent_state @ self.transition_matrices @ ones
+        emission_probs = emission_probs / (latent_state @ ones)
 
+        # choose an emission
+        emission = np.random.choice(self.vocab_len, p=emission_probs.squeeze())
 
-        next_latents = np.einsum("esd, s -> ed", self.transition_matrices, latent_state)
-        emission_probs = next_latents.sum(axis=1)
-        emission = np.random.choice(self.vocab_len, p=emission_probs)
-        next_latent = next_latents[emission]
+        # next latent is (eta @ T[x]) / (eta @ T[x] @ ones)
+        next_latent = (latent_state @ self.transition_matrices[emission])
+        next_latent = next_latent / (next_latent @ ones)
 
         return emission, next_latent
 
@@ -114,9 +120,8 @@ class GHMM(ABC):
         if latent_state is None:
             latent_state = self.steady_state_vector
         else:
-            assert isinstance(latent_state, np.ndarray) and latent_state.shape == (self.latent_dim,), \
-                "latent_state must be a 1D array with length equal to latent_dim"
-            assert np.isclose(np.sum(latent_state), 1.0), "latent_state must sum to 1"
+            assert isinstance(latent_state, np.ndarray) and latent_state.shape == (1, self.latent_dim), \
+                "latent_state must be a row vector with length equal to latent_dim"
 
         for _ in range(sequence_len):
             emission, next_latent = self._sample_emission_and_next_latent(latent_state)
