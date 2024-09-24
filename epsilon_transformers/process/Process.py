@@ -129,7 +129,7 @@ class GHMM(ABC):
             latent_state = next_latent
 
     def derive_mixed_state_presentation(self, depth: int) -> MixedStateTree:
-        tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, children=set(), path=[], emission_prob=0)
+        tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, children=set(), path=[], emission_prob=0, path_prob=1.0)
         nodes = set([tree_root])
 
         stack = deque([(tree_root, self.steady_state_vector, [], 0)])
@@ -151,7 +151,8 @@ class GHMM(ABC):
                             state_prob_vector=next_state_prob_vector, 
                             path=child_path, 
                             children=set(), 
-                            emission_prob=emission_probs[emission]
+                            emission_prob=emission_probs[emission],
+                            path_prob=current_node.path_prob * emission_probs[emission]
                         )
                         current_node.add_child(child_node)
 
@@ -287,7 +288,7 @@ class Process(ABC):
     
     # TODO: You can get rid of the stack, and just iterate through the nodes & the depth as tuples
     def derive_mixed_state_presentation(self, depth: int) -> MixedStateTree:
-        tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, children=set(), path=[], emission_prob=0)
+        tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, children=set(), path=[], emission_prob=0, path_prob=1.0)
         nodes = set([tree_root])
 
         stack = deque([(tree_root, self.steady_state_vector, [], 0)])
@@ -307,7 +308,8 @@ class Process(ABC):
                             state_prob_vector=next_state_prob_vector, 
                             path=child_path, 
                             children=set(), 
-                            emission_prob=emission_probs[emission]
+                            emission_prob=emission_probs[emission],
+                            path_prob=current_node.path_prob * emission_probs[emission]
                         )
                         current_node.add_child(child_node)
 

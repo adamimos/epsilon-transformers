@@ -14,12 +14,14 @@ class MixedStateTreeNode:
 	path: List[int]
 	children: Set['MixedStateTreeNode']
 	emission_prob: float
+	path_prob: float
 	
-	def __init__(self, state_prob_vector: Float[np.ndarray, "n_states"], children: Set['MixedStateTreeNode'], path: List[int], emission_prob: float):
+	def __init__(self, state_prob_vector: Float[np.ndarray, "n_states"], children: Set['MixedStateTreeNode'], path: List[int], emission_prob: float, path_prob: float):
 		self.state_prob_vector = state_prob_vector
 		self.path = path
 		self.children = children
 		self.emission_prob = emission_prob
+		self.path_prob = path_prob
 	
 	def add_child(self, child: 'MixedStateTreeNode'):
 		self.children.add(child)
@@ -64,15 +66,14 @@ class MixedStateTree:
 	def _traverse(self, node: MixedStateTreeNode, depth: int, accumulated_prob: float) -> List[List[float]]:
 		stack = deque([(node, depth, accumulated_prob)])
 		depth_emission_probs = [[] for _ in range(self.depth)]
-    
+        
 		while stack:
 			node, depth, accumulated_prob = stack.pop()
 			if depth < self.depth:
 				if node is not self.root_node:
 					depth_emission_probs[depth].append(accumulated_prob * node.emission_prob)
-				for child in node.children:
+				for child in sorted(node.children, key=lambda x: tuple(x.path)):  # Ensure deterministic order by sorting
 					stack.append((child, depth + 1, accumulated_prob * node.emission_prob if node is not self.root_node else 1.0))
-		
 		return depth_emission_probs
 
 	def path_to_beliefs(self, path: List[int]) -> Float[np.ndarray, "path_length n_states"]:
@@ -96,7 +97,7 @@ class MixedStateTree:
 	def build_msp_transition_matrix(self) -> Float[np.ndarray, "num_emission num_msp_nodes num_msp_nodes"]:
 		seen_prob_vectors = {}
 		max_state_index = -1  # To keep track of the last index assigned to a unique state
-		queue = deque([(self.root_node, None, -1, 0)])  # (node, emitted_symbol, parent_state_index, emission_prob)
+		queue = deque([(self.root_node, None, -1, 0, 1.0)])  # (node, emitted_symbol, parent_state_index, emission_prob, path_prob)
 		# get the number of symbols by looking at all entries of all paths and finding the max index
 		num_symbols = len(np.unique(np.concatenate([np.unique(x) for x in self.paths])))
 		num_nodes = len(self.nodes)
@@ -105,7 +106,7 @@ class MixedStateTree:
 		M = np.zeros((num_symbols, num_nodes, num_nodes))  # Adjust size appropriately
 
 		while queue:
-			current_node, emitted_symbol, from_state_index, emission_prob = queue.popleft()
+			current_node, emitted_symbol, from_state_index, emission_prob, path_prob = queue.popleft()
 			rounded_vector = np.around(current_node.state_prob_vector, decimals=5)
 			vector_tuple = tuple(rounded_vector.tolist())
 
@@ -126,7 +127,8 @@ class MixedStateTree:
 				if child.path:
 					child_symbol = child.path[-1]  # Assume last element of the path is the symbol
 					child_emission_prob = child.emission_prob
-					queue.append((child, child_symbol, to_state_index, child_emission_prob))
+					child_path_prob = path_prob * child_emission_prob
+					queue.append((child, child_symbol, to_state_index, child_emission_prob, child_path_prob))
 
 		# delete entries that were never visited
 		M = M[:, :max_state_index + 1, :max_state_index + 1]
@@ -135,3 +137,9 @@ class MixedStateTree:
 	
 	def _get_nodes_at_depth(self, depth: int) -> Set[MixedStateTreeNode]:
 		return {n for n in self.nodes if len(n.path) == depth}
+	
+	def get_paths_and_probs(self, depth: int) -> List[Tuple[List[int], float]]:
+		nodes = self._get_nodes_at_depth(depth)
+		paths = [x.path for x in nodes]
+		prbs = [x.path_prob for x in nodes]
+		return paths, prbs
