@@ -87,7 +87,6 @@ def train_model(config: TrainConfig) -> "HookedTransformer":
 
     _set_random_seed(config.seed)  # rename
 
-    print(config.dataset.process)
     msp_tree = config.dataset.process_msp(10)
     eval_probs, beliefs, eval_sequences = msp_tree.collect_paths_with_beliefs(
         max_depth=9
@@ -103,7 +102,7 @@ def train_model(config: TrainConfig) -> "HookedTransformer":
 # print path
     print(config.persistance.collection_location)
 
-    # initialize model
+
     model = config.model.to_hooked_transformer(device=device.type, seed=config.seed)
     optimizer = config.optimizer.from_model(model=model, device=device)
     
