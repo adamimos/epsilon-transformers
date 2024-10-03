@@ -128,7 +128,7 @@ class GHMM(ABC):
             yield emission
             latent_state = next_latent
 
-    def derive_mixed_state_presentation(self, depth: int) -> MixedStateTree:
+    def derive_mixed_state_tree(self, depth: int) -> MixedStateTree:
         tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, children=set(), path=[], emission_prob=0, path_prob=1.0)
         nodes = set([tree_root])
 

@@ -1,0 +1,141 @@
+import argparse
+from epsilon_transformers.training.logger import StructuredLogger
+from epsilon_transformers.process.processes import TransitionMatrixGHMM
+from epsilon_transformers.process.transition_matrices import get_matrix_from_args
+from epsilon_transformers.training.dataloader import get_dataloader_and_loss_lower_bound
+import torch
+import numpy as np
+import copy
+from typing import Optional
+from tqdm import tqdm
+
+from transformer_lens import HookedTransformer, HookedTransformerConfig
+import json
+import yaml
+import os
+from torch.nn import functional as F
+import torch.autograd.profiler as profiler
+import torch.mps.profiler as mps_profiler
+
+def train_epoch(model, optimizer, dataset):
+    model.train()
+
+    epoch_losses = []
+
+    for input_sequences, target_sequences in dataset:
+        # Zero the gradients
+        optimizer.zero_grad(set_to_none=True)
+
+        # Forward pass
+        logits = model(input_sequences)
+
+        # Reshape for loss calculation
+        batch_size, seq_length, vocab_size = logits.shape
+        logits_flat = logits.reshape(-1, vocab_size)
+        targets_flat = target_sequences.reshape(-1).to(torch.int64)
+
+        # Compute loss
+        loss = F.cross_entropy(logits_flat, targets_flat, reduction="none")
+        loss = loss.reshape(batch_size, seq_length)
+
+        # Backpropagation
+        loss.mean().backward()
+
+        # Perform optimization step
+        optimizer.step()
+
+        # Store the loss for this batch
+        epoch_losses.append(loss.detach())
+
+    # Compute and return the mean loss per context position across all batches
+    return torch.concat(epoch_losses).mean(dim=0)
+
+def save_model_config(logger, model):
+    hooked_model_config_dict = copy.deepcopy(model.cfg.to_dict())
+    hooked_model_config_dict['dtype'] = str(hooked_model_config_dict['dtype'])
+    with open(os.path.join(logger.base_dir, 'hooked_model_config.json'), 'w') as f:
+        json.dump(hooked_model_config_dict, f, indent=4)
+
+def set_seed(seed):
+    import random
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+def get_device(args):
+    if args.device == 'cuda':
+        if torch.cuda.is_available():
+            return torch.device(f'cuda:{args.gpu_id}')
+        else:
+            print("CUDA is not available. Falling back to CPU.")
+            return torch.device('cpu')
+    elif args.device == 'mps':
+        if torch.backends.mps.is_available():
+            return torch.device('mps')
+        else:
+            print("MPS is not available. Falling back to CPU.")
+            return torch.device('cpu')
+    else:
+        return torch.device('cpu')
+    
+def load_config(config_path):
+    with open(config_path, 'r') as f:
+        return yaml.safe_load(f)
+    
+def main():
+    parser = argparse.ArgumentParser(description='Train Transformer with specific hyperparameters.')
+    parser.add_argument('--config', type=str, required=True, help='Path to run configuration file')
+    # TODO: add gpu stuff
+    #parser.add_argument('--gpu_id', type=int, required=True, help='GPU ID to use for this run')
+    args = parser.parse_args()
+
+    config = load_config(args.config)
+    logger = StructuredLogger(config['global_config']['output_dir'], config['run_id'])
+
+    set_seed(42)
+
+    # Set device
+    device = config['global_config']['device']
+    #device = get_device(args)
+    #print(f"Using device: {device}")
+
+    # Parse process parameters
+
+    dataloader, loss_lower_bound, d_vocab = get_dataloader_and_loss_lower_bound(
+        process_params=config['process_config'],
+        n_ctx=config['model_config']['n_ctx'],
+        bos=config['train_config']['bos'],
+        batches_per_epoch=config['train_config']['batches_per_epoch'],
+        batch_size=config['train_config']['batch_size'],
+        device=device,
+    )
+
+    for i, l in enumerate(loss_lower_bound):
+        logger.log({"loss_lower_bound": float(l), "ctx_pos": i})
+
+    config['model_config']['device'] = config['global_config']['device']
+    config['model_config']['d_vocab'] = d_vocab
+    config['model_config']['dtype'] = getattr(torch, config['model_config']['dtype'])
+
+    hooked_model_config = HookedTransformerConfig(**config['model_config'])
+    model = HookedTransformer(hooked_model_config)
+    logger.log({"status": "model loaded"})
+    save_model_config(logger, model)
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config['train_config']['learning_rate'])
+
+    print('MODEL DEVICE:', next(model.parameters()).device, type(next(model.parameters()).device))
+    # print the device of the dataloader
+    #print('DATALOADER DEVICE:', dataloader.device, type(dataloader.device))
+    bar = tqdm(range(config['train_config']['n_epochs']), desc="Training", unit="epoch")
+    
+    for i in bar:
+        loss_per_ctx_pos = train_epoch(model, optimizer, dataloader)
+        loss_per_ctx_pos = loss_per_ctx_pos / loss_lower_bound
+        mean_loss = loss_per_ctx_pos.mean().item()
+        bar.set_postfix(loss=f"{mean_loss:.4f}")
+
+if __name__ == "__main__":
+    main()
