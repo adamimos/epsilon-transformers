@@ -1,6 +1,8 @@
 global_config:
   output_dir: "./results"
   device: mps
+  wandb: true
+  wandb_project: "test_sweep"
 
 train_config:
   batches_per_epoch: 100
@@ -30,10 +32,10 @@ sweep_config:
     d_head:
       - 8
     n_layers:
-      #- 1
+      - 1
       #- 2
       #- 4
-      - 8
+      #- 8
       #- 12
     n_heads:
       #- 1

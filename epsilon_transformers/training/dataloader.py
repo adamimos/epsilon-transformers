@@ -57,6 +57,7 @@ class BatchGenerator(IterableDataset):
         self.batches_per_epoch = batches_per_epoch
         self.batch_size = batch_size
         self.device = device
+        self.tokens_per_epoch = batches_per_epoch * batch_size * (transformer_inputs.shape[1] - 1)
 
     def __iter__(self):
         for _ in range(self.batches_per_epoch):
@@ -65,6 +66,11 @@ class BatchGenerator(IterableDataset):
             batch = self.transformer_inputs[sample_inds]
             X, Y = batch[:, :-1], batch[:, 1:]
             yield X, Y
+
+    def validation_data(self):
+        X = self.transformer_inputs[:, :-1]
+        Y = self.transformer_inputs[:, 1:]
+        return X, Y, self.probs
 """
 class BatchGenerator:
     def __init__(self, transformer_inputs, probs, batches_per_epoch, batch_size):

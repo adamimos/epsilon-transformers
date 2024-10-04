@@ -14,8 +14,9 @@ import json
 import yaml
 import os
 from torch.nn import functional as F
-import torch.autograd.profiler as profiler
-import torch.mps.profiler as mps_profiler
+
+import wandb
+
 
 def train_epoch(model, optimizer, dataset):
     model.train()
@@ -49,6 +50,21 @@ def train_epoch(model, optimizer, dataset):
 
     # Compute and return the mean loss per context position across all batches
     return torch.concat(epoch_losses).mean(dim=0)
+
+def validate_epoch(model, dataset):
+    model.eval()
+
+    with torch.no_grad():
+        X, Y, probs = dataset.validation_data()
+        logits = model(X)
+        batch_size, seq_length, vocab_size = logits.shape
+        logits_flat = logits.reshape(-1, vocab_size)
+        targets_flat = Y.reshape(-1).to(torch.int64)
+        loss = F.cross_entropy(logits_flat, targets_flat, reduction='none')
+        loss = loss.reshape(batch_size, seq_length)
+        # multiply the loss (batch_size, seq_length) by the probabilities (batch_size) to get the weighted loss (batch_size, seq_length)
+        loss = loss * probs.unsqueeze(1)
+        return loss.sum(dim=0)
 
 def save_model_config(logger, model):
     hooked_model_config_dict = copy.deepcopy(model.cfg.to_dict())
@@ -92,9 +108,12 @@ def main():
     args = parser.parse_args()
 
     config = load_config(args.config)
-    logger = StructuredLogger(config['global_config']['output_dir'], config['run_id'])
-
+    logger = StructuredLogger(config['experiment_dir'])
     set_seed(42)
+
+    if config['global_config']['wandb']:
+        wandb.init(project=f"{config['global_config']['wandb_project']}_{config['global_config']['sweep_id']}",
+                   name=config['run_id'])
 
     # Set device
     device = config['global_config']['device']
@@ -112,8 +131,7 @@ def main():
         device=device,
     )
 
-    for i, l in enumerate(loss_lower_bound):
-        logger.log({"loss_lower_bound": float(l), "ctx_pos": i})
+    np.savetxt('loss_lower_bound.txt', loss_lower_bound.cpu().numpy(), fmt='%f', delimiter=',', header='loss_lower_bound')
 
     config['model_config']['device'] = config['global_config']['device']
     config['model_config']['d_vocab'] = d_vocab
@@ -121,6 +139,7 @@ def main():
 
     hooked_model_config = HookedTransformerConfig(**config['model_config'])
     model = HookedTransformer(hooked_model_config)
+    #model = torch.compile(model)
     logger.log({"status": "model loaded"})
     save_model_config(logger, model)
 
@@ -130,12 +149,30 @@ def main():
     # print the device of the dataloader
     #print('DATALOADER DEVICE:', dataloader.device, type(dataloader.device))
     bar = tqdm(range(config['train_config']['n_epochs']), desc="Training", unit="epoch")
+
+    # save initial model checkpoint
     
+    num_tokens_seen = 0
+    # do validation before starting the epoch loop
+    val_loss_per_ctx_pos = validate_epoch(model, dataloader)
+    val_loss_per_ctx_pos = val_loss_per_ctx_pos / loss_lower_bound
+    mean_val_loss = val_loss_per_ctx_pos.mean().item()
+    logger.log_epoch(-1, num_tokens_seen, 
+                     None, 
+                     val_loss_per_ctx_pos.tolist(), 
+                     optimizer.param_groups[0]['lr'])
+    logger.save_model_checkpoint(model, "0")
+
     for i in bar:
-        loss_per_ctx_pos = train_epoch(model, optimizer, dataloader)
-        loss_per_ctx_pos = loss_per_ctx_pos / loss_lower_bound
+        loss_per_ctx_pos = train_epoch(model, optimizer, dataloader) / loss_lower_bound
         mean_loss = loss_per_ctx_pos.mean().item()
-        bar.set_postfix(loss=f"{mean_loss:.4f}")
+        val_loss_per_ctx_pos = validate_epoch(model, dataloader) / loss_lower_bound
+        mean_val_loss = val_loss_per_ctx_pos.mean().item()
+        bar.set_postfix(loss=f"{mean_loss:.4f}", val_loss=f"{mean_val_loss:.4f}")
+
+        num_tokens_seen += dataloader.tokens_per_epoch
+        logger.save_model_checkpoint(model, f"{num_tokens_seen}")
+        logger.log_epoch(i, num_tokens_seen, loss_per_ctx_pos.tolist(), val_loss_per_ctx_pos.tolist(), optimizer.param_groups[0]['lr'])
 
 if __name__ == "__main__":
     main()

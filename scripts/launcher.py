@@ -63,25 +63,34 @@ def main():
     parser.add_argument('--config', type=str, required=True, help='Path to experiment configuration file')
     args = parser.parse_args()
 
-    config = load_config(args.config)
+    sweep_config = load_config(args.config)
 
     # Generate all combinations for the sweep
-    sweep_params = create_config_sweep(config)
+    sweep_params = create_config_sweep(sweep_config)
 
-    sweep_id = config.get('sweep_id', datetime.now().strftime("%Y%m%d%H%M%S"))
+    sweep_id = sweep_config.get('sweep_id', datetime.now().strftime("%Y%m%d%H%M%S"))
 
-    os.makedirs(f"{config['global_config']['output_dir']}/{sweep_id}", exist_ok=True)
+    sweep_dir = f"{sweep_config['global_config']['output_dir']}/{sweep_id}"
+    os.makedirs(sweep_dir, exist_ok=True)
 
-    for i, cfg in enumerate(sweep_params):
-        experiment_name = f"run_{i}_L{cfg['model_config']['n_layers']}_H{cfg['model_config']['n_heads']}_DH{cfg['model_config']['d_head']}_DM{cfg['model_config']['d_model']}_{cfg['process_config']['name']}"
-        config_path = f"{config['global_config']['output_dir']}/{sweep_id}/config_{experiment_name}.yaml"
-        cfg['run_id'] = experiment_name
-        cfg['global_config']['sweep_id'] = sweep_id
-        cfg['config_path'] = config_path
+    # save sweep config
+    config_path = f"{sweep_dir}/sweep_config.yaml"
+    with open(config_path, 'w') as f:
+        yaml.dump(sweep_config, f)
+
+    for i, run_cfg in enumerate(sweep_params):
+        experiment_name = f"run_{i}_L{run_cfg['model_config']['n_layers']}_H{run_cfg['model_config']['n_heads']}_DH{run_cfg['model_config']['d_head']}_DM{run_cfg['model_config']['d_model']}_{run_cfg['process_config']['name']}"
+        experiment_dir = f"{sweep_dir}/{experiment_name}"
+        os.makedirs(experiment_dir, exist_ok=True)
+        config_path = f"{experiment_dir}/run_config.yaml"
+        run_cfg['run_id'] = experiment_name
+        run_cfg['global_config']['sweep_id'] = sweep_id
+        run_cfg['config_path'] = config_path
+        run_cfg['experiment_dir'] = experiment_dir
         with open(config_path, 'w') as f:
-            yaml.dump(cfg, f)
+            yaml.dump(run_cfg, f)
 
-        run_experiment(cfg)
+        run_experiment(run_cfg)
 
 if __name__ == "__main__":
     main()
