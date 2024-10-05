@@ -119,7 +119,7 @@ def main():
     # Set device
     
     if args.parallel:
-        device = args.gpu_id
+        device = f'cuda:{args.gpu_id}'
     else:
         device = config['global_config']['device']
     #print(f"Using device: {device}")

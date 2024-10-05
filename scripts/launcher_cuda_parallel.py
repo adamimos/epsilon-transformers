@@ -96,7 +96,7 @@ def main():
                 'python', './scripts/train.py',
                 '--config', run_cfg['config_path'],
                 '--parallel',
-                '--gpu_id', f'cuda:{gpu_id}'
+                '--gpu_id', f'{gpu_id}'
             ]
 
             env = os.environ.copy()
