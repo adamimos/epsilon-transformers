@@ -95,6 +95,7 @@ def main():
             cmd = [
                 'python', './scripts/train.py',
                 '--config', run_cfg['config_path'],
+                '--parallel',
                 '--gpu_id', f'cuda:{gpu_id}'
             ]
 

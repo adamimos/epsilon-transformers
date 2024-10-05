@@ -103,8 +103,9 @@ def load_config(config_path):
 def main():
     parser = argparse.ArgumentParser(description='Train Transformer with specific hyperparameters.')
     parser.add_argument('--config', type=str, required=True, help='Path to run configuration file')
-    # TODO: add gpu stuff
-    #parser.add_argument('--gpu_id', type=int, required=True, help='GPU ID to use for this run')
+    parser.add_argument('--parallel', action='store_true', help='Enable parallel CUDA execution')
+    parser.add_argument('--gpu_id', type=int, default=0, required=False, help='GPU ID to use for this run')
+
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -116,8 +117,11 @@ def main():
                    name=config['run_id'])
 
     # Set device
-    device = config['global_config']['device']
-    #device = get_device(args)
+    
+    if args.parallel:
+        device = args.gpu_id
+    else:
+        device = config['global_config']['device']
     #print(f"Using device: {device}")
 
     # Parse process parameters
