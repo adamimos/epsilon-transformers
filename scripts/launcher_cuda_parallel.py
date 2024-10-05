@@ -92,6 +92,10 @@ def main():
             run_cfg['config_path'] = config_path
             run_cfg['experiment_dir'] = experiment_dir
             run_cfg['global_config']['device'] = f'cuda:{gpu_id}'
+
+            with open(config_path, 'w') as f:
+                yaml.dump(run_cfg, f)
+
             cmd = [
                 'python', './scripts/train.py',
                 '--config', run_cfg['config_path'],
