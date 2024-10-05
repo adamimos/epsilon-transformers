@@ -6,6 +6,7 @@ import subprocess
 import yaml
 import os
 from datetime import datetime
+import torch
 
 def load_config(config_path):
     with open(config_path, 'r') as f:
@@ -13,6 +14,7 @@ def load_config(config_path):
     
 
 def run_experiment(run_config):
+
     cmd = [
         'python', 'scripts/train.py',
         '--config', run_config['config_path'],
@@ -58,6 +60,7 @@ def create_config_sweep(config):
     )
     return config_sweep_iter
 
+
 def main():
     parser = argparse.ArgumentParser(description='Launch multiple training jobs.')
     parser.add_argument('--config', type=str, required=True, help='Path to experiment configuration file')
@@ -78,6 +81,8 @@ def main():
     with open(config_path, 'w') as f:
         yaml.dump(sweep_config, f)
 
+ 
+
     for i, run_cfg in enumerate(sweep_params):
         experiment_name = f"run_{i}_L{run_cfg['model_config']['n_layers']}_H{run_cfg['model_config']['n_heads']}_DH{run_cfg['model_config']['d_head']}_DM{run_cfg['model_config']['d_model']}_{run_cfg['process_config']['name']}"
         experiment_dir = f"{sweep_dir}/{experiment_name}"
@@ -87,6 +92,7 @@ def main():
         run_cfg['global_config']['sweep_id'] = sweep_id
         run_cfg['config_path'] = config_path
         run_cfg['experiment_dir'] = experiment_dir
+
         with open(config_path, 'w') as f:
             yaml.dump(run_cfg, f)
 

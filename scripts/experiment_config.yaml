@@ -1,8 +1,10 @@
 global_config:
   output_dir: "./results"
-  device: mps
+  device: cuda
+  parallel: true
   wandb: true
   wandb_project: "test_sweep"
+
 
 train_config:
   batches_per_epoch: 100
@@ -33,7 +35,7 @@ sweep_config:
       - 8
     n_layers:
       - 1
-      #- 2
+      - 2
       #- 4
       #- 8
       #- 12
@@ -58,6 +60,3 @@ sweep_config:
     #- name: "mess3"
       #x: 0.2
       #a: 0.7
-
-# Optional: You can specify a run_id here, or let it be generated automatically
-# run_id: "experiment_001"
