@@ -77,13 +77,13 @@ def main():
 
     experiment_queue = list(sweep_params)
     running_processes = []
-
+    run_counter = 0
     while experiment_queue or running_processes:
         while experiment_queue and available_gpus:
             gpu_id = available_gpus.pop(0)
             run_cfg = experiment_queue.pop(0)
 
-            experiment_name = f"run_{i}_L{run_cfg['model_config']['n_layers']}_H{run_cfg['model_config']['n_heads']}_DH{run_cfg['model_config']['d_head']}_DM{run_cfg['model_config']['d_model']}_{run_cfg['process_config']['name']}"
+            experiment_name = f"run_{run_counter}_L{run_cfg['model_config']['n_layers']}_H{run_cfg['model_config']['n_heads']}_DH{run_cfg['model_config']['d_head']}_DM{run_cfg['model_config']['d_model']}_{run_cfg['process_config']['name']}"
             experiment_dir = f"{sweep_dir}/{experiment_name}"
             os.makedirs(experiment_dir, exist_ok=True)
             config_path = f"{experiment_dir}/run_config.yaml"
@@ -99,6 +99,7 @@ def main():
             ]
 
             env = os.environ.copy()
+            run_counter += 1
 
             stdout_log = open(f"{experiment_dir}/stdout.txt", "w")
             stderr_log = open(f"{experiment_dir}/stderr.txt", "w")
