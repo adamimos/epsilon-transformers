@@ -49,7 +49,8 @@ def train_epoch(model, optimizer, dataset, scheduler=None):
         epoch_losses.append(loss.detach())
 
     if scheduler:
-        scheduler.step()
+        # Pass the mean loss to the scheduler
+        scheduler.step(torch.mean(torch.cat(epoch_losses)))
 
     # Compute and return the mean loss per context position across all batches
     return torch.concat(epoch_losses).mean(dim=0)

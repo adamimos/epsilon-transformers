@@ -30,7 +30,6 @@ from torch.utils.data import IterableDataset, DataLoader
 #from epsilon_transformers.process.processes import Mess3
 from epsilon_transformers.process.dataset import ProcessDataset
 from epsilon_transformers.analysis.activation_analysis import get_beliefs_for_transformer_inputs
-from epsilon_transformers import training
 from epsilon_transformers.visualization.plots import _project_to_simplex
 
 train_config = {
