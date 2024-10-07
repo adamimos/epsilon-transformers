@@ -17,12 +17,46 @@ def get_matrix_from_args(name: str, **kwargs):
     else:
         raise ValueError(f"Invalid process name: {name}")
 
-def post_quantum(alpha: float, beta: float):
+def post_quantum(alpha=np.exp(1), beta=0.5):
     """
     Creates a transition matrix for the Post Quantum Process.
     """
-    # Implementation here
-    pass
+    # Validate conditions for alpha and beta
+    if not (alpha > 1 > beta > 0):
+        raise ValueError("Condition alpha > 1 > beta > 0 not satisfied")
+    if alpha + beta == 2:
+        raise ValueError("Condition alpha + beta ≠ 2 not satisfied")
+    if np.isclose(np.log(alpha) / np.log(beta), np.round(np.log(alpha) / np.log(beta))):
+        raise ValueError("Condition ln(alpha) / ln(beta) ∉ ℚ not satisfied")
+
+    T = np.zeros((3, 3, 3))
+    m0 = np.array([[1], [1], [0]])  # Column vector
+    mu0 = np.array([[1, -1, -1]])  # Row vector
+    
+    def _intermediate_matrix(val):
+        return np.array([
+            [val, 0, 0],
+            [0, 1, 0],
+            [0, np.log(val), 1]
+        ])
+    
+    T[0] = np.outer(m0, mu0)
+    T[1] = _intermediate_matrix(alpha)
+    T[2] = _intermediate_matrix(beta)
+
+    # Normalize T such that T[0] + T[1] + T[2] has largest abs eigenvalue = 1
+    T_sum = T.sum(axis=0)
+    T_sum_max_eigval = np.abs(np.linalg.eigvals(T_sum)).max()
+    T /= T_sum_max_eigval
+
+    # Verify that T[0] + T[1] + T[2] has largest abs eigenvalue = 1
+    T_sum_normalized = T.sum(axis=0)
+    T_sum_max_eigval = np.abs(np.linalg.eigvals(T_sum_normalized)).max()
+    np.testing.assert_almost_equal(T_sum_max_eigval, 1, decimal=10, 
+                                   err_msg="Largest absolute eigenvalue is not 1")
+
+    return T
+
 
 def tom_quantum(alpha: float, beta: float):
     """
