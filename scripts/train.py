@@ -18,7 +18,7 @@ from torch.nn import functional as F
 import wandb
 
 
-def train_epoch(model, optimizer, dataset):
+def train_epoch(model, optimizer, dataset, scheduler=None):
     model.train()
 
     epoch_losses = []
@@ -47,6 +47,9 @@ def train_epoch(model, optimizer, dataset):
 
         # Store the loss for this batch
         epoch_losses.append(loss.detach())
+
+    if scheduler:
+        scheduler.step()
 
     # Compute and return the mean loss per context position across all batches
     return torch.concat(epoch_losses).mean(dim=0)
@@ -148,7 +151,10 @@ def main():
     save_model_config(logger, model)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=config['train_config']['learning_rate'])
-
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.5, patience=200, cooldown=500, threshold=1e-6,
+        verbose=True
+    )
     print('MODEL DEVICE:', next(model.parameters()).device, type(next(model.parameters()).device))
     # print the device of the dataloader
     #print('DATALOADER DEVICE:', dataloader.device, type(dataloader.device))
@@ -168,7 +174,7 @@ def main():
     logger.save_model_checkpoint(model, "0")
 
     for i in bar:
-        loss_per_ctx_pos = train_epoch(model, optimizer, dataloader) / loss_lower_bound
+        loss_per_ctx_pos = train_epoch(model, optimizer, dataloader, scheduler) / loss_lower_bound
         mean_loss = loss_per_ctx_pos.mean().item()
         val_loss_per_ctx_pos = validate_epoch(model, dataloader) / loss_lower_bound
         mean_val_loss = val_loss_per_ctx_pos.mean().item()
