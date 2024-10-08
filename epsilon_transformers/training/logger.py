@@ -43,8 +43,8 @@ class StructuredLogger:
         loss_file_path = os.path.join(self.base_dir, 'loss.csv')
 
         # if train_losses is None set it to inf, same for val_losses
-        train_losses = [np.inf for _ in val_losses] if train_losses is None else train_losses
-        val_losses = [np.inf for _ in train_losses] if val_losses is None else val_losses
+        train_losses = [np.nan for _ in val_losses] if train_losses is None else train_losses
+        val_losses = [np.nan for _ in train_losses] if val_losses is None else val_losses
         
         # Check if the file exists, if not, create it and write the header
         if not os.path.exists(loss_file_path):
