@@ -17,7 +17,7 @@ def load_config(config_path):
 
 def run_experiment(run_config):
     cmd = [
-        'python', 'scripts/train.py',
+        'python', 'scripts/train_profile.py',
         '--config', run_config['config_path'],
     ]
     

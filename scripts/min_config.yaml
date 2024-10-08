@@ -1,6 +1,6 @@
 global_config:
   output_dir: "./results"
-  device: cpu
+  device: cuda
   parallel: false
   wandb: true
   wandb_project: "mintest"
