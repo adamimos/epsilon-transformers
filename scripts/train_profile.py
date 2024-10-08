@@ -36,6 +36,7 @@ import wandb
 import cProfile
 import pstats
 from torch.profiler import profile, record_function, ProfilerActivity
+from epsilon_transformers.training.logger import StructuredLogger
 
 
 
@@ -134,6 +135,9 @@ def main():
     args = parser.parse_args()
 
     config = load_config(args.config)
+    
+    # Initialize the logger
+    logger = StructuredLogger(config['experiment_dir'])
     
     # Wrap the entire main function with cProfile
     profiler = cProfile.Profile()
