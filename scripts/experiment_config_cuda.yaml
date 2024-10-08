@@ -1,11 +1,11 @@
 global_config:
   output_dir: "./results"
-  device: cpu
+  device: cuda
   parallel: true
   wandb: true
   wandb_project: "quantum"
   process_dir: "./process_data"
-  val_every: ~ # after n epochs, ~ is None
+  val_every: 100 # after n epochs, ~ is None
 
 train_config:
   batches_per_epoch: 50
