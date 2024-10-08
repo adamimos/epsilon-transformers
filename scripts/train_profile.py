@@ -7,6 +7,23 @@ import torch
 import numpy as np
 import copy
 from tqdm import tqdm
+from transformer_lens import HookedTransformer, HookedTransformerConfig
+import json
+import yaml
+import os
+from torch.nn import functional as F
+import wandb
+import cProfile
+import pstats
+from torch.profiler import profile, record_function, ProfilerActivity
+
+from epsilon_transformers.process.GHMM import TransitionMatrixGHMM
+from epsilon_transformers.process.transition_matrices import get_matrix_from_args
+from epsilon_transformers.training.dataloader import get_dataloader_and_loss_lower_bound
+import torch
+import numpy as np
+import copy
+from tqdm import tqdm
 
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 import json
@@ -117,8 +134,10 @@ def main():
     args = parser.parse_args()
 
     config = load_config(args.config)
-    logger = StructuredLogger(config['experiment_dir'])
-    set_seed(42)
+    
+    # Wrap the entire main function with cProfile
+    profiler = cProfile.Profile()
+    profiler.enable()
 
     if config['global_config']['wandb']:
         wandb.init(project=f"{config['global_config']['wandb_project']}_{config['global_config']['sweep_id']}",
@@ -194,8 +213,15 @@ def main():
                 logger.save_model_checkpoint(model, f"{num_tokens_seen}")
                 logger.log_epoch(i, num_tokens_seen, loss_per_ctx_pos.tolist(), val_loss_per_ctx_pos.tolist(), optimizer.param_groups[0]['lr'])
 
+    # Print PyTorch profiling results
     print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=20))
     prof.export_chrome_trace(os.path.join(config['experiment_dir'], "pytorch_trace.json"))
+
+    # Disable cProfile and print results
+    profiler.disable()
+    stats = pstats.Stats(profiler).sort_stats('cumulative')
+    stats.print_stats(20)  # Print top 20 time-consuming functions
+    stats.dump_stats(os.path.join(config['experiment_dir'], 'train_profile.prof'))
 
 if __name__ == "__main__":
     main()

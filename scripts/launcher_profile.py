@@ -22,15 +22,9 @@ def run_experiment(run_config):
     ]
     
     # Define a function to run the subprocess
-    def run_subprocess():
-        subprocess.run(cmd)
-    
-    # Run with cProfile
-    cProfile.runctx('run_subprocess()', globals(), locals(), f"{run_config['experiment_dir']}/cprofile_output.txt")
-    
-    # Parse and print cProfile results
-    stats = pstats.Stats(f"{run_config['experiment_dir']}/cprofile_output.txt")
-    stats.sort_stats('cumulative').print_stats(20)  # Print top 20 time-consuming functions
+
+    subprocess.run(cmd)
+
 
 def create_config_sweep(config):
     global_config = config.get('global_config', {})
