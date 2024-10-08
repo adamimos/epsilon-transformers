@@ -1,0 +1,1 @@
+{"process_config": {"name": "post_quantum", "alpha": 2.718281828459045, "beta": 0.5}, "n_ctx": 8, "d_vocab": 3, "bos": false}

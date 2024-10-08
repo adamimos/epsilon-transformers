@@ -2,7 +2,7 @@ import argparse
 from epsilon_transformers.training.logger import StructuredLogger
 from epsilon_transformers.process.GHMM import TransitionMatrixGHMM
 from epsilon_transformers.process.transition_matrices import get_matrix_from_args
-from epsilon_transformers.training.dataloader import get_dataloader_and_loss_lower_bound
+from epsilon_transformers.training.dataloader import get_dataloader_and_loss_lower_bound_from_process, get_dataloader_from_data
 import torch
 import numpy as np
 import copy
@@ -13,6 +13,7 @@ import json
 import yaml
 import os
 from torch.nn import functional as F
+from epsilon_transformers.training.generate_data import load_process_data
 
 import wandb
 
@@ -54,7 +55,7 @@ def train_epoch(model, optimizer, dataset, scheduler=None):
     # Compute and return the mean loss per context position across all batches
     return torch.concat(epoch_losses).mean(dim=0)
 
-def validate_epoch(model, dataset):
+def validate_epoch_all(model, dataset):
     model.eval()
 
     with torch.no_grad():
@@ -68,6 +69,10 @@ def validate_epoch(model, dataset):
         # multiply the loss (batch_size, seq_length) by the probabilities (batch_size) to get the weighted loss (batch_size, seq_length)
         loss = loss * probs.unsqueeze(1)
         return loss.sum(dim=0)
+
+def validate_epoch_sample(model, dataset):
+    pass
+    # TODO: implement validate_epoch_sample
 
 def save_model_config(logger, model):
     hooked_model_config_dict = copy.deepcopy(model.cfg.to_dict())
@@ -127,16 +132,33 @@ def main():
         device = config['global_config']['device']
     #print(f"Using device: {device}")
 
+    val_every = config['global_config']['val_every']
     # Parse process parameters
 
-    dataloader, loss_lower_bound, d_vocab = get_dataloader_and_loss_lower_bound(
-        process_params=config['process_config'],
-        n_ctx=config['model_config']['n_ctx'],
-        bos=config['train_config']['bos'],
-        batches_per_epoch=config['train_config']['batches_per_epoch'],
-        batch_size=config['train_config']['batch_size'],
-        device=device,
-    )
+    # Try to load pre-generated data
+    process_data = load_process_data(config, config['global_config']['process_dir'])
+    print("process_data:", process_data)
+    
+    if process_data is not None:
+        # Data was pre-generated, load it
+        dataloader, d_vocab = get_dataloader_from_data(
+            process_data['transformer_inputs'],
+            process_data['probs'],
+            config['train_config']['batches_per_epoch'],
+            config['train_config']['batch_size'],
+            device
+        )
+        loss_lower_bound = torch.from_numpy(process_data['loss_lower_bound']).to(device)
+    else:
+        # Data wasn't pre-generated, generate it now
+        dataloader, loss_lower_bound, d_vocab = get_dataloader_and_loss_lower_bound_from_process(
+            process_params=config['process_config'],
+            n_ctx=config['model_config']['n_ctx'],
+            bos=config['train_config']['bos'],
+            batches_per_epoch=config['train_config']['batches_per_epoch'],
+            batch_size=config['train_config']['batch_size'],
+            device=device,
+        )
 
     np.savetxt('loss_lower_bound.txt', loss_lower_bound.cpu().numpy(), fmt='%f', delimiter=',', header='loss_lower_bound')
 
@@ -164,7 +186,8 @@ def main():
     
     num_tokens_seen = 0
     # do validation before starting the epoch loop
-    val_loss_per_ctx_pos = validate_epoch(model, dataloader)
+
+    val_loss_per_ctx_pos = validate_epoch_all(model, dataloader)
     val_loss_per_ctx_pos = val_loss_per_ctx_pos / loss_lower_bound
     mean_val_loss = val_loss_per_ctx_pos.mean().item()
     logger.log_epoch(-1, num_tokens_seen, 
@@ -176,13 +199,21 @@ def main():
     for i in bar:
         loss_per_ctx_pos = train_epoch(model, optimizer, dataloader, scheduler) / loss_lower_bound
         mean_loss = loss_per_ctx_pos.mean().item()
-        val_loss_per_ctx_pos = validate_epoch(model, dataloader) / loss_lower_bound
-        mean_val_loss = val_loss_per_ctx_pos.mean().item()
-        bar.set_postfix(loss=f"{mean_loss:.4f}", val_loss=f"{mean_val_loss:.4f}")
+        
+        if val_every is not None and i % val_every == 0:
+            # TODO: implement logic for val_type
+            val_loss_per_ctx_pos = validate_epoch_all(model, dataloader) / loss_lower_bound
+            mean_val_loss = val_loss_per_ctx_pos.mean().item()
+            bar.set_postfix(loss=f"{mean_loss:.4f}", val_loss=f"{mean_val_loss:.4f}")
+        else:
+            val_loss_per_ctx_pos = None
+            bar.set_postfix(loss=f"{mean_loss:.4f}")
 
         num_tokens_seen += dataloader.tokens_per_epoch
         logger.save_model_checkpoint(model, f"{num_tokens_seen}")
-        logger.log_epoch(i, num_tokens_seen, loss_per_ctx_pos.tolist(), val_loss_per_ctx_pos.tolist(), optimizer.param_groups[0]['lr'])
+        logger.log_epoch(i, num_tokens_seen, loss_per_ctx_pos.tolist(), 
+                         val_loss_per_ctx_pos.tolist() if val_loss_per_ctx_pos is not None else None, 
+                         optimizer.param_groups[0]['lr'])
 
 if __name__ == "__main__":
     main()

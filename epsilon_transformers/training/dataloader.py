@@ -101,7 +101,7 @@ class BatchGenerator:
             yield X, Y, batch_probs
 """
 
-def get_dataloader_and_loss_lower_bound(process_params: dict, n_ctx: int, bos: bool, batches_per_epoch: int, batch_size: int, device: str) -> Tuple[BatchGenerator, torch.Tensor]:
+def get_dataloader_and_loss_lower_bound_from_process(process_params: dict, n_ctx: int, bos: bool, batches_per_epoch: int, batch_size: int, device: str) -> Tuple[BatchGenerator, torch.Tensor]:
     # Initialize the process
     T = get_matrix_from_args(**process_params)
     ghmm = TransitionMatrixGHMM(T)
@@ -119,3 +119,13 @@ def get_dataloader_and_loss_lower_bound(process_params: dict, n_ctx: int, bos: b
     d_vocab = d_vocab 
 
     return dataloader, loss_lower_bound, d_vocab
+
+def get_dataloader_from_data(all_seqs: torch.Tensor, all_seqs_probs: torch.Tensor, batches_per_epoch: int, batch_size: int, device: str) -> Tuple[BatchGenerator, torch.Tensor]:
+    # Convert to tensor if necessary and move to device
+    all_seqs = torch.as_tensor(all_seqs, device=device)
+    all_seqs_probs = torch.as_tensor(all_seqs_probs, device=device)
+    dataloader = BatchGenerator(all_seqs, all_seqs_probs, batches_per_epoch, batch_size, device)
+    # Calculate d_vocab as the number of unique integers in all_seqs
+    d_vocab = len(torch.unique(all_seqs))
+
+    return dataloader, d_vocab
