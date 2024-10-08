@@ -1,12 +1,11 @@
 import argparse
 from epsilon_transformers.training.logger import StructuredLogger
-from epsilon_transformers.process.processes import TransitionMatrixGHMM
+from epsilon_transformers.process.GHMM import TransitionMatrixGHMM
 from epsilon_transformers.process.transition_matrices import get_matrix_from_args
 from epsilon_transformers.training.dataloader import get_dataloader_and_loss_lower_bound
 import torch
 import numpy as np
 import copy
-from typing import Optional
 from tqdm import tqdm
 
 from transformer_lens import HookedTransformer, HookedTransformerConfig

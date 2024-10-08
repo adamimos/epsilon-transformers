@@ -6,22 +6,10 @@ import numpy as np
 import torch
 
 from epsilon_transformers.process.MixedStateTree import MixedStateTree
-from epsilon_transformers.process.Process import Process
+from epsilon_transformers.process.GHMM import Process
 from epsilon_transformers.process.processes import ZeroOneR
 
-# TODO: TQDM find_msp_subpace_in_residual_stream
-# TODO: (??) _generate_belief_state_and_activation() (??)
-# TODO: Make dataclass for ground_truth & predicted_belief states
-# TODO: Abstract persister & make persister for the dataclass
-
-# TODO: All of this passing of the process around is unnecessary. I just gotta pass the msp around and that's it
-# TODO: This train/test split is unnatural.... I may want to fix it or leave a None options
-# TODO: For non toy models, derive_mixed_state_presentation needs to be parallelized
-# TODO: Move _predicted_mixed_state_belief_vector to MSP class (??)
-# TODO: Refactor this whole mess so that you only have to iterate through the samples list once foo
-# TODO: Generalize for the case when we have to extract multiple different parts of the residual stream
-# TODO: Add batch_size to generate_belief_state_and_activations
-
+# TODO: redo this from scratch
 
 def get_beliefs_for_transformer_inputs(
     transformer_inputs: Float[torch.Tensor, "batch n_ctx"], 

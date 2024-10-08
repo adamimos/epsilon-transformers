@@ -93,7 +93,7 @@ def binary_entropy(p: float) -> float:
     """Compute the binary entropy for a given probability p."""
     if p == 0 or p == 1:
         return 0
-    return -p * np.log(p) - (1 - p) * np.log(1 - p)
+    return -p * np.log2(p) - (1 - p) * np.log2(1 - p)
 
 
 def inverse_binary_entropy(target_entropy: float) -> float:
