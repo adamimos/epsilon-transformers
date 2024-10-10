@@ -6,8 +6,7 @@ import numpy as np
 import torch
 
 from epsilon_transformers.process.MixedStateTree import MixedStateTree
-from epsilon_transformers.process.GHMM import Process
-from epsilon_transformers.process.processes import ZeroOneR
+from epsilon_transformers.process.GHMM import GHMM
 
 # TODO: redo this from scratch
 
@@ -26,14 +25,14 @@ def get_beliefs_for_transformer_inputs(
     for i in range(batch):
         for j in range(n_ctx):
             input_substring = transformer_inputs[i, :j+1].cpu().numpy()
-            belief_state = path_belief_dict[tuple(input_substring)]
+            belief_state = path_belief_dict[tuple(input_substring)].squeeze()
             belief_state = np.round(belief_state, 5)
             X_beliefs[i, j] = torch.tensor(belief_state, dtype=torch.float32, device=transformer_inputs.device)
             X_belief_indices[i, j] = msp_belief_index[tuple(belief_state)]
     
     return X_beliefs, X_belief_indices
 
-def generate_belief_state_and_activations(model: HookedTransformer, process: Process, num_sequences: int) -> Tuple[Float[np.ndarray, "num_samples n_ctx num_states"], Float[np.ndarray, "num_samples n_ctx d_model"]]:
+def generate_belief_state_and_activations(model: HookedTransformer, process: GHMM, num_sequences: int) -> Tuple[Float[np.ndarray, "num_samples n_ctx num_states"], Float[np.ndarray, "num_samples n_ctx d_model"]]:
     device = torch.device(
         "mps"
         if torch.backends.mps.is_available()
@@ -41,7 +40,7 @@ def generate_belief_state_and_activations(model: HookedTransformer, process: Pro
     )
 
     # Create the Mixed State Presentation Tree
-    msp_tree = process.derive_mixed_state_presentation(depth=model.cfg.n_ctx + 1) # For really large models this should definately be parallelized
+    msp_tree = process.derive_mixed_state_tree(depth=model.cfg.n_ctx + 1) # For really large models this should definately be parallelized
     
     belief_states = []
     activations = []
@@ -56,7 +55,7 @@ def generate_belief_state_and_activations(model: HookedTransformer, process: Pro
 
     return belief_states, activations
 
-def find_msp_subspace_in_residual_stream(model: HookedTransformer, process: Process, num_sequences: int) -> Tuple[Float[np.ndarray, "num_tokens num_states"], Float[np.ndarray, "num_tokens num_states"]]:
+def find_msp_subspace_in_residual_stream(model: HookedTransformer, process: GHMM, num_sequences: int) -> Tuple[Float[np.ndarray, "num_tokens num_states"], Float[np.ndarray, "num_tokens num_states"]]:
     ground_truth_belief_states, activations = generate_belief_state_and_activations(model=model, process=process, num_sequences=num_sequences)
 
     # Reshape activations
@@ -68,10 +67,3 @@ def find_msp_subspace_in_residual_stream(model: HookedTransformer, process: Proc
     predicted_beliefs = reg.predict(activations_reshaped)
     
     return ground_truth_belief_states_reshaped, predicted_beliefs
-
-if __name__ == "__main__":
-    model = HookedTransformer.from_pretrained('pythia-160m')
-    process = ZeroOneR()
-    num_samples = 12
-
-    find_msp_subspace_in_residual_stream(model = model, process=process, num_sequences=num_samples)
