@@ -8,9 +8,9 @@ global_config:
   val_every: 1 # after n epochs, ~ is None
 
 train_config:
-  batches_per_epoch: 1000
+  batches_per_epoch: 20000
   bos: false
-  n_epochs: 10000
+  n_epochs: 500
 
 model_config:
   n_ctx: 8
@@ -29,16 +29,13 @@ sweep_config:
     learning_rate:
       - 1.0e-4
     batch_size:
-      - 1024
+      - 10000
   model_config:
     d_head:
-      - 8
       - 16
     n_layers:
       - 2
-      - 4
     n_heads:
-      - 2
       - 4
   process_config:
     #- name: "post_quantum"
@@ -46,7 +43,16 @@ sweep_config:
       #beta: 0.5
     - name: "tom_quantum"
       alpha: 1.0
-      beta: 7.14142842854285
+      beta: 2.25 #7.14142842854285
+    - name: "tom_quantum"
+      alpha: 1.0
+      beta: 3.5 #7.14142842854285
+    - name: "tom_quantum"
+      alpha: 1.0
+      beta: 2.55 #7.14142842854285
+    - name: "tom_quantum"
+      alpha: 1.0
+      beta: 4.3 #7.14142842854285
     #- name: "fanizza"
       #alpha: 2000.
       #lamb: 0.49

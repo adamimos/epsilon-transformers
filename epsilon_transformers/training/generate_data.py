@@ -50,7 +50,7 @@ def generate_and_save_data(config, output_dir):
         process_name = process_config['name']
         
         for n_ctx in config['sweep_config']['model_config'].get('n_ctx', [config['model_config']['n_ctx']]):
-            dataloader, loss_lower_bound, d_vocab = get_dataloader_and_loss_lower_bound(
+            dataloader, loss_lower_bound, d_vocab = get_dataloader_and_loss_lower_bound_from_process(
                 process_params=process_config,
                 n_ctx=n_ctx,
                 bos=config['train_config']['bos'],
