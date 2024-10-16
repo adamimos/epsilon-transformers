@@ -6,11 +6,12 @@ global_config:
   wandb_project: "quantum"
   process_dir: "./process_data"
   val_every: 1 # after n epochs, ~ is None
+  scheduler: false
 
 train_config:
-  batches_per_epoch: 1000
+  batches_per_epoch: 200
   bos: false
-  n_epochs: 1000
+  n_epochs: 500
 
 model_config:
   n_ctx: 8
@@ -27,9 +28,9 @@ model_config:
 sweep_config:
   train_config:
     learning_rate:
-      - 1.0e-3
+      - 1.0e-5
     batch_size:
-      - 10000
+      - 16
   model_config:
     d_head:
       - 16
@@ -38,9 +39,15 @@ sweep_config:
     n_heads:
       - 4
   process_config:
-    - name: "post_quantum"
-      alpha: 2.718281828459045
-      beta: 0.5
+    #- name: "post_quantum"
+      #alpha: 2.718281828459045
+      #beta: 0.5
+    - name: "tom_quantum"
+      alpha: 1.0
+      beta: 7.14142842854285
+    - name: "tom_quantum"
+      alpha: 1.0
+      beta: 3.5 #7.14142842854285
     - name: "tom_quantum"
       alpha: 1.0
       beta: 2.25 #7.14142842854285
@@ -49,16 +56,13 @@ sweep_config:
       beta: 3.5 #7.14142842854285
     - name: "tom_quantum"
       alpha: 1.0
-      beta: 2.55 #7.14142842854285
-    - name: "tom_quantum"
-      alpha: 1.0
       beta: 4.3 #7.14142842854285
-    - name: "fanizza"
-      alpha: 2000.
-      lamb: 0.49
-    - name: "rrxor"
-      pR1: 0.5
-      pR2: 0.5
-    - name: "mess3"
-      x: 0.05
-      a: 0.85
+    #- name: "fanizza"
+      #alpha: 2000.
+      #lamb: 0.49
+    #- name: "rrxor"
+      #pR1: 0.5
+      #pR2: 0.5
+    #- name: "mess3"
+      #x: 0.05
+      #a: 0.85

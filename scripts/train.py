@@ -173,10 +173,13 @@ def main():
     save_model_config(logger, model)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=config['train_config']['learning_rate'])
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=200, cooldown=500, threshold=1e-6,
-        verbose=True
-    )
+    if config['global_config']['scheduler']:
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode='min', factor=0.5, patience=200, cooldown=500, threshold=1e-6,
+            verbose=True
+        )
+    else:
+        scheduler = None
     print('MODEL DEVICE:', next(model.parameters()).device, type(next(model.parameters()).device))
     # print the device of the dataloader
     #print('DATALOADER DEVICE:', dataloader.device, type(dataloader.device))
