@@ -1,0 +1,1 @@
+{"process_config": {"name": "rrxor", "pR1": 0.5, "pR2": 0.5}, "n_ctx": 8, "d_vocab": 2, "bos": false}
