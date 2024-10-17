@@ -53,9 +53,6 @@ sweep_config:
       beta: 2.25 #7.14142842854285
     - name: "tom_quantum"
       alpha: 1.0
-      beta: 3.5 #7.14142842854285
-    - name: "tom_quantum"
-      alpha: 1.0
       beta: 4.3 #7.14142842854285
     #- name: "fanizza"
       #alpha: 2000.

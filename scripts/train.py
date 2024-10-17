@@ -55,6 +55,24 @@ def train_epoch(model, optimizer, dataset, scheduler=None):
     # Compute and return the mean loss per context position across all batches
     return torch.concat(epoch_losses).mean(dim=0)
 
+def train_epoch_all(model, optimizer, dataset, scheduler=None):
+    model.train()
+
+    X, Y, probs = dataset.validation_data()
+    logits = model(X)
+    batch_size, seq_length, vocab_size = logits.shape
+    logits_flat = logits.reshape(-1, vocab_size)
+    targets_flat = Y.reshape(-1).to(torch.int64)
+    loss = F.cross_entropy(logits_flat, targets_flat, reduction='none')
+    loss = loss.reshape(batch_size, seq_length)
+    loss = loss * probs.unsqueeze(1)
+    loss = loss.sum(dim=0)
+    loss.mean().backward()
+    optimizer.step()
+    if scheduler:
+        scheduler.step(loss.mean())
+    return loss
+
 def validate_epoch_all(model, dataset):
     model.eval()
 
