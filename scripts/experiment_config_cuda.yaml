@@ -6,6 +6,7 @@ global_config:
   wandb_project: "quantum"
   process_dir: "./process_data"
   val_every: 1 # after n epochs, ~ is None
+  scheduler: false
 
 train_config:
   batches_per_epoch: 100
