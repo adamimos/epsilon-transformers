@@ -152,6 +152,7 @@ def main():
 
     val_every = config['global_config']['val_every']
     train_type = config['train_config'].get('train_type', 'normal')
+    save_every = config['global_config'].get('save_every', 1)
     # Parse process parameters
 
     # Try to load pre-generated data
@@ -197,7 +198,7 @@ def main():
     
     if config['global_config']['scheduler']:
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.5, patience=100, cooldown=200, threshold=1e-6,
+            optimizer, mode='min', factor=0.5, patience=100, cooldown=300, threshold=1e-6,
             verbose=True
         )
     else:
@@ -238,7 +239,8 @@ def main():
             bar.set_postfix(loss=f"{mean_loss:.4f}")
 
         num_tokens_seen += dataloader.tokens_per_epoch
-        logger.save_model_checkpoint(model, f"{num_tokens_seen}")
+        if save_every is not None and i % save_every == 0:
+            logger.save_model_checkpoint(model, f"{num_tokens_seen}")
         logger.log_epoch(i, num_tokens_seen, loss_per_ctx_pos.tolist(), 
                          val_loss_per_ctx_pos.tolist() if val_loss_per_ctx_pos is not None else None, 
                          optimizer.param_groups[0]['lr'])
