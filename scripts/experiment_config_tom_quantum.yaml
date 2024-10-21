@@ -9,9 +9,9 @@ global_config:
   scheduler: false
 
 train_config:
-  batches_per_epoch: 5
+  batches_per_epoch: 50
   bos: false
-  n_epochs: 1000
+  n_epochs: 10000
   train_type: "all"
 
 model_config:
@@ -29,7 +29,7 @@ model_config:
 sweep_config:
   train_config:
     learning_rate:
-      - 1.0e-3
+      - 1.0e-5
     batch_size:
       - 16
   model_config:
