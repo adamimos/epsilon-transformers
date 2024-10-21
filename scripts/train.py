@@ -151,6 +151,7 @@ def main():
     #print(f"Using device: {device}")
 
     val_every = config['global_config']['val_every']
+    train_type = config['train_config'].get('train_type', 'normal')
     # Parse process parameters
 
     # Try to load pre-generated data
@@ -189,11 +190,14 @@ def main():
     #model = torch.compile(model)
     logger.log({"status": "model loaded"})
     save_model_config(logger, model)
-
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config['train_config']['learning_rate'])
+    if train_type == 'all':
+        optimizer = torch.optim.SGD(model.parameters(), lr=config['train_config']['learning_rate'])
+    else:
+        optimizer = torch.optim.AdamW(model.parameters(), lr=config['train_config']['learning_rate'])
+    
     if config['global_config']['scheduler']:
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.5, patience=200, cooldown=500, threshold=1e-6,
+            optimizer, mode='min', factor=0.5, patience=100, cooldown=200, threshold=1e-6,
             verbose=True
         )
     else:
@@ -218,7 +222,10 @@ def main():
     logger.save_model_checkpoint(model, "0")
 
     for i in bar:
-        loss_per_ctx_pos = train_epoch(model, optimizer, dataloader, scheduler) / loss_lower_bound
+        if train_type == 'all':
+            loss_per_ctx_pos = train_epoch_all(model, optimizer, dataloader, scheduler) / loss_lower_bound
+        else:
+            loss_per_ctx_pos = train_epoch(model, optimizer, dataloader, scheduler) / loss_lower_bound
         mean_loss = loss_per_ctx_pos.mean().item()
         
         if val_every is not None and i % val_every == 0:

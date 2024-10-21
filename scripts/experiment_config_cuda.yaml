@@ -6,13 +6,13 @@ global_config:
   wandb_project: "quantum"
   process_dir: "./process_data"
   val_every: 1 # after n epochs, ~ is None
-  scheduler: false
+  scheduler: true
 
 train_config:
   batches_per_epoch: 100
   bos: false
   n_epochs: 150
-
+  train_type: "normal"
 model_config:
   n_ctx: 8
   act_fn: "relu"
@@ -35,7 +35,7 @@ sweep_config:
     d_head:
       - 32
     n_layers:
-      - 1
+      - 4
     n_heads:
       - 2
   process_config:
