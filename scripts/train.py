@@ -196,12 +196,16 @@ def main():
     if train_type == 'all':
         optimizer = torch.optim.SGD(model.parameters(), lr=config['train_config']['learning_rate'])
     else:
-        optimizer = torch.optim.AdamW(model.parameters(), lr=config['train_config']['learning_rate'])
+        optimizer = torch.optim.Adam(model.parameters(), lr=config['train_config']['learning_rate'])
     
     if config['global_config']['scheduler']:
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.5, patience=100, cooldown=300, threshold=1e-6,
-            verbose=True
+        #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        #    optimizer, mode='min', factor=0.5, patience=500, cooldown=200, threshold=1e-6,
+        #    verbose=True
+        #)
+        # implement cosine annealing warm restarts
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer, T_0=200, T_mult=2, eta_min=1e-7, last_epoch=-1, verbose=True
         )
     else:
         scheduler = None
