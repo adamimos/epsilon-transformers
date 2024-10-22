@@ -5,7 +5,7 @@ global_config:
   wandb: true
   wandb_project: "quantum"
   process_dir: "./process_data"
-  val_every: 5 # after n epochs, ~ is None
+  val_every: 1 # after n epochs, ~ is None
   scheduler: true
   save_every: 50
 

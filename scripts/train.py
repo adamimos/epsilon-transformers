@@ -69,11 +69,11 @@ def train_epoch_all(model, optimizer, dataset, scheduler=None):
     loss = loss.sum(dim=0)
     loss.mean().backward()
     optimizer.step()
-    if scheduler:
-        scheduler.step(loss.mean())
+    #if scheduler:
+    #    scheduler.step(loss.mean())
     return loss
 
-def validate_epoch_all(model, dataset):
+def validate_epoch_all(model, dataset, scheduler=None):
     model.eval()
 
     with torch.no_grad():
@@ -86,6 +86,8 @@ def validate_epoch_all(model, dataset):
         loss = loss.reshape(batch_size, seq_length)
         # multiply the loss (batch_size, seq_length) by the probabilities (batch_size) to get the weighted loss (batch_size, seq_length)
         loss = loss * probs.unsqueeze(1)
+        if scheduler:
+            scheduler.step(loss.mean())
         return loss.sum(dim=0)
 
 def validate_epoch_sample(model, dataset):
@@ -231,7 +233,7 @@ def main():
         
         if val_every is not None and i % val_every == 0:
             # TODO: implement logic for val_type
-            val_loss_per_ctx_pos = validate_epoch_all(model, dataloader) / loss_lower_bound
+            val_loss_per_ctx_pos = validate_epoch_all(model, dataloader, scheduler) / loss_lower_bound
             mean_val_loss = val_loss_per_ctx_pos.mean().item()
             bar.set_postfix(loss=f"{mean_loss:.4f}", val_loss=f"{mean_val_loss:.4f}")
         else:
