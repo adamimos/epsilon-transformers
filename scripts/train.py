@@ -48,9 +48,9 @@ def train_epoch(model, optimizer, dataset, scheduler=None):
         # Store the loss for this batch
         epoch_losses.append(loss.detach())
 
-    if scheduler:
+    #if scheduler:
         # Pass the mean loss to the scheduler
-        scheduler.step(torch.mean(torch.cat(epoch_losses)))
+        #scheduler.step(torch.mean(torch.cat(epoch_losses)))
 
     # Compute and return the mean loss per context position across all batches
     return torch.concat(epoch_losses).mean(dim=0)
@@ -88,6 +88,7 @@ def validate_epoch_all(model, dataset, scheduler=None):
         loss = loss * probs.unsqueeze(1)
         if scheduler:
             scheduler.step(loss.mean())
+            #scheduler.step()
         return loss.sum(dim=0)
 
 def validate_epoch_sample(model, dataset):
@@ -199,14 +200,14 @@ def main():
         optimizer = torch.optim.Adam(model.parameters(), lr=config['train_config']['learning_rate'])
     
     if config['global_config']['scheduler']:
-        #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        #    optimizer, mode='min', factor=0.5, patience=500, cooldown=200, threshold=1e-6,
-        #    verbose=True
-        #)
-        # implement cosine annealing warm restarts
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer, T_0=200, T_mult=2, eta_min=1e-7, last_epoch=-1, verbose=True
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode='min', factor=0.5, patience=1000, cooldown=200, threshold=1e-6,
+            verbose=True
         )
+        # implement cosine annealing warm restarts
+        #scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        #    optimizer, T_0=200, T_mult=2, eta_min=1e-7, last_epoch=-1, verbose=True
+        #)
     else:
         scheduler = None
     print('MODEL DEVICE:', next(model.parameters()).device, type(next(model.parameters()).device))

@@ -3,20 +3,20 @@ global_config:
   device: cuda
   parallel: true
   wandb: true
-  wandb_project: "quantum"
+  wandb_project: "quantum_gelu_fast"
   process_dir: "./process_data"
   val_every: 1 # after n epochs, ~ is None
   scheduler: true
-  save_every: 50
+  save_every: 100
 
 train_config:
   batches_per_epoch: 200
   bos: false
-  n_epochs: 5000
+  n_epochs: 20000
 
 model_config:
   n_ctx: 8
-  act_fn: "relu"
+  act_fn: "glue_fast"
   normalization_type: "LN"
   attn_only: false
   seed: 42
@@ -40,9 +40,9 @@ sweep_config:
     n_heads:
       - 4
   process_config:
-    #- name: "post_quantum"
-      #alpha: 2.718281828459045
-      #beta: 0.5
+    - name: "post_quantum"
+      alpha: 2.718281828459045
+      beta: 0.5
     - name: "tom_quantum"
       alpha: 1.0
       beta: 7.14142842854285
@@ -55,12 +55,12 @@ sweep_config:
     - name: "tom_quantum"
       alpha: 1.0
       beta: 4.3 #7.14142842854285
-    #- name: "fanizza"
-      #alpha: 2000.
-      #lamb: 0.49
+    - name: "fanizza"
+      alpha: 2000.
+      lamb: 0.49
     #- name: "rrxor"
       #pR1: 0.5
       #pR2: 0.5
-    #- name: "mess3"
-      #x: 0.05
-      #a: 0.85
+    - name: "mess3"
+      x: 0.05
+      a: 0.85
