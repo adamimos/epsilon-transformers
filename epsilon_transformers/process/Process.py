@@ -135,7 +135,7 @@ class Process(ABC):
     def _sample_emission_and_next_state(
         self, current_state_idx: int
     ) -> tuple[int, int]:
-        transition_probs = self.transition_matrix[:, current_state_idx, :]
+        transition_probs = self.transition_matrix[:, current_state_idx, :] # (vocab_len, state)
         emission_next_state_idx = np.random.choice(
             transition_probs.size, p=transition_probs.ravel()
         )
