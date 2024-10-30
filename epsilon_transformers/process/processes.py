@@ -89,7 +89,7 @@ class Even(Process):
         T[1,1,0] = 1.0   # From state 1, emit 1, go to state 0
         return T, state_names
 
-class Golden(Process):
+class GoldenMean(Process):
     def __init__(self):
         self.name = "Golden"
         super().__init__()
