@@ -76,7 +76,32 @@ class Mess3(Process):
 
         return T, state_names
 
+class Even(Process):
+    def __init__(self):
+        self.name = "Even"
+        super().__init__()
 
+    def _create_hmm(self):
+        state_names = {"0": 0, "1": 1}
+        T = np.zeros((2, 2, 2))
+        T[0,0,0] = 0.5   # From state 0, emit 0, go to state 0
+        T[1,0,1] = 0.5   # From state 0, emit 1, go to state 1
+        T[1,1,0] = 1.0   # From state 1, emit 1, go to state 0
+        return T, state_names
+
+class GoldenMean(Process):
+    def __init__(self):
+        self.name = "Golden"
+        super().__init__()
+
+    def _create_hmm(self):
+        state_names = {"0": 0, "1": 1}
+        T = np.zeros((2, 2, 2))
+        T[0,0,0] = 0.5  # From state 0, emit 0, go to state 0
+        T[1,0,1] = 0.5  # From state 0, emit 1, go to state 1
+        T[0,1,0] = 1.0  # From state 1, emit 0, go to state 0 
+        return T, state_names
+ 
 class TransitionMatrixProcess(Process):
     def __init__(self, transition_matrix: np.ndarray):
         self.transition_matrix = transition_matrix
