@@ -9,7 +9,8 @@ def get_matrix_from_args(name: str, **kwargs):
         "tom_quantum": tom_quantum,
         "fanizza": fanizza,
         "rrxor": rrxor,
-        "mess3": mess3
+        "mess3": mess3,
+        "days_of_week": days_of_week
     }
     
     if name in process_functions:
@@ -56,7 +57,37 @@ def post_quantum(alpha=np.exp(1), beta=0.5):
                                    err_msg="Largest absolute eigenvalue is not 1")
 
     return T
+def days_of_week():
+    """
+    Creates a transition matrix for the Days of the Week Process.
+    """
+    T = np.zeros((11, 7, 7)) # emission, from, to
 
+    d = {"M": 0, "Tu": 1, "W": 2, "Th": 3, "F": 4, "Sa": 5, "Su": 6, "Tmrw": 7, "Yest": 8, "Wknd": 9, "Wkdy": 10}
+    all_days = ["M", "Tu", "W", "Th", "F", "Sa", "Su"]
+    wkdy_days = [d["M"], d["Tu"], d["W"], d["Th"], d["F"]]
+    wknd_days = [d["Sa"], d["Su"]]
+    for day in all_days:
+        T[d[day], :, d[day]] = 1.0
+    
+    for wkdy in wkdy_days:
+        T[d["Wkdy"], :, wkdy] = 1/len(wkdy_days)
+    for wknd in wknd_days:
+        T[d["Wknd"], :, wknd] = 1/len(wknd_days)
+
+    for i, day in enumerate(all_days):
+        next_day = all_days[(i + 1) % len(all_days)]
+        prev_day = all_days[i - 1]
+        T[d["Tmrw"], d[day], d[next_day]] = 1.0
+        T[d[next_day], d[day], d[next_day]] = 5.0
+        T[d["Yest"], d[day], d[prev_day]] = 1.0
+
+    # normalize so that  T.sum(axis=0) is row stochastic
+    T_sum = T.sum(axis=0)
+    T_row_sums = T_sum.sum(axis=0)
+    T /= T_row_sums
+
+    return T
 
 def tom_quantum(alpha: float, beta: float):
     """
