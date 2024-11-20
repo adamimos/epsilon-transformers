@@ -110,11 +110,14 @@ def validate_epoch_sample(model, dataset):
     pass
     # TODO: implement validate_epoch_sample
 
-def save_model_config(logger, model):
-    hooked_model_config_dict = copy.deepcopy(model.cfg.to_dict())
-    hooked_model_config_dict['dtype'] = str(hooked_model_config_dict['dtype'])
-    with open(os.path.join(logger.base_dir, 'hooked_model_config.json'), 'w') as f:
-        json.dump(hooked_model_config_dict, f, indent=4)
+def save_model_config(logger, config):
+    """Save the model configuration to a JSON file"""
+    model_config = copy.deepcopy(config['model_config'])
+    # Convert any non-serializable types to strings
+    model_config['dtype'] = str(model_config['dtype'])
+    
+    with open(os.path.join(logger.base_dir, 'model_config.json'), 'w') as f:
+        json.dump(model_config, f, indent=4)
 
 def set_seed(seed):
     import random
@@ -225,7 +228,7 @@ def main():
     model = create_model(config, d_vocab, device)
     #model = torch.compile(model)
     logger.log({"status": "model loaded"})
-    save_model_config(logger, model)
+    save_model_config(logger, config)
     if train_type == 'all':
         optimizer = torch.optim.SGD(model.parameters(), lr=config['train_config']['learning_rate'])
     else:
