@@ -23,14 +23,23 @@ class RNNWrapper(nn.Module):
         super().__init__()
         self.rnn = rnn
         self.output_layer = output_layer
+        self.vocab_size = output_layer.out_features  # Store vocab size for one-hot encoding
     
     def forward(self, x):
-        output, hidden = self.rnn(x)
+        # Convert input tokens to one-hot vectors
+        # x shape: (batch_size, seq_length)
+        # one_hot shape: (batch_size, seq_length, vocab_size)
+        one_hot = F.one_hot(x.to(torch.int64), num_classes=self.vocab_size).float()
+        
+        output, hidden = self.rnn(one_hot)
         return self.output_layer(output)
     
     def forward_with_hidden(self, x, hidden=None):
         """Run forward pass and return both output and hidden states"""
-        output, hidden = self.rnn(x, hidden)
+        # Convert input tokens to one-hot vectors
+        one_hot = F.one_hot(x.to(torch.int64), num_classes=self.vocab_size).float()
+        
+        output, hidden = self.rnn(one_hot, hidden)
         return self.output_layer(output), hidden
 
 def train_epoch(model, optimizer, dataset, scheduler=None):
