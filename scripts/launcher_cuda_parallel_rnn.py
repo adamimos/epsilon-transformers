@@ -22,21 +22,25 @@ def create_config_sweep(config):
     sweep_train_config = sweep_config.get('train_config', {})
     sweep_model_config = sweep_config.get('model_config', {})
     sweep_process_config = sweep_config.get('process_config', {})
-    # use itertools.product to create the combinations
-    model_config_combinations = [dict(zip(sweep_model_config.keys(), combination)) for combination in itertools.product(*sweep_model_config.values())]
-    train_config_combinations = [dict(zip(sweep_train_config.keys(), combination)) for combination in itertools.product(*sweep_train_config.values())]
-    # now append the constant values from the model_config and train_config
+
+    # Create combinations
+    model_config_combinations = [dict(zip(sweep_model_config.keys(), combination)) 
+                               for combination in itertools.product(*sweep_model_config.values())]
+    train_config_combinations = [dict(zip(sweep_train_config.keys(), combination)) 
+                               for combination in itertools.product(*sweep_train_config.values())]
+
+    # Append the constant values from the model_config and train_config
     for cfg in model_config_combinations:
         cfg.update(model_config)
-        if 'd_model' not in cfg:
-            cfg['d_model'] = cfg['d_head'] * cfg['n_heads']
-        if 'd_mlp' not in cfg:
-            cfg['d_mlp'] = 4 * cfg['d_model']
     for cfg in train_config_combinations:
         cfg.update(train_config)
 
     # Create a combined iterator
-    combined_config_iter = itertools.product(model_config_combinations, train_config_combinations, sweep_process_config)
+    combined_config_iter = itertools.product(
+        model_config_combinations, 
+        train_config_combinations, 
+        sweep_process_config
+    )
 
     # Create the final iterator of dict of dicts
     config_sweep_iter = (
