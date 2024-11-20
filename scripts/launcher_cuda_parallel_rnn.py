@@ -101,7 +101,7 @@ def main():
                 yaml.dump(run_cfg, f)
 
             cmd = [
-                'python', './scripts/train.py',
+                'python', './scripts/train_rnn.py',
                 '--config', run_cfg['config_path'],
                 '--parallel',
                 '--gpu_id', f'{gpu_id}'
