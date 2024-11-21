@@ -18,9 +18,6 @@ train_config:
 
 model_config:
   n_ctx: 8
-  hidden_size: 128
-  num_layers: 2
-  rnn_type: "LSTM"
   dropout: 0.0
   bidirectional: false
   dtype: float32
@@ -30,7 +27,6 @@ sweep_config:
   model_config:
     hidden_size:
       - 64
-      - 128
     num_layers:
       - 1
       - 2
