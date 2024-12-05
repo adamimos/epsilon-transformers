@@ -5,19 +5,17 @@ import numpy as np
 from collections import deque
 from scipy.stats import entropy
 
-
-# TODO: Move the derive MSP function to be in the MSP init
-# TODO: Add
-
 class MixedStateTreeNode:
 	state_prob_vector: Float[np.ndarray, "n_states"]
+	unnorm_state_prob_vector: Float[np.ndarray, "n_states"]
 	path: List[int]
 	children: Set['MixedStateTreeNode']
 	emission_prob: float
 	path_prob: float
 	
-	def __init__(self, state_prob_vector: Float[np.ndarray, "n_states"], children: Set['MixedStateTreeNode'], path: List[int], emission_prob: float, path_prob: float):
+	def __init__(self, state_prob_vector: Float[np.ndarray, "n_states"], unnorm_state_prob_vector: Float[np.ndarray, "n_states"], children: Set['MixedStateTreeNode'], path: List[int], emission_prob: float, path_prob: float):
 		self.state_prob_vector = state_prob_vector
+		self.unnorm_state_prob_vector = unnorm_state_prob_vector
 		self.path = path
 		self.children = children
 		self.emission_prob = emission_prob
@@ -34,15 +32,30 @@ class MixedStateTree:
 
 	@property
 	def belief_states(self) -> Set[Float[np.ndarray, "num_states"]]:
-		return [x.state_prob_vector for x in self.nodes]
+		return [x.state_prob_vector for x in sorted(self.nodes, key=lambda x: tuple(x.path))]
 	
 	@property
 	def paths(self) -> List[List[int]]:
-		return [x.path for x in self.nodes]
+		return [x.path for x in sorted(self.nodes, key=lambda x: tuple(x.path))]
+	
+	@property
+	def unnorm_belief_states(self) -> Set[Float[np.ndarray, "num_states"]]:
+		return [x.unnorm_state_prob_vector for x in sorted(self.nodes, key=lambda x: tuple(x.path))]
+	
+	@property
+	def path_probs(self) -> List[float]:
+		return [x.path_prob for x in sorted(self.nodes, key=lambda x: tuple(x.path))]
 	
 	@property
 	def paths_and_belief_states(self) -> List[Tuple[List[int], Float[np.ndarray, "n_states"]]]:
 		paths_and_beliefs = [(x.path, x.state_prob_vector) for x in self.nodes]
+		paths = [x[0] for x in paths_and_beliefs]
+		beliefs = [x[1] for x in paths_and_beliefs]
+		return paths, beliefs
+	
+	@property
+	def paths_and_unnorm_belief_states(self) -> List[Tuple[List[int], Float[np.ndarray, "n_states"]]]:
+		paths_and_beliefs = [(x.path, x.unnorm_state_prob_vector) for x in self.nodes]
 		paths = [x[0] for x in paths_and_beliefs]
 		beliefs = [x[1] for x in paths_and_beliefs]
 		return paths, beliefs
@@ -142,4 +155,10 @@ class MixedStateTree:
 		nodes = self._get_nodes_at_depth(depth)
 		paths = [x.path for x in nodes]
 		prbs = [x.path_prob for x in nodes]
+		return paths, prbs
+	
+	def get_paths_and_unnorm_probs(self, depth: int) -> List[Tuple[List[int], float]]:
+		nodes = self._get_nodes_at_depth(depth)
+		paths = [x.path for x in nodes]
+		prbs = [x.unnorm_state_prob_vector for x in nodes]
 		return paths, prbs

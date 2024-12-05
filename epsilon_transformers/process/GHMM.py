@@ -3,6 +3,8 @@ from typing import Tuple, Optional, Dict, List, Iterator
 from abc import ABC
 from jaxtyping import Float
 from collections import deque
+from typing import Union
+
 
 from epsilon_transformers.process.MixedStateTree import MixedStateTree, MixedStateTreeNode
 
@@ -111,7 +113,9 @@ class GHMM(ABC):
             latent_state = next_latent
 
     def derive_mixed_state_tree(self, depth: int) -> MixedStateTree:
-        tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, children=set(), path=[], emission_prob=0, path_prob=1.0)
+        tree_root = MixedStateTreeNode(state_prob_vector=self.steady_state_vector, 
+                                       unnorm_state_prob_vector=self.steady_state_vector,
+                                       children=set(), path=[], emission_prob=0, path_prob=1.0)
         nodes = set([tree_root])
 
         stack = deque([(tree_root, self.steady_state_vector, [], 0)])
@@ -121,16 +125,19 @@ class GHMM(ABC):
                 emission_probs = _compute_emission_probabilities(self.transition_matrices, state_prob_vector, self.right_eigenvector)
                 for emission in range(self.vocab_len):
                     if emission_probs[emission] > 0:
-                        next_state_prob_vector = _compute_next_distribution(
+                        numerator, denominator = _compute_next_distribution(
                             self.transition_matrices, 
                             state_prob_vector, 
                             emission,
-                            self.right_eigenvector
+                            self.right_eigenvector,
+                            return_both=True
                         )
+                        next_state_prob_vector = numerator / denominator if denominator != 0 else numerator
                         # round to 5 decimal places
                         child_path = current_path + [emission]
                         child_node = MixedStateTreeNode(
                             state_prob_vector=next_state_prob_vector, 
+                            unnorm_state_prob_vector=numerator,
                             path=child_path, 
                             children=set(), 
                             emission_prob=emission_probs[emission],
@@ -168,8 +175,9 @@ def _compute_next_distribution(
     epsilon_machine: Float[np.ndarray, "vocab_len num_states num_states"],
     current_state_prob_vector: Float[np.ndarray, "1 num_states"], 
     current_emission: int,
-    ones: Float[np.ndarray, "num_states 1"]
-) -> Float[np.ndarray, "num_states"]:
+    ones: Float[np.ndarray, "num_states 1"],
+    return_both: bool = False
+) -> Union[Float[np.ndarray, "num_states"], Tuple[Float[np.ndarray, "num_states"], Float[np.ndarray, "1"]]]:
     """
     Compute the next mixed state distribution for a given output.
     """
@@ -177,4 +185,7 @@ def _compute_next_distribution(
     eta = current_state_prob_vector # shape (1, num_states)
     numerator = eta @ T # shape (1, num_states)
     denominator = numerator @ ones # shape (1)
+    if return_both:
+        return numerator, denominator
     return numerator / denominator if denominator != 0 else numerator
+
