@@ -151,7 +151,7 @@ def run_activation_to_beliefs_regression(activations, ground_truth_beliefs, samp
 
     # flatten the activations
     batch_size, n_ctx, d_model = activations.shape
-    print(batch_size, n_ctx, d_model)
+    #print(batch_size, n_ctx, d_model)
     belief_dim = ground_truth_beliefs.shape[-1]
     activations_flattened = activations.detach().reshape(-1, d_model) # [batch * n_ctx, d_model]
     ground_truth_beliefs_flattened = ground_truth_beliefs.view(-1, belief_dim) # [batch * n_ctx, belief_dim]
@@ -671,25 +671,27 @@ def plot_belief_prediction_comparison(
 
 def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs, 
                  sweep_type, run_name, layer_idx, title=None, return_results=False,
-                 loader=None, checkpoint_key=None):
+                 loader=None, checkpoint_key=None, sweep_id=None, run_id=None):
     """Analyze a single layer's activations and plot results."""
-    print(f"Layer {layer_idx} shape:", layer_acts.shape)
+    #print(f"Layer {layer_idx} shape:", layer_acts.shape)
     
     (regression, belief_predictions, mse, mse_shuffled, 
      belief_predictions_shuffled, mse_cv, belief_predictions_cv, 
      test_inds) = run_activation_to_beliefs_regression(
         layer_acts, nn_beliefs, nn_probs
     )
-
-    plot_belief_prediction_comparison(
-        nn_beliefs, nn_belief_indices, 
-        belief_predictions, belief_predictions_shuffled, belief_predictions_cv,
-        sweep_type, mse, mse_shuffled, mse_cv, test_inds,
-        run_name,
-        title=title,
-        loader=loader,
-        checkpoint_key=checkpoint_key
-    )
+    if save_figure:
+        plot_belief_prediction_comparison(
+            nn_beliefs, nn_belief_indices, 
+            belief_predictions, belief_predictions_shuffled, belief_predictions_cv,
+            sweep_type, mse, mse_shuffled, mse_cv, test_inds,
+            run_name,
+            title=title,
+            loader=loader,
+            checkpoint_key=checkpoint_key,
+            sweep_id=sweep_id,
+            save_figure=save_figure
+        )
 
     if return_results:
         return {
@@ -706,10 +708,10 @@ def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs,
 
 def analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs, 
                       sweep_type, run_name, title=None, return_results=False,
-                      loader=None, checkpoint_key=None, sweep_id=None, run_id=None):
+                      loader=None, checkpoint_key=None, sweep_id=None, run_id=None, save_figure=False):
     """Analyze concatenated activations from all layers."""
     all_layers_acts = acts.permute(1,2,0,3).reshape(acts.shape[1], acts.shape[2], -1)
-    print("All layers concatenated shape:", all_layers_acts.shape)
+    #print("All layers concatenated shape:", all_layers_acts.shape)
 
     (regression, belief_predictions, mse, mse_shuffled, 
      belief_predictions_shuffled, mse_cv, belief_predictions_cv, 
@@ -717,16 +719,17 @@ def analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
         all_layers_acts, nn_beliefs, nn_probs
     )
 
-    plot_belief_prediction_comparison(
-        nn_beliefs, nn_belief_indices, 
-        belief_predictions, belief_predictions_shuffled, belief_predictions_cv,
-        sweep_type, mse, mse_shuffled, mse_cv, test_inds,
-        run_name,
-        title=title,
-        loader=loader,
-        checkpoint_key=checkpoint_key,
-        sweep_id=sweep_id,
-    )
+    if save_figure:
+        plot_belief_prediction_comparison(
+            nn_beliefs, nn_belief_indices, 
+            belief_predictions, belief_predictions_shuffled, belief_predictions_cv,
+            sweep_type, mse, mse_shuffled, mse_cv, test_inds,
+            run_name,
+            title=title,
+            loader=loader,
+            checkpoint_key=checkpoint_key,
+            sweep_id=sweep_id,
+        )   
 
     if return_results:
         return {
@@ -779,9 +782,10 @@ class NumpyEncoder(json.JSONEncoder):
 
 def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_indices, 
                            nn_probs, sweep_type, run_name, sweep_id, title=None, save_results=True, 
-                           loader=None, checkpoint_key=None):
+                           loader=None, checkpoint_key=None, save_figure=False):
     """Analyze a single model checkpoint and optionally save results."""
     
+    print(f"Analyzing {checkpoint_key} - title {title}")
     acts = get_activations(model, nn_inputs, nn_type)
     results = {
         'model_type': nn_type,
@@ -803,7 +807,7 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
         title_all_layers = f"All Layers" + (f" - {title}")
         layer_results = analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
                                          sweep_type, run_name, title_all_layers, return_results=True,
-                                         loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, run_id=run_name)
+                                         loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, run_id=run_name, save_figure=save_figure)
         results['all_layers'] = layer_results
     else:
         # Analyze each layer individually
@@ -812,7 +816,7 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
             layer_results = analyze_layer(acts[layer_idx], nn_beliefs, nn_belief_indices,
                                         nn_probs, sweep_type, run_name, layer_names[layer_idx], 
                                         title_layer, return_results=True,
-                                        loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, run_id=run_name)
+                                        loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, run_id=run_name, save_figure=save_figure)
             results['layers'].append({
                 'layer_name': layer_names[layer_idx],
                 **layer_results

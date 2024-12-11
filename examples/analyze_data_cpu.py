@@ -1,3 +1,5 @@
+#%%
+
 from epsilon_transformers.process.GHMM import markov_approximation
 from epsilon_transformers.analysis.load_data import S3ModelLoader
 from epsilon_transformers.analysis.activation_analysis import (
@@ -75,7 +77,10 @@ def analyze_single_run(args):
     save_nn_data(loader, sweep_id, run, data_to_save)
 
     # Analyze checkpoints
-    for ckpt in ckpts[-2:]:
+    for ckpt in ckpts:
+
+        is_final_ckpt = ckpt == ckpts[-1]
+
         model, config = loader.load_checkpoint(
             sweep_id=sweep_id,
             run_id=run,
@@ -90,7 +95,8 @@ def analyze_single_run(args):
             nn_belief_indices, nn_probs, sweep_type, run, title="Normalized Beliefs",
             loader=loader,
             checkpoint_key=ckpt,
-            sweep_id=sweep_id
+            sweep_id=sweep_id,
+            save_figure = is_final_ckpt
         )
 
         # Analyze unnormalized beliefs
@@ -99,7 +105,8 @@ def analyze_single_run(args):
             nn_belief_indices, nn_probs, sweep_type, run, title="Unnormalized Beliefs",
             loader=loader,
             checkpoint_key=ckpt,
-            sweep_id=sweep_id
+            sweep_id=sweep_id,
+            save_figure = is_final_ckpt
         )
 
         # Analyze shuffled unnormalized beliefs
@@ -108,7 +115,8 @@ def analyze_single_run(args):
             nn_belief_indices, nn_probs, sweep_type, run, title="Shuffled Unnormalized Beliefs",
             loader=loader,
             checkpoint_key=ckpt,
-            sweep_id=sweep_id
+            sweep_id=sweep_id,
+            save_figure = is_final_ckpt
         )
 
         # Analyze markov approximations
@@ -125,7 +133,8 @@ def analyze_single_run(args):
                 nn_belief_indices, nn_probs, sweep_type, run, title=f"Order-{order} Approx.",
                 loader=loader,
                 checkpoint_key=ckpt,
-                sweep_id=sweep_id
+                sweep_id=sweep_id,
+                save_figure = is_final_ckpt
             )
              
             # Analyze unnormalized beliefs
@@ -134,7 +143,8 @@ def analyze_single_run(args):
                 nn_belief_indices, nn_probs, sweep_type, run, title=f"Order-{order} Approx. Unnormalized",
                 loader=loader,
                 checkpoint_key=ckpt,
-                sweep_id=sweep_id
+                sweep_id=sweep_id,
+                save_figure = is_final_ckpt
             )
 
             # Analyze shuffled unnormalized beliefs
@@ -143,7 +153,8 @@ def analyze_single_run(args):
                 nn_belief_indices, nn_probs, sweep_type, run, title=f"Order-{order} Approx. Shuffled Unnormalized",
                 loader=loader,
                 checkpoint_key=ckpt,
-                sweep_id=sweep_id
+                sweep_id=sweep_id,
+                save_figure = is_final_ckpt
             )
 
     return f"Completed analysis for {run}"
@@ -159,7 +170,7 @@ def main():
     for sweep_id in sweeps:
         loader = S3ModelLoader()
         runs = loader.list_runs_in_sweep(sweep_id)
-        all_tasks.extend([(sweep_id, run) for run in runs[1:3]])
+        all_tasks.extend([(sweep_id, run) for run in runs])
 
     # Number of CPUs to use (leave some cores free for system)
     n_processes = max(1, os.cpu_count() - 2)
@@ -179,3 +190,5 @@ def main():
 if __name__ == '__main__':
     main()
 
+
+# %%
