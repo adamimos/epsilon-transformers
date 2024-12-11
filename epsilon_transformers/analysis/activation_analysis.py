@@ -664,7 +664,7 @@ def plot_belief_prediction_comparison(
     plt.tight_layout()
     
     # Save figure if requested
-    if loader is not None and checkpoint_key is not None:
+    if save_figure and loader is not None and checkpoint_key is not None:
         save_figure_to_s3(
             loader=loader,
             fig=fig,
@@ -698,7 +698,6 @@ def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs,
             loader=loader,
             checkpoint_key=checkpoint_key,
             sweep_id=sweep_id,
-            save_figure=save_figure
         )
 
     if return_results:
