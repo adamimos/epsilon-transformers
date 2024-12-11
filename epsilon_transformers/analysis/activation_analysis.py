@@ -421,6 +421,14 @@ def plot_belief_predictions2(belief_predictions,
 
     if mode not in ['true', 'predicted', 'both']:
         raise ValueError("Mode must be 'true', 'predicted', or 'both'.")
+    
+    belief_dims = transformer_input_beliefs_flat.shape[-1]
+
+    # if the inds are not in the range of the belief dimensions, then change the inds to the first and last available dimension
+    if inds[0] not in range(belief_dims):
+        inds[0] = 0
+    if inds[1] not in range(belief_dims):
+        inds[1] = 1
 
     # Determine common limits if plotting both
     if mode == 'both':
@@ -744,7 +752,7 @@ def analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
             'test_indices': test_inds
         }
 
-def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, checkpoint_key: str, results: dict):
+def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, checkpoint_key: str, results: dict, title: str):
     """
     Save analysis results to S3 in an organized structure.
     
@@ -754,12 +762,13 @@ def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, che
         run_id: ID of the run being analyzed
         checkpoint_key: Key of the checkpoint being analyzed
         results: Dictionary containing analysis results
+        title: Title of the analysis, name to save as
     """
     # Extract checkpoint number from key (e.g., "sweep/run/1000.pt" -> "1000")
     checkpoint_num = checkpoint_key.split('/')[-1].replace('.pt', '')
     
     # Construct the analysis path
-    analysis_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/results.json"
+    analysis_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/results_{title}.json"
     
     # Convert results to JSON
     results_json = json.dumps(results, cls=NumpyEncoder)
@@ -834,7 +843,9 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
                             sweep_id=sweep_id, 
                             run_id=run_name, 
                             checkpoint_key=checkpoint_key, 
-                            results=results)
+                            results=results,
+                            title=title
+                            )
     
     return results
 

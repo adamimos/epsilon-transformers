@@ -22,12 +22,24 @@ import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
 from multiprocessing import Pool
 import os
+import datetime
+import json
 
 
 def analyze_single_run(args):
     """Function to analyze a single run (to be called in parallel)"""
     sweep_id, run = args
-    loader = S3ModelLoader()  # Create new loader instance for each process
+    loader = S3ModelLoader()
+
+    # Check if run is already completed
+    run_completion_key = f"analysis/{sweep_id}/{run}/analysis_complete.json"
+    try:
+        loader.s3_client.head_object(Bucket=loader.bucket_name, Key=run_completion_key)
+        print(f"Run {run} already analyzed, skipping...")
+        return f"Skipped {run} (already analyzed)"
+    except:
+        pass  # Run hasn't been analyzed yet
+
     sweep_config = loader.load_sweep_config(sweep_id)
     print(f"Analyzing {run}")
     
@@ -78,8 +90,17 @@ def analyze_single_run(args):
 
     # Analyze checkpoints
     for ckpt in ckpts:
+        # Check if checkpoint is already analyzed
+        ckpt_completion_key = f"analysis/{sweep_id}/{run}/checkpoint_{ckpt.split('/')[-1].replace('.pt', '')}/analysis_complete.json"
+        try:
+            loader.s3_client.head_object(Bucket=loader.bucket_name, Key=ckpt_completion_key)
+            print(f"Checkpoint {ckpt} already analyzed, skipping...")
+            continue
+        except:
+            pass  # Checkpoint hasn't been analyzed yet
 
-        is_final_ckpt = ckpt == ckpts[-1]
+        #is_final_ckpt = ckpt == ckpts[-1]
+        is_final_ckpt = True
 
         model, config = loader.load_checkpoint(
             sweep_id=sweep_id,
@@ -156,6 +177,31 @@ def analyze_single_run(args):
                 sweep_id=sweep_id,
                 save_figure = is_final_ckpt
             )
+
+        # Mark checkpoint as complete
+        completion_data = {
+            'timestamp': datetime.datetime.now().isoformat(),
+            'checkpoint': ckpt,
+            'status': 'complete'
+        }
+        loader.s3_client.put_object(
+            Bucket=loader.bucket_name,
+            Key=ckpt_completion_key,
+            Body=json.dumps(completion_data)
+        )
+
+    # Mark run as complete
+    completion_data = {
+        'timestamp': datetime.datetime.now().isoformat(),
+        'run': run,
+        'status': 'complete',
+        'checkpoints_analyzed': ckpts
+    }
+    loader.s3_client.put_object(
+        Bucket=loader.bucket_name,
+        Key=run_completion_key,
+        Body=json.dumps(completion_data)
+    )
 
     return f"Completed analysis for {run}"
 
