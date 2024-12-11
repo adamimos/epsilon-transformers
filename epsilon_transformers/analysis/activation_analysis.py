@@ -679,7 +679,7 @@ def plot_belief_prediction_comparison(
 
 def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs, 
                  sweep_type, run_name, layer_idx, title=None, return_results=False,
-                 loader=None, checkpoint_key=None, sweep_id=None, run_id=None):
+                 loader=None, checkpoint_key=None, sweep_id=None, run_id=None, save_figure=False):  # Added save_figure parameter
     """Analyze a single layer's activations and plot results."""
     #print(f"Layer {layer_idx} shape:", layer_acts.shape)
     
@@ -688,7 +688,7 @@ def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs,
      test_inds) = run_activation_to_beliefs_regression(
         layer_acts, nn_beliefs, nn_probs
     )
-    if save_figure:
+    if save_figure:  # Use the parameter
         plot_belief_prediction_comparison(
             nn_beliefs, nn_belief_indices, 
             belief_predictions, belief_predictions_shuffled, belief_predictions_cv,
