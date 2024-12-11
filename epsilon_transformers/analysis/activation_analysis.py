@@ -5,13 +5,19 @@ from jaxtyping import Float
 import numpy as np
 import torch
 from sklearn.decomposition import PCA
-from epsilon_transformers.process.GHMM import GHMM
+from epsilon_transformers.process.GHMM import GHMM, markov_approximation
 from epsilon_transformers.process.transition_matrices import get_matrix_from_args
 from epsilon_transformers.process.GHMM import TransitionMatrixGHMM
 from epsilon_transformers.training.networks import RNNWrapper
+from tqdm.auto import tqdm
 
 import matplotlib.pyplot as plt
 import numpy as np
+import json
+from epsilon_transformers.analysis.load_data import S3ModelLoader
+import io
+
+
 
 def get_sweep_type(run_id):
     """Determine sweep type from run_id."""
@@ -82,6 +88,30 @@ def get_beliefs_for_nn_inputs(
         return X_beliefs, X_belief_indices, X_probs
     else:
         return X_beliefs, X_belief_indices, X_probs, X_unnormalized_beliefs
+
+def prepare_data_from_msp(msp, path_length):
+    tree_paths = msp.paths
+    tree_beliefs = msp.belief_states
+    tree_unnormalized_beliefs = msp.unnorm_belief_states
+    path_probs = msp.path_probs
+    msp_beliefs = [tuple(round(b, 5) for b in belief.squeeze()) for belief in tree_beliefs]
+    msp_belief_index = {tuple(b): i for i, b in enumerate(set(msp_beliefs))}
+    
+    nn_paths = [x for x in tree_paths if len(x) == path_length]
+    nn_inputs = torch.tensor(nn_paths, dtype=torch.int).clone().detach().to("cpu")
+
+    probs_dict = {tuple(path): prob for path, prob in zip(tree_paths, path_probs)}
+    
+    nn_beliefs, nn_belief_indices, nn_probs, nn_unnormalized_beliefs = get_beliefs_for_nn_inputs(
+        nn_inputs,
+        msp_belief_index,
+        tree_paths,
+        tree_beliefs,
+        tree_unnormalized_beliefs,
+        probs_dict
+    )
+    
+    return nn_inputs, nn_beliefs, nn_belief_indices, nn_probs, nn_unnormalized_beliefs
 
 def prepare_msp_data(config, model_config):
     """Prepare MSP belief states and transformer inputs."""
@@ -458,6 +488,15 @@ def get_msp(run_config):
     msp = ghmm.derive_mixed_state_tree(depth=run_config['model_config']['n_ctx'])
     return msp
 
+def markov_approx_msps(run_config, max_order=3):
+    T = get_matrix_from_args(**run_config['process_config'])
+    ghmm = TransitionMatrixGHMM(T)
+    markov_data = []
+    for order in tqdm(range(1, max_order+1), desc="Running Markov Approximations"):
+        markov_approx = markov_approximation(ghmm, order)
+        msp = markov_approx.derive_mixed_state_tree(depth=run_config['model_config']['n_ctx'])
+        markov_data.append(prepare_data_from_msp(msp, run_config['model_config']['n_ctx']))
+    return markov_data
 
 def model_type(model) -> str:
     if isinstance(model, HookedTransformer):
@@ -504,3 +543,351 @@ def find_msp_subspace_in_residual_stream(model: HookedTransformer, process: GHMM
     predicted_beliefs = reg.predict(activations_reshaped)
     
     return ground_truth_belief_states_reshaped, predicted_beliefs
+
+def get_activations(model, nn_inputs, nn_type):
+    if nn_type == 'transformer':
+        _, cache = model.run_with_cache(nn_inputs, names_filter=lambda x: 'resid' in x or 'ln_final.hook_normalized' in x)
+        max_layers = 10
+        relevant_activation_keys = ['blocks.0.hook_resid_pre'] + [f'blocks.{i}.hook_resid_post' for i in range(max_layers)] + ['ln_final.hook_normalized']
+        acts = torch.stack([v for k,v in cache.items() if k in relevant_activation_keys and k in cache], dim=0)
+        return  acts
+    elif nn_type == 'rnn':
+        a, b = model.forward_with_all_states(nn_inputs)
+        return b['layer_states']
+    else:
+        raise ValueError(f"Model type {nn_type} not supported")
+
+def save_figure_to_s3(loader: S3ModelLoader, fig, sweep_id: str, run_id: str, checkpoint_key: str, title: str):
+    """
+    Save matplotlib figure to S3.
+    
+    Args:
+        loader: S3ModelLoader instance
+        fig: matplotlib figure object
+        sweep_id: ID of the sweep
+        run_id: ID of the run
+        checkpoint_key: Key of the checkpoint
+        title: Title/name for the figure
+    """
+    # Extract checkpoint number
+    checkpoint_num = checkpoint_key.split('/')[-1].replace('.pt', '')
+    
+    # Create a buffer to store the image
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=300, bbox_inches='tight')
+    buf.seek(0)
+    
+    # Construct the analysis path (sanitize title for use in filename)
+    safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
+    analysis_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/figures/{safe_title}.png"
+    
+    # Upload to S3
+    loader.s3_client.put_object(
+        Bucket=loader.bucket_name,
+        Key=analysis_key,
+        Body=buf.getvalue(),
+        ContentType='image/png'
+    )
+
+def plot_belief_prediction_comparison(
+    nn_beliefs, nn_belief_indices, 
+    belief_predictions, belief_predictions_shuffled, belief_predictions_cv,
+    sweep_type, mse, mse_shuffled, mse_cv, test_inds,
+    run_id, title=None, loader=None, checkpoint_key=None, sweep_id=None
+):
+    """Plot and optionally save belief prediction comparisons."""
+    fig, ax = plt.subplots(1, 4, figsize=(10, 3))
+    
+    plot_belief_predictions2(
+        belief_predictions=nn_beliefs,
+        transformer_input_beliefs=nn_beliefs,
+        transformer_input_belief_indices=nn_belief_indices,
+        ax=ax[0],
+        type=sweep_type,
+        title=f'ground truth',
+        mode='true',
+        include_colorbar=False,
+    )
+    plot_belief_predictions2(
+        belief_predictions=belief_predictions,
+        transformer_input_beliefs=nn_beliefs,
+        transformer_input_belief_indices=nn_belief_indices,
+        ax=ax[1],
+        type=sweep_type,
+        title=f'MSE: {mse:.4E}',
+        mode='predicted',
+        include_colorbar=False,
+    )
+
+    plot_belief_predictions2(
+        belief_predictions=belief_predictions_shuffled,
+        transformer_input_beliefs=nn_beliefs,
+        transformer_input_belief_indices=nn_belief_indices,
+        ax=ax[2],
+        type=sweep_type,
+        title=f'MSE Shuffled: {mse_shuffled:.4E}',
+        mode='predicted',
+        include_colorbar=False,
+    )
+
+    plot_belief_predictions2(
+        belief_predictions=belief_predictions_cv,
+        transformer_input_beliefs=nn_beliefs,
+        transformer_input_belief_indices=nn_belief_indices,
+        ax=ax[3],
+        type=sweep_type,
+        title=f'MSE CV: {mse_cv:.4E}',
+        include_colorbar=False,
+        cv_test_inds=test_inds,
+        mode='predicted',
+    )
+
+    # make sure all subplots have the same x and y lims
+    for i in range(4):
+        ax[i].set_xlim(ax[0].get_xlim())
+        ax[i].set_ylim(ax[0].get_ylim())
+
+    # no legend
+    for i in range(4):
+        ax[i].legend().set_visible(False)
+
+    # add run_id as global title
+    fig.suptitle(title)
+    plt.tight_layout()
+    
+    # Save figure if requested
+    if loader is not None and checkpoint_key is not None:
+        save_figure_to_s3(
+            loader=loader,
+            fig=fig,
+            sweep_id=sweep_id,
+            run_id=run_id,
+            checkpoint_key=checkpoint_key,
+            title=f"belief_predictions_{title}" if title else "belief_predictions"
+        )
+    
+    plt.show()
+    plt.close()
+
+def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs, 
+                 sweep_type, run_name, layer_idx, title=None, return_results=False,
+                 loader=None, checkpoint_key=None):
+    """Analyze a single layer's activations and plot results."""
+    print(f"Layer {layer_idx} shape:", layer_acts.shape)
+    
+    (regression, belief_predictions, mse, mse_shuffled, 
+     belief_predictions_shuffled, mse_cv, belief_predictions_cv, 
+     test_inds) = run_activation_to_beliefs_regression(
+        layer_acts, nn_beliefs, nn_probs
+    )
+
+    plot_belief_prediction_comparison(
+        nn_beliefs, nn_belief_indices, 
+        belief_predictions, belief_predictions_shuffled, belief_predictions_cv,
+        sweep_type, mse, mse_shuffled, mse_cv, test_inds,
+        run_name,
+        title=title,
+        loader=loader,
+        checkpoint_key=checkpoint_key
+    )
+
+    if return_results:
+        return {
+            'mse': float(mse),
+            'mse_shuffled': float(mse_shuffled),
+            'mse_cv': float(mse_cv),
+            'regression_coef': regression.coef_,
+            'regression_intercept': regression.intercept_,
+            'predictions': belief_predictions,
+            'predictions_shuffled': belief_predictions_shuffled,
+            'predictions_cv': belief_predictions_cv,
+            'test_indices': test_inds
+        }
+
+def analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs, 
+                      sweep_type, run_name, title=None, return_results=False,
+                      loader=None, checkpoint_key=None, sweep_id=None, run_id=None):
+    """Analyze concatenated activations from all layers."""
+    all_layers_acts = acts.permute(1,2,0,3).reshape(acts.shape[1], acts.shape[2], -1)
+    print("All layers concatenated shape:", all_layers_acts.shape)
+
+    (regression, belief_predictions, mse, mse_shuffled, 
+     belief_predictions_shuffled, mse_cv, belief_predictions_cv, 
+     test_inds) = run_activation_to_beliefs_regression(
+        all_layers_acts, nn_beliefs, nn_probs
+    )
+
+    plot_belief_prediction_comparison(
+        nn_beliefs, nn_belief_indices, 
+        belief_predictions, belief_predictions_shuffled, belief_predictions_cv,
+        sweep_type, mse, mse_shuffled, mse_cv, test_inds,
+        run_name,
+        title=title,
+        loader=loader,
+        checkpoint_key=checkpoint_key,
+        sweep_id=sweep_id,
+    )
+
+    if return_results:
+        return {
+            'mse': float(mse),
+            'mse_shuffled': float(mse_shuffled),
+            'mse_cv': float(mse_cv),
+            'regression_coef': regression.coef_,
+            'regression_intercept': regression.intercept_,
+            'predictions': belief_predictions,
+            'predictions_shuffled': belief_predictions_shuffled,
+            'predictions_cv': belief_predictions_cv,
+            'test_indices': test_inds
+        }
+
+def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, checkpoint_key: str, results: dict):
+    """
+    Save analysis results to S3 in an organized structure.
+    
+    Args:
+        loader: S3ModelLoader instance
+        sweep_id: ID of the sweep being analyzed (e.g., '20241121152808')
+        run_id: ID of the run being analyzed
+        checkpoint_key: Key of the checkpoint being analyzed
+        results: Dictionary containing analysis results
+    """
+    # Extract checkpoint number from key (e.g., "sweep/run/1000.pt" -> "1000")
+    checkpoint_num = checkpoint_key.split('/')[-1].replace('.pt', '')
+    
+    # Construct the analysis path
+    analysis_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/results.json"
+    
+    # Convert results to JSON
+    results_json = json.dumps(results, cls=NumpyEncoder)
+    
+    # Upload to S3
+    loader.s3_client.put_object(
+        Bucket=loader.bucket_name,
+        Key=analysis_key,
+        Body=results_json
+    )
+
+class NumpyEncoder(json.JSONEncoder):
+    """Custom JSON encoder for numpy and torch types"""
+    def default(self, obj):
+        if isinstance(obj, (np.ndarray, torch.Tensor)):
+            return obj.tolist()
+        if isinstance(obj, np.float32):
+            return float(obj)
+        return super().default(obj)
+
+def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_indices, 
+                           nn_probs, sweep_type, run_name, sweep_id, title=None, save_results=True, 
+                           loader=None, checkpoint_key=None):
+    """Analyze a single model checkpoint and optionally save results."""
+    
+    acts = get_activations(model, nn_inputs, nn_type)
+    results = {
+        'model_type': nn_type,
+        'sweep_type': sweep_type,
+        'run_name': run_name,
+        'title': title,
+        'layers': []
+    }
+
+    if nn_type == 'transformer':
+        layer_names = ['embed'] + [f'layer {i}' for i in range(1, acts.shape[0]-1)] + ['final norm']
+    elif nn_type == 'rnn':
+        layer_names = [f'layer {i}' for i in range(acts.shape[0])]
+    else:
+        raise ValueError(f"Model type {nn_type} not supported")
+
+    # For RNNs with 1 layer, only analyze all layers together
+    if nn_type == 'rnn' and acts.shape[0] == 1:
+        title_all_layers = f"All Layers" + (f" - {title}")
+        layer_results = analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
+                                         sweep_type, run_name, title_all_layers, return_results=True,
+                                         loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, run_id=run_name)
+        results['all_layers'] = layer_results
+    else:
+        # Analyze each layer individually
+        for layer_idx in range(acts.shape[0]):
+            title_layer = f"Layer {layer_idx}" + (f" - {title}")
+            layer_results = analyze_layer(acts[layer_idx], nn_beliefs, nn_belief_indices,
+                                        nn_probs, sweep_type, run_name, layer_names[layer_idx], 
+                                        title_layer, return_results=True,
+                                        loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, run_id=run_name)
+            results['layers'].append({
+                'layer_name': layer_names[layer_idx],
+                **layer_results
+            })
+        
+        # Analyze all layers together
+        title_all_layers = f"All Layers" + (f" - {title}")
+        all_layers_results = analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
+                                              sweep_type, run_name, title_all_layers, return_results=True,
+                                              loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, run_id=run_name)
+        results['all_layers'] = all_layers_results
+
+    if save_results and loader is not None and checkpoint_key is not None:
+        save_analysis_results(loader, 
+                            sweep_id=sweep_id, 
+                            run_id=run_name, 
+                            checkpoint_key=checkpoint_key, 
+                            results=results)
+    
+    return results
+
+def shuffle_belief_norms(unnormalized_beliefs):
+    """
+    Shuffle the norms of the beliefs.
+
+    Args:
+        unnormalized_beliefs: torch.Tensor [n_samples, n_context, num_states]
+    
+    Returns:
+        torch.Tensor with same shape as input but shuffled norms
+    """
+    # Create a copy to avoid modifying the original
+    beliefs = unnormalized_beliefs.clone()
+    
+    # Reshape to 2D
+    beliefs_2d = beliefs.reshape(-1, beliefs.shape[-1])  # [n_samples * n_context, num_states]
+    
+    # Calculate norms (keeping on same device as input)
+    norms = torch.norm(beliefs_2d, dim=1)  # [n_samples * n_context]
+    
+    # Shuffle the norms
+    shuffled_norms = norms[torch.randperm(norms.size(0))]
+
+    # apply the norms to beliefs_2d
+    beliefs_2d_unit = beliefs_2d / norms.reshape(-1, 1)
+    beliefs_2d = beliefs_2d_unit * shuffled_norms.reshape(-1, 1)
+    
+    return beliefs_2d.reshape(unnormalized_beliefs.shape)
+
+def save_nn_data(loader: S3ModelLoader, sweep_id: str, run_id: str, nn_data: dict):
+    """
+    Save neural network data to S3 with optimizations for large tensors.
+    """
+    # Convert tensors to numpy arrays and reduce precision
+    # Convert tensors to numpy arrays and reduce precision
+    serializable_data = {}
+    for key, value in nn_data.items():
+        if isinstance(value, torch.Tensor):
+            # Convert to float32 to reduce size and keep reasonable precision
+            np_array = value.cpu().numpy().astype(np.float32)
+            serializable_data[key] = np_array
+        else:
+            serializable_data[key] = value
+    
+    # Use numpy's save function instead of JSON for better efficiency with numerical data
+    buf = io.BytesIO()
+    np.savez_compressed(buf, **serializable_data)
+    buf.seek(0)
+    
+    # Construct the analysis path with .npz extension
+    analysis_key = f"analysis/{sweep_id}/{run_id}/nn_data.npz"
+    
+    # Upload to S3
+    loader.s3_client.put_object(
+        Bucket=loader.bucket_name,
+        Key=analysis_key,
+        Body=buf.getvalue()
+    )

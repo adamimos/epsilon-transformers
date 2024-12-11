@@ -42,22 +42,22 @@ class GHMM(ABC):
         self.transition_matrices, self.state_names_dict = self._create_ghmm()
 
         if (
-            len(self.transition_matrix.shape) != 3
-            or self.transition_matrix.shape[1] != self.transition_matrix.shape[2]
+            len(self.transition_matrices.shape) != 3
+            or self.transition_matrices.shape[1] != self.transition_matrices.shape[2]
         ):
             raise ValueError(
                 "Transition matrix should have 3 axes and the final two dims shoulds be square"
             )
 
-        if self.transition_matrix.shape[1] != self.transition_matrix.shape[2]:
+        if self.transition_matrices.shape[1] != self.transition_matrices.shape[2]:
             raise ValueError("Transition matrix should be square")
 
-        transition = self.transition_matrix.sum(axis=0)
+        transition = self.transition_matrices.sum(axis=0)
         #if not np.allclose(transition.sum(axis=1), 1.0):
         #    raise ValueError("Transition matrix rows should sum to 1")
 
-        self.vocab_len = self.transition_matrix.shape[0]
-        self.latent_dim = self.transition_matrix.shape[1]
+        self.vocab_len = self.transition_matrices.shape[0]
+        self.latent_dim = self.transition_matrices.shape[1]
 
 
         # TODO: add check on ssv (page 61 of Dan Upper's thesis)
@@ -71,8 +71,12 @@ class GHMM(ABC):
         for symbol in word:
             T_w = T_w @ self.transition_matrices[symbol]
          
-        word_probability = np.einsum("s,sd,d->", self.steady_state_vector, T_w, self.right_eigenvector)
-        word_probability = word_probability/np.einsum("s,s->", self.steady_state_vector, self.right_eigenvector)
+        # Fix: Squeeze arrays to remove extra dimensions
+        ssv = self.steady_state_vector.squeeze()  # Shape: (latent_dim,)
+        rev = self.right_eigenvector.squeeze()    # Shape: (latent_dim,)
+        
+        word_probability = np.einsum("i,ij,j->", ssv, T_w, rev)
+        word_probability = word_probability/np.einsum("i,i->", ssv, rev)
         return word_probability
 
     def _create_ghmm(self) -> Tuple[Float[np.ndarray, "vocab_len latent_dim latent_dim"], Dict[str, int]]:
@@ -121,6 +125,7 @@ class GHMM(ABC):
         stack = deque([(tree_root, self.steady_state_vector, [], 0)])
         while stack:
             current_node, state_prob_vector, current_path, current_depth = stack.pop()
+            #print(f"Current depth: {current_depth}")
             if current_depth < depth:
                 emission_probs = _compute_emission_probabilities(self.transition_matrices, state_prob_vector, self.right_eigenvector)
                 for emission in range(self.vocab_len):
@@ -149,10 +154,13 @@ class GHMM(ABC):
             nodes.add(current_node)
         
         return MixedStateTree(root_node=tree_root, process=self.name, nodes=nodes, depth=depth)
+    
+
 
 class TransitionMatrixGHMM(GHMM):
     def __init__(self, transition_matrix: np.ndarray):
         self.transition_matrix = transition_matrix
+        self.name = "Transition Matrix GHMM"
         super().__init__()
 
     def _create_ghmm(self):
@@ -189,3 +197,52 @@ def _compute_next_distribution(
         return numerator, denominator
     return numerator / denominator if denominator != 0 else numerator
 
+def markov_approximation(ghmm: GHMM, order: int = 1, min_state_prob: float = 1e-13) -> GHMM:
+    """
+    Creates a Markov-order N approximation of a given GHMM.
+    
+    Args:
+        ghmm: Instance of GHMM class
+        order: The Markov order for the approximation (default=1)
+        min_state_prob: Minimum probability threshold for states (default=1e-13)
+    
+    Returns:
+        A new GHMM instance representing the Markov approximation
+    """
+    # Helper function to generate all possible combinations
+    def cartesian_power(n: int) -> List[List[int]]:
+        if n == 0:
+            return [[]]
+        return [[i] + p for i in range(ghmm.vocab_len) for p in cartesian_power(n-1)]
+    
+    # Generate all possible sequences of length M and filter by probability
+    state_sequences = []
+    for word in cartesian_power(order):
+        word_prob = ghmm.word_probability(word)
+        if word_prob > min_state_prob:
+            state_sequences.append(word)
+    
+    # Create transition matrices for each symbol
+    num_states = len(state_sequences)
+    transition_matrices = np.zeros((ghmm.vocab_len, num_states, num_states))
+    
+    # Calculate transition probabilities
+    for from_idx, current_seq in enumerate(state_sequences):
+        current_prob = ghmm.word_probability(current_seq)
+        
+        for symbol in range(ghmm.vocab_len):
+            # Create new sequence by appending symbol and taking last M elements
+            next_seq = current_seq[1:] + [symbol]
+            if next_seq in state_sequences:
+                extended_seq = current_seq + [symbol]
+                extended_prob = ghmm.word_probability(extended_seq)
+                
+                # Calculate transition probability
+                transition_prob = extended_prob / current_prob if current_prob > 0 else 0
+                
+                if transition_prob > 1e-9:  # Threshold for numerical stability
+                    to_idx = state_sequences.index(next_seq)
+                    transition_matrices[symbol, from_idx, to_idx] = transition_prob
+    
+    # Create new GHMM with computed transition matrices
+    return TransitionMatrixGHMM(transition_matrices)

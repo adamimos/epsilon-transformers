@@ -8,6 +8,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 import torch
 from epsilon_transformers.training.networks import create_RNN
+from transformer_lens import HookedTransformer, HookedTransformerConfig
+from typing import Optional
 
 class S3ModelLoader:
     def __init__(self):
@@ -20,6 +22,7 @@ class S3ModelLoader:
         )
         self.bucket_name = "quantum-runs"
 
+
     def list_sweeps(self):
         """List all sweep directories in the bucket"""
         paginator = self.s3_client.get_paginator('list_objects_v2')
@@ -31,6 +34,10 @@ class S3ModelLoader:
                 sweeps.add(sweep_name)
                 
         return sorted(list(sweeps))
+    
+    def get_sweep_ind(self, sweep_id):
+        """Get the index of a sweep in the list of sweeps"""
+        return self.list_sweeps().index(sweep_id)
 
     def load_sweep_config(self, sweep_id):
         """Load the sweep configuration YAML file for a given sweep ID.
@@ -68,6 +75,7 @@ class S3ModelLoader:
                     files.add(key)
                 
         return sorted(list(files))
+    
     def list_runs_in_sweep(self, sweep_id):
         """List all run directories within a sweep"""
         prefix = f"{sweep_id}/"
@@ -110,6 +118,69 @@ class S3ModelLoader:
                     
         return sorted(files)
 
+    def load_loss_from_run(self, sweep_id: str, run_id: str) -> Optional[pd.DataFrame]:
+        """Load loss data for a specific run within a sweep.
+        
+        Args:
+            sweep_id (str): ID of the sweep
+            run_id (str): ID of the run
+            
+        Returns:
+            Optional[pd.DataFrame]: DataFrame containing loss data, or None if not found
+        """
+        try:
+            configs = self.load_run_configs(sweep_id, run_id)
+            return configs['loss_csv']
+        except Exception as e:
+            print(f"Error loading loss data: {e}")
+            return None
+        
+
+    def load_transformer_checkpoint(self, sweep_id: str, run_id: str, checkpoint_key: str, device: str = 'cpu'):
+        """Load a specific transformer checkpoint from S3.
+        
+        Args:
+            sweep_id (str): ID of the sweep
+            run_id (str): ID of the run
+            checkpoint_idx (int): Index of checkpoint to load (-1 for latest)
+            device (str): Device to load model onto ('cpu' or 'cuda')
+            
+        Returns:
+            Tuple[HookedTransformer, dict]: The loaded model and its run configuration
+        """
+        # Create a temporary directory for downloading
+        temp_dir = Path(f"./temp/{sweep_id}/{run_id}")
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Get list of checkpoints and select the requested one
+        checkpoints = self.list_checkpoints(sweep_id, run_id)
+        if not checkpoints:
+            raise FileNotFoundError(f"No checkpoints found for run {run_id}")
+                
+        # Download checkpoint file
+        checkpoint_path = temp_dir / "model.pt"
+        self.s3_client.download_file(
+            self.bucket_name,
+            checkpoint_key,
+            str(checkpoint_path)
+        )
+        
+        # Load configurations
+        configs = self.load_run_configs(sweep_id, run_id)
+        if not configs['model_config']:
+            raise ValueError("Could not load model configuration")
+        
+        # Prepare model config
+        model_config = configs['model_config']
+        model_config['dtype'] = getattr(torch, model_config['dtype'].split('.')[-1])
+        model_config['device'] = device
+        
+        # Create and load model
+        model_config = HookedTransformerConfig(**model_config)
+        model = HookedTransformer(model_config)
+        model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+        
+        return model, configs['run_config']
     
     def load_rnn_checkpoint(self, sweep_id, run_id, checkpoint_key, device='cpu'):
         """Load a specific RNN checkpoint from S3"""
@@ -137,12 +208,7 @@ class S3ModelLoader:
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
             
-        # Debug print
-        print("Config structure:")
-        print(config)
-
-  
-            # Infer vocab size from the output layer in the state dict
+        # Infer vocab size from the output layer in the state dict
         state_dict = torch.load(checkpoint_path, map_location=device)
         output_layer_weight = state_dict['output_layer.weight']
         vocab_size = output_layer_weight.size(0)  # First dimension is output size (vocab size)
@@ -157,6 +223,16 @@ class S3ModelLoader:
         model.load_state_dict(state_dict)
         
         return model, config
+    
+
+    def load_checkpoint(self, sweep_id, run_id, checkpoint_key, device='cpu'):
+        """Load a checkpoint, detecting whether it's an RNN or Transformer model by trying both"""
+        try:
+            # Try loading as RNN first
+            return self.load_rnn_checkpoint(sweep_id, run_id, checkpoint_key, device)
+        except:
+            # If RNN fails, try loading as transformer
+            return self.load_transformer_checkpoint(sweep_id, run_id, checkpoint_key, device)
     
     def load_run_configs(self, sweep_id, run_id):
         """Load all configuration files for a specific run"""

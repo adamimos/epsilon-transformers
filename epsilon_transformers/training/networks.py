@@ -72,8 +72,6 @@ class RNNWrapper(nn.Module):
 def create_RNN(config, vocab_size, device):
     rnn_type = config['model_config'].get('rnn_type', 'LSTM').upper()
     rnn_class = getattr(nn, rnn_type)
-
-    print(config['model_config'].keys())
     
     rnn = rnn_class(
         input_size=vocab_size,
