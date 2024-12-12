@@ -17,7 +17,16 @@ import json
 from epsilon_transformers.analysis.load_data import S3ModelLoader
 import io
 
-
+class NumpyEncoder(json.JSONEncoder):
+    """Custom JSON encoder for numpy types"""
+    def default(self, obj):
+        if isinstance(obj, (np.ndarray, torch.Tensor)):
+            return obj.tolist()
+        if isinstance(obj, np.float32):
+            return float(obj)
+        if isinstance(obj, np.integer):
+            return int(obj)
+        return super().default(obj)
 
 def get_sweep_type(run_id):
     """Determine sweep type from run_id."""
