@@ -751,42 +751,88 @@ def analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
             'test_indices': test_inds
         }
 
-def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, checkpoint_key: str, results: dict, title: str):
+def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, checkpoint_key: str, results: dict, title: str = None):
     """
-    Save analysis results to S3 in an organized structure.
-    
-    Args:
-        loader: S3ModelLoader instance
-        sweep_id: ID of the sweep being analyzed (e.g., '20241121152808')
-        run_id: ID of the run being analyzed
-        checkpoint_key: Key of the checkpoint being analyzed
-        results: Dictionary containing analysis results
-        title: Title of the analysis, name to save as
+    Save analysis results to S3, handling large files by splitting or compressing.
     """
-    # Extract checkpoint number from key (e.g., "sweep/run/1000.pt" -> "1000")
+    # Extract checkpoint number from key
     checkpoint_num = checkpoint_key.split('/')[-1].replace('.pt', '')
     
-    # Construct the analysis path
-    analysis_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/results_{title}.json"
+    # Separate large arrays from metadata
+    large_data = {}
+    metadata = {}
     
-    # Convert results to JSON
-    results_json = json.dumps(results, cls=NumpyEncoder)
-    
-    # Upload to S3
+    def is_large_array(obj):
+        if isinstance(obj, (np.ndarray, torch.Tensor)):
+            return obj.nbytes > 1e8  # 100MB threshold
+        return False
+
+    def process_dict(d, prefix=''):
+        for key, value in d.items():
+            full_key = f"{prefix}/{key}" if prefix else key
+            
+            if isinstance(value, dict):
+                process_dict(value, full_key)
+            elif is_large_array(value):
+                large_data[full_key] = value
+                metadata[full_key] = f"large_array_ref:{full_key}"
+            else:
+                metadata[full_key] = value
+
+    # Process the results dictionary
+    process_dict(results)
+
+    # Save metadata
+    metadata_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/metadata.json"
+    metadata_json = json.dumps(metadata, cls=NumpyEncoder)
     loader.s3_client.put_object(
         Bucket=loader.bucket_name,
-        Key=analysis_key,
-        Body=results_json
+        Key=metadata_key,
+        Body=metadata_json
     )
 
-class NumpyEncoder(json.JSONEncoder):
-    """Custom JSON encoder for numpy and torch types"""
-    def default(self, obj):
-        if isinstance(obj, (np.ndarray, torch.Tensor)):
-            return obj.tolist()
-        if isinstance(obj, np.float32):
-            return float(obj)
-        return super().default(obj)
+    # Save large arrays separately using numpy's compressed format
+    for key, data in large_data.items():
+        array_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/arrays/{key}.npz"
+        
+        # Convert to numpy if tensor
+        if isinstance(data, torch.Tensor):
+            data = data.cpu().numpy()
+        
+        # Use BytesIO to create compressed numpy file in memory
+        buf = io.BytesIO()
+        np.savez_compressed(buf, data=data)
+        buf.seek(0)
+        
+        # Upload compressed array
+        loader.s3_client.put_object(
+            Bucket=loader.bucket_name,
+            Key=array_key,
+            Body=buf.getvalue()
+        )
+
+def load_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, checkpoint_key: str):
+    """
+    Load analysis results from S3, reconstructing from split files.
+    """
+    checkpoint_num = checkpoint_key.split('/')[-1].replace('.pt', '')
+    
+    # Load metadata
+    metadata_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/metadata.json"
+    metadata = json.loads(loader.s3_client.get_object(Bucket=loader.bucket_name, Key=metadata_key)['Body'].read())
+    
+    # Reconstruct results
+    results = {}
+    for key, value in metadata.items():
+        if isinstance(value, str) and value.startswith('large_array_ref:'):
+            array_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/arrays/{value.split(':')[1]}.npz"
+            array_data = loader.s3_client.get_object(Bucket=loader.bucket_name, Key=array_key)['Body'].read()
+            with io.BytesIO(array_data) as buf:
+                results[key] = np.load(buf)['data']
+        else:
+            results[key] = value
+            
+    return results
 
 def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_indices, 
                            nn_probs, sweep_type, run_name, sweep_id, title=None, save_results=True, 
