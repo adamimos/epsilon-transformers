@@ -16,6 +16,8 @@ import numpy as np
 import json
 from epsilon_transformers.analysis.load_data import S3ModelLoader
 import io
+import os
+import hashlib
 
 class NumpyEncoder(json.JSONEncoder):
     """Custom JSON encoder for numpy types"""
@@ -122,8 +124,88 @@ def prepare_data_from_msp(msp, path_length):
     
     return nn_inputs, nn_beliefs, nn_belief_indices, nn_probs, nn_unnormalized_beliefs
 
-def prepare_msp_data(config, model_config):
-    """Prepare MSP belief states and transformer inputs."""
+def get_process_hash(process_config: dict) -> str:
+    """Generate a unique hash for a process configuration."""
+    # Sort the dictionary to ensure consistent hashing
+    sorted_config = dict(sorted(process_config.items()))
+    # Convert to JSON string and encode
+    config_str = json.dumps(sorted_config, sort_keys=True)
+    # Create hash
+    return hashlib.md5(config_str.encode()).hexdigest()
+
+def get_process_data_path(process_config: dict, loader: S3ModelLoader) -> str:
+    """Generate the S3 path for cached process data."""
+    process_hash = get_process_hash(process_config)
+    process_name = process_config.get('process_name', 'unknown_process')
+    return f"analysis/process_data/{process_name}_{process_hash}"
+
+def save_process_data(data: dict, process_config: dict, loader: S3ModelLoader):
+    """Save process data to S3."""
+    path = get_process_data_path(process_config, loader)
+    
+    # Convert tensors to numpy arrays
+    serializable_data = {}
+    for key, value in data.items():
+        if isinstance(value, torch.Tensor):
+            serializable_data[key] = value.cpu().numpy()
+        else:
+            serializable_data[key] = value
+    
+    # Save the process config alongside the data
+    serializable_data['process_config'] = process_config
+    
+    # Use numpy's compressed format
+    buf = io.BytesIO()
+    np.savez_compressed(buf, **serializable_data)
+    buf.seek(0)
+    
+    loader.s3_client.put_object(
+        Bucket=loader.bucket_name,
+        Key=f"{path}/data.npz",
+        Body=buf.getvalue()
+    )
+
+def load_process_data(process_config: dict, loader: S3ModelLoader) -> dict:
+    """Load process data from S3 if it exists."""
+    path = get_process_data_path(process_config, loader)
+    
+    try:
+        # Try to load the data
+        response = loader.s3_client.get_object(
+            Bucket=loader.bucket_name,
+            Key=f"{path}/data.npz"
+        )
+        
+        # Load the compressed numpy data
+        with io.BytesIO(response['Body'].read()) as buf:
+            data = np.load(buf, allow_pickle=True)
+            
+            # Convert back to dictionary
+            result = {key: data[key] for key in data.files}
+            
+            # Convert numpy arrays back to tensors where appropriate
+            for key in ['nn_inputs', 'nn_beliefs', 'nn_belief_indices', 'nn_probs', 'nn_unnormalized_beliefs']:
+                if key in result:
+                    result[key] = torch.from_numpy(result[key])
+            
+            return result
+            
+    except loader.s3_client.exceptions.NoSuchKey:
+        return None
+
+def prepare_msp_data(config, model_config, loader: S3ModelLoader = None):
+    """Prepare MSP data with caching."""
+    if loader is not None:
+        # Try to load cached data
+        cached_data = load_process_data(config['process_config'], loader)
+        if cached_data is not None:
+            print("Loading cached MSP data...")
+            return (cached_data['nn_inputs'], cached_data['nn_beliefs'], 
+                   cached_data['nn_belief_indices'], cached_data['nn_probs'], 
+                   cached_data['nn_unnormalized_beliefs'])
+    
+    print("Computing MSP data...")
+    # If we get here, we need to compute the data
     msp = get_msp(config)
     tree_paths = msp.paths
     tree_beliefs = msp.belief_states
@@ -145,6 +227,16 @@ def prepare_msp_data(config, model_config):
         tree_unnormalized_beliefs,
         probs_dict
     )
+    
+    if loader is not None:
+        # Save the computed data
+        save_process_data({
+            'nn_inputs': nn_inputs,
+            'nn_beliefs': nn_beliefs,
+            'nn_belief_indices': nn_belief_indices,
+            'nn_probs': nn_probs,
+            'nn_unnormalized_beliefs': nn_unnormalized_beliefs
+        }, config['process_config'], loader)
     
     return nn_inputs, nn_beliefs, nn_belief_indices, nn_probs, nn_unnormalized_beliefs
 
@@ -505,7 +597,16 @@ def get_msp(run_config):
     msp = ghmm.derive_mixed_state_tree(depth=run_config['model_config']['n_ctx'])
     return msp
 
-def markov_approx_msps(run_config, max_order=3):
+def markov_approx_msps(run_config, max_order=3, loader: S3ModelLoader = None):
+    """Run Markov approximations with caching."""
+    if loader is not None:
+        # Try to load cached data
+        cached_data = load_markov_data(run_config['process_config'], max_order, loader)
+        if cached_data is not None:
+            print("Loading cached Markov approximation data...")
+            return cached_data
+    
+    print("Computing Markov approximation data...")
     T = get_matrix_from_args(**run_config['process_config'])
     ghmm = TransitionMatrixGHMM(T)
     markov_data = []
@@ -513,6 +614,11 @@ def markov_approx_msps(run_config, max_order=3):
         markov_approx = markov_approximation(ghmm, order)
         msp = markov_approx.derive_mixed_state_tree(depth=run_config['model_config']['n_ctx'])
         markov_data.append(prepare_data_from_msp(msp, run_config['model_config']['n_ctx']))
+    
+    if loader is not None:
+        # Save the computed data
+        save_markov_data(markov_data, run_config['process_config'], max_order, loader)
+    
     return markov_data
 
 def model_type(model) -> str:
@@ -903,33 +1009,133 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
     
     return results
 
-def shuffle_belief_norms(unnormalized_beliefs):
-    """
-    Shuffle the norms of the beliefs.
-
-    Args:
-        unnormalized_beliefs: torch.Tensor [n_samples, n_context, num_states]
+def shuffle_belief_norms(unnormalized_beliefs, loader: S3ModelLoader = None, process_config: dict = None):
+    """Shuffle the norms of the beliefs with caching."""
+    if loader is not None and process_config is not None:
+        # Try to load cached shuffled beliefs
+        cached_shuffled = load_shuffled_beliefs(process_config, loader)
+        if cached_shuffled is not None:
+            print("Loading cached shuffled beliefs...")
+            return cached_shuffled
     
-    Returns:
-        torch.Tensor with same shape as input but shuffled norms
-    """
+    print("Computing shuffled beliefs...")
     # Create a copy to avoid modifying the original
     beliefs = unnormalized_beliefs.clone()
     
     # Reshape to 2D
-    beliefs_2d = beliefs.reshape(-1, beliefs.shape[-1])  # [n_samples * n_context, num_states]
+    beliefs_2d = beliefs.reshape(-1, beliefs.shape[-1])
     
-    # Calculate norms (keeping on same device as input)
-    norms = torch.norm(beliefs_2d, dim=1)  # [n_samples * n_context]
+    # Calculate norms
+    norms = torch.norm(beliefs_2d, dim=1)
     
     # Shuffle the norms
     shuffled_norms = norms[torch.randperm(norms.size(0))]
-
-    # apply the norms to beliefs_2d
+    
+    # Apply the norms to beliefs_2d
     beliefs_2d_unit = beliefs_2d / norms.reshape(-1, 1)
     beliefs_2d = beliefs_2d_unit * shuffled_norms.reshape(-1, 1)
     
-    return beliefs_2d.reshape(unnormalized_beliefs.shape)
+    result = beliefs_2d.reshape(unnormalized_beliefs.shape)
+    
+    if loader is not None and process_config is not None:
+        # Save the computed shuffled beliefs
+        save_shuffled_beliefs(result, process_config, loader)
+    
+    return result
+
+def save_shuffled_beliefs(shuffled_beliefs: torch.Tensor, process_config: dict, loader: S3ModelLoader):
+    """Save shuffled beliefs data to S3."""
+    path = get_process_data_path(process_config, loader)
+    
+    # Convert tensor to numpy array
+    shuffled_beliefs_np = shuffled_beliefs.cpu().numpy()
+    
+    # Use numpy's compressed format
+    buf = io.BytesIO()
+    np.savez_compressed(buf, shuffled_beliefs=shuffled_beliefs_np)
+    buf.seek(0)
+    
+    loader.s3_client.put_object(
+        Bucket=loader.bucket_name,
+        Key=f"{path}/shuffled_beliefs.npz",
+        Body=buf.getvalue()
+    )
+
+def load_shuffled_beliefs(process_config: dict, loader: S3ModelLoader) -> torch.Tensor:
+    """Load shuffled beliefs from S3 if they exist."""
+    path = get_process_data_path(process_config, loader)
+    
+    try:
+        response = loader.s3_client.get_object(
+            Bucket=loader.bucket_name,
+            Key=f"{path}/shuffled_beliefs.npz"
+        )
+        
+        with io.BytesIO(response['Body'].read()) as buf:
+            data = np.load(buf)
+            return torch.from_numpy(data['shuffled_beliefs'])
+            
+    except loader.s3_client.exceptions.NoSuchKey:
+        return None
+
+def save_markov_data(markov_data: list, process_config: dict, max_order: int, loader: S3ModelLoader):
+    """Save Markov approximation data to S3."""
+    path = get_process_data_path(process_config, loader)
+    
+    # Convert data to numpy arrays
+    serializable_data = []
+    for order_data in markov_data:
+        order_dict = {}
+        for i, tensor in enumerate(order_data):
+            if isinstance(tensor, torch.Tensor):
+                order_dict[f'tensor_{i}'] = tensor.cpu().numpy()
+            else:
+                order_dict[f'tensor_{i}'] = tensor
+        serializable_data.append(order_dict)
+    
+    # Use numpy's compressed format
+    buf = io.BytesIO()
+    np.savez_compressed(buf, 
+                       markov_data=serializable_data, 
+                       max_order=max_order)
+    buf.seek(0)
+    
+    loader.s3_client.put_object(
+        Bucket=loader.bucket_name,
+        Key=f"{path}/markov_data_{max_order}.npz",
+        Body=buf.getvalue()
+    )
+
+def load_markov_data(process_config: dict, max_order: int, loader: S3ModelLoader) -> list:
+    """Load Markov approximation data from S3 if it exists."""
+    path = get_process_data_path(process_config, loader)
+    
+    try:
+        response = loader.s3_client.get_object(
+            Bucket=loader.bucket_name,
+            Key=f"{path}/markov_data_{max_order}.npz"
+        )
+        
+        with io.BytesIO(response['Body'].read()) as buf:
+            data = np.load(buf, allow_pickle=True)
+            markov_data = data['markov_data']
+            
+            # Convert back to list of tuples with tensors
+            result = []
+            for order_dict in markov_data:
+                order_tensors = []
+                for i in range(len(order_dict)):
+                    tensor = order_dict[f'tensor_{i}']
+                    if isinstance(tensor, np.ndarray):
+                        order_tensors.append(torch.from_numpy(tensor))
+                    else:
+                        order_tensors.append(tensor)
+                result.append(tuple(order_tensors))
+            
+            return result
+            
+    except loader.s3_client.exceptions.NoSuchKey:
+        return None
 
 def save_nn_data(loader: S3ModelLoader, sweep_id: str, run_id: str, nn_data: dict):
     """
