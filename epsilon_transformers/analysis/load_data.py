@@ -117,6 +117,7 @@ class S3ModelLoader:
                     files.append(obj['Key'])
                     
         return sorted(files)
+    
 
     def load_loss_from_run(self, sweep_id: str, run_id: str) -> Optional[pd.DataFrame]:
         """Load loss data for a specific run within a sweep.
@@ -224,6 +225,11 @@ class S3ModelLoader:
         
         return model, config
     
+    def check_if_process_data_exists(self,process_folder_name):
+        """Check if a process data folder exists in S3"""
+        key = f"analysis/{process_folder_name}/"
+        response = self.s3_client.list_objects_v2(Bucket=self.bucket_name, Prefix=key)
+        return 'Contents' in response
 
     def load_checkpoint(self, sweep_id, run_id, checkpoint_key, device='cpu'):
         """Load a checkpoint, detecting whether it's an RNN or Transformer model by trying both"""

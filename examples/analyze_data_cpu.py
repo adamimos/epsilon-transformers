@@ -13,7 +13,11 @@ from epsilon_transformers.analysis.activation_analysis import (
     analyze_model_checkpoint,
     markov_approx_msps,
     shuffle_belief_norms,
-    save_nn_data
+    save_nn_data,
+    get_process_filename,
+    load_nn_data,
+    ProcessDataLoader
+
 )
 
 import torch
@@ -24,63 +28,75 @@ from multiprocessing import Pool
 import os
 
 
-def analyze_single_run(args):
-    """Function to analyze a single run (to be called in parallel)"""
-    sweep_id, run = args
-    loader = S3ModelLoader()  # Create new loader instance for each process
-    sweep_config = loader.load_sweep_config(sweep_id)
-    print(f"Analyzing {run}")
-    
-    ckpts = loader.list_checkpoints(sweep_id, run)
-    
-    # Load initial model and prepare data
-    model, config = loader.load_checkpoint(
-        sweep_id=sweep_id,
-        run_id=run,
-        checkpoint_key=ckpts[-1],
-        device='cpu'
-    )
-
-    nn_type = model_type(model)
-    
-    nn_data = prepare_msp_data(config, config['model_config'])
-    (nn_inputs, nn_beliefs, nn_belief_indices, 
-     nn_probs, nn_unnormalized_beliefs) = nn_data
-    
-    # Save the data in a dictionary format
-    data_to_save = {
-        'inputs': nn_inputs,
-        'beliefs': nn_beliefs,
-        'belief_indices': nn_belief_indices,
-        'probs': nn_probs,
-        'unnormalized_beliefs': nn_unnormalized_beliefs
+def main():
+    sweeps = {
+        '20241121152808': 'RNN',
+        '20241205175736': 'Transformer'
     }
-    
-    nn_shuffled_beliefs = shuffle_belief_norms(nn_unnormalized_beliefs)
-    data_to_save['shuffled_beliefs'] = nn_shuffled_beliefs
 
-    markov_data = markov_approx_msps(config, max_order=3)
-    for order, mark_data in enumerate(markov_data):
-        mark_inputs, mark_beliefs, mark_indices, mark_probs, mark_unnorm = mark_data
-        mark_shuffled = shuffle_belief_norms(mark_unnorm)
+    # Process one sweep at a time
+    for sweep_id in sweeps:
+        loader = S3ModelLoader()
+        runs = loader.list_runs_in_sweep(sweep_id)
         
-        data_to_save.update({
-            f'markov_order_{order}_inputs': mark_inputs,
-            f'markov_order_{order}_beliefs': mark_beliefs,
-            f'markov_order_{order}_indices': mark_indices,
-            f'markov_order_{order}_probs': mark_probs,
-            f'markov_order_{order}_unnormalized': mark_unnorm,
-            f'markov_order_{order}_shuffled': mark_shuffled
-        })
+        # Process one run at a time
+        for run in runs:
+            print(f"\nProcessing sweep {sweep_id}, run {run}")
+            analyze_single_run((sweep_id, run))
 
-    print(f'Run {run}: data size = {sys.getsizeof(data_to_save)/1024**2} MB')
-    save_nn_data(loader, sweep_id, run, data_to_save)
+def analyze_checkpoint(args):
+    """Function to analyze a single checkpoint (to be called in parallel)"""
+    print(f"Analyzing checkpoint {args[9]}")
+    model, nn_inputs, nn_type, nn_beliefs, nn_belief_indices, nn_probs, sweep_type, run, sweep_id, title, loader, ckpt, is_final_ckpt = args
+    
+    # Analyze model checkpoint with the prepared data
+    analyze_model_checkpoint(
+        model=model,
+        nn_inputs=nn_inputs,
+        nn_type=nn_type,
+        nn_beliefs=nn_beliefs,
+        nn_belief_indices=nn_belief_indices,
+        nn_probs=nn_probs,
+        sweep_type=sweep_type,
+        run_name=run,
+        sweep_id=sweep_id,
+        title=title,
+        loader=loader,
+        checkpoint_key=ckpt,
+        save_figure=is_final_ckpt
+    )
+    
+    return f"Completed analysis for {run} checkpoint {ckpt}"
 
-    # Analyze checkpoints
-    for ckpt in ckpts:
+def analyze_single_run(args):
+    """Function to analyze a single run, parallelizing across checkpoints"""
+    sweep_id, run = args
+    loader = S3ModelLoader()
+    process_loader = ProcessDataLoader(loader)
 
+    # Load initial model and config 
+    model, config = loader.load_checkpoint(sweep_id, run, loader.list_checkpoints(sweep_id, run)[-1], device='cpu')
+
+    base_data, markov_data = process_loader.load_or_generate_process_data(sweep_id, run, model, config)
+
+    # unpack base data
+    nn_inputs = base_data['inputs']
+    nn_beliefs = base_data['beliefs']
+    nn_belief_indices = base_data['belief_indices']
+    nn_probs = base_data['probs']
+    nn_unnormalized_beliefs = base_data['unnormalized_beliefs']
+    nn_shuffled_beliefs = base_data['shuffled_beliefs']
+ 
+    process_config = config['process_config']
+    process_folder_name = get_process_filename(process_config)
+    ckpts = loader.list_checkpoints(sweep_id, run)
+    nn_type = model_type(model)
+
+    # Prepare arguments for parallel checkpoint analysis
+    checkpoint_args = []
+    for ckpt in tqdm(ckpts):
         is_final_ckpt = ckpt == ckpts[-1]
-
+        
         model, config = loader.load_checkpoint(
             sweep_id=sweep_id,
             run_id=run,
@@ -88,104 +104,77 @@ def analyze_single_run(args):
             device='cpu'
         )
         sweep_type = get_sweep_type(run)
-
-        # Analyze normalized beliefs
-        analyze_model_checkpoint(
+        
+        # Add arguments for different types of analysis
+        # Normal beliefs
+        checkpoint_args.append((
             model, nn_inputs, nn_type, nn_beliefs, 
-            nn_belief_indices, nn_probs, sweep_type, run, title="Normalized Beliefs",
-            loader=loader,
-            checkpoint_key=ckpt,
-            sweep_id=sweep_id,
-            save_figure = is_final_ckpt
-        )
-
-        # Analyze unnormalized beliefs
-        analyze_model_checkpoint(
-            model, nn_inputs, nn_type, nn_unnormalized_beliefs, 
-            nn_belief_indices, nn_probs, sweep_type, run, title="Unnormalized Beliefs",
-            loader=loader,
-            checkpoint_key=ckpt,
-            sweep_id=sweep_id,
-            save_figure = is_final_ckpt
-        )
-
-        # Analyze shuffled unnormalized beliefs
-        analyze_model_checkpoint(
-            model, nn_inputs, nn_type, nn_shuffled_beliefs, 
-            nn_belief_indices, nn_probs, sweep_type, run, title="Shuffled Unnormalized Beliefs",
-            loader=loader,
-            checkpoint_key=ckpt,
-            sweep_id=sweep_id,
-            save_figure = is_final_ckpt
-        )
-
-        # Analyze markov approximations
+            nn_belief_indices, nn_probs, sweep_type,
+            run, sweep_id, "Normalized Beliefs",
+            loader, ckpt, is_final_ckpt
+        ))
+        
+        # Unnormalized beliefs
+        checkpoint_args.append((
+            model, nn_inputs, nn_type, nn_unnormalized_beliefs,
+            nn_belief_indices, nn_probs, sweep_type,
+            run, sweep_id, "Unnormalized Beliefs",
+            loader, ckpt, is_final_ckpt
+        ))
+        
+        # Shuffled beliefs
+        checkpoint_args.append((
+            model, nn_inputs, nn_type, nn_shuffled_beliefs,
+            nn_belief_indices, nn_probs, sweep_type,
+            run, sweep_id, "Shuffled Unnormalized Beliefs",
+            loader, ckpt, is_final_ckpt
+        ))
+        
+        # Markov approximations
         for order, mark_data in enumerate(markov_data):
-            # unpack the data
-            nn_inputs, nn_beliefs, nn_belief_indices, nn_probs, nn_unnormalized_beliefs = mark_data
-             
-            # Create shuffled version of unnormalized beliefs
-            nn_shuffled_beliefs = shuffle_belief_norms(nn_unnormalized_beliefs)
+            mark_inputs, mark_beliefs, mark_indices, mark_probs, mark_unnorm = mark_data
+            mark_shuffled = shuffle_belief_norms(mark_unnorm)
             
-            # Analyze normalized beliefs
-            analyze_model_checkpoint(
-                model, nn_inputs, nn_type, nn_beliefs, 
-                nn_belief_indices, nn_probs, sweep_type, run, title=f"Order-{order} Approx.",
-                loader=loader,
-                checkpoint_key=ckpt,
-                sweep_id=sweep_id,
-                save_figure = is_final_ckpt
-            )
-             
-            # Analyze unnormalized beliefs
-            analyze_model_checkpoint(
-                model, nn_inputs, nn_type, nn_unnormalized_beliefs, 
-                nn_belief_indices, nn_probs, sweep_type, run, title=f"Order-{order} Approx. Unnormalized",
-                loader=loader,
-                checkpoint_key=ckpt,
-                sweep_id=sweep_id,
-                save_figure = is_final_ckpt
-            )
-
-            # Analyze shuffled unnormalized beliefs
-            analyze_model_checkpoint(
-                model, nn_inputs, nn_type, nn_shuffled_beliefs, 
-                nn_belief_indices, nn_probs, sweep_type, run, title=f"Order-{order} Approx. Shuffled Unnormalized",
-                loader=loader,
-                checkpoint_key=ckpt,
-                sweep_id=sweep_id,
-                save_figure = is_final_ckpt
-            )
-
-    return f"Completed analysis for {run}"
-
-def main():
-    sweeps = {
-        '20241121152808': 'RNN',
-        '20241205175736': 'Transformer'
-    }
-
-    # Create list of all (sweep_id, run) pairs to analyze
-    all_tasks = []
-    for sweep_id in sweeps:
-        loader = S3ModelLoader()
-        runs = loader.list_runs_in_sweep(sweep_id)
-        all_tasks.extend([(sweep_id, run) for run in runs])
-
-    # Number of CPUs to use (leave some cores free for system)
+            # Normal Markov
+            checkpoint_args.append((
+                model, mark_inputs, nn_type, mark_beliefs,
+                mark_indices, mark_probs, sweep_type,
+                run, sweep_id, f"Order-{order} Approx.",
+                loader, ckpt, is_final_ckpt
+            ))
+            
+            # Unnormalized Markov
+            checkpoint_args.append((
+                model, mark_inputs, nn_type, mark_unnorm,
+                mark_indices, mark_probs, sweep_type,
+                run, sweep_id, f"Order-{order} Approx. Unnormalized",
+                loader, ckpt, is_final_ckpt
+            ))
+            
+            # Shuffled Markov
+            checkpoint_args.append((
+                model, mark_inputs, nn_type, mark_shuffled,
+                mark_indices, mark_probs, sweep_type,
+                run, sweep_id, f"Order-{order} Approx. Shuffled Unnormalized",
+                loader, ckpt, is_final_ckpt
+            ))
+    
+    # Use multiprocessing to analyze checkpoints in parallel
     n_processes = max(1, os.cpu_count() - 2)
-    print(f"Using {n_processes} processes")
-
-    # Run analyses in parallel
+    print(f"Using {n_processes} processes for checkpoint analysis")
+    
     with Pool(processes=n_processes) as pool:
         results = list(tqdm(
-            pool.imap_unordered(analyze_single_run, all_tasks),
-            total=len(all_tasks)
+            pool.imap_unordered(analyze_checkpoint, checkpoint_args),
+            total=len(checkpoint_args),
+            desc=f"Analyzing checkpoints for {run}"
         ))
 
     # Print results
     for result in results:
         print(result)
+
+    return f"Completed analysis for {run}"
 
 if __name__ == '__main__':
     main()

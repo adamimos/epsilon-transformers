@@ -10,22 +10,45 @@ from epsilon_transformers.process.transition_matrices import get_matrix_from_arg
 from epsilon_transformers.process.GHMM import TransitionMatrixGHMM
 from epsilon_transformers.training.networks import RNNWrapper
 from tqdm.auto import tqdm
+from epsilon_transformers.visualization.plots import _project_to_simplex
+
 
 import matplotlib.pyplot as plt
 import numpy as np
 import json
 from epsilon_transformers.analysis.load_data import S3ModelLoader
 import io
+import os
+from multiprocessing import Pool
+import pickle
+import sys
 
-
+def get_process_filename(process_config):
+    name = process_config['name']
+    # all keys other than name are params
+    params = {k: v for k, v in process_config.items() if k != 'name'}
+    string = f"{name}_"
+    for k, v in params.items():
+        if k == list(params.keys())[-1]:  # If this is the last parameter
+            string += f"{k}_{v}"
+        else:
+            string += f"{k}_{v}_"
+    return string
 
 def get_sweep_type(run_id):
     """Determine sweep type from run_id."""
     if 'tom' in run_id:
         return 'tom'
-    elif 'post' in run_id or 'mess3' in run_id:
+    elif 'post' in run_id:
         return 'post'
-    return 'fanizza'
+    elif 'mess3' in run_id:
+        return 'mess3'
+    elif 'fanizza' in run_id:
+        return 'fanizza'
+    elif 'rrxor' in run_id:
+        return 'rrxor'
+    else:
+        raise ValueError(f"Unknown sweep type for run_id: {run_id}")
 
 def get_beliefs_for_nn_inputs(
     nn_inputs: Float[torch.Tensor, "batch n_ctx"], 
@@ -418,6 +441,27 @@ def plot_belief_predictions2(belief_predictions,
         alpha = [.1, .1]
         com = False
         c = distances
+    elif type == 'mess3':
+        inds = [0,1]
+        s = [7, 5]
+        alpha = [.1, .1]
+        com = False
+        c = distances
+        x,y = _project_to_simplex(transformer_input_beliefs_flat)
+        transformer_input_beliefs_flat = np.stack([x,y], axis=1)
+        x,y = _project_to_simplex(belief_predictions_flat)
+        belief_predictions_flat = np.stack([x,y], axis=1)
+    elif type == 'rrxor':
+        inds = [1,2]
+        s = [15, 5]
+        alpha = [.1, .1]
+        com = True
+        c = belief_indices.flatten()
+        # do pca on ground truth
+        pca = PCA(n_components=3)
+        pca.fit(transformer_input_beliefs_flat)
+        transformer_input_beliefs_flat = pca.transform(transformer_input_beliefs_flat)
+        belief_predictions_flat = pca.transform(belief_predictions_flat)
 
     if mode not in ['true', 'predicted', 'both']:
         raise ValueError("Mode must be 'true', 'predicted', or 'both'.")
@@ -588,6 +632,7 @@ def save_figure_to_s3(loader: S3ModelLoader, fig, sweep_id: str, run_id: str, ch
         Body=buf.getvalue(),
         ContentType='image/png'
     )
+    print(f"Saved figure to S3: {analysis_key}")
 
 def plot_belief_prediction_comparison(
     nn_beliefs, nn_belief_indices, 
@@ -666,8 +711,7 @@ def plot_belief_prediction_comparison(
             title=f"belief_predictions_{title}" if title else "belief_predictions"
         )
     
-    plt.show()
-    plt.close()
+    plt.close()  # Close the figure to free memory
 
 def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs, 
                  sweep_type, run_name, layer_idx, title=None, return_results=False,
@@ -866,32 +910,283 @@ def shuffle_belief_norms(unnormalized_beliefs):
     
     return beliefs_2d.reshape(unnormalized_beliefs.shape)
 
-def save_nn_data(loader: S3ModelLoader, sweep_id: str, run_id: str, nn_data: dict):
+def save_nn_data(loader: S3ModelLoader, process_folder_name: str, nn_data: dict):
     """
-    Save neural network data to S3 with optimizations for large tensors.
+    Save neural network data to S3 as individual files for each data type.
     """
-    # Convert tensors to numpy arrays and reduce precision
-    # Convert tensors to numpy arrays and reduce precision
-    serializable_data = {}
+    base_path = f"analysis/process_data/{process_folder_name}"
+    
+    # Save each piece of data as a separate file
     for key, value in nn_data.items():
         if isinstance(value, torch.Tensor):
-            # Convert to float32 to reduce size and keep reasonable precision
+            # Convert tensor to float32 numpy array
             np_array = value.cpu().numpy().astype(np.float32)
-            serializable_data[key] = np_array
+            
+            # Save to bytes buffer
+            buf = io.BytesIO()
+            np.save(buf, np_array)
+            buf.seek(0)
+            
+            # Upload to S3 with descriptive filename
+            analysis_key = f"{base_path}/{key}.npy"
+            loader.s3_client.put_object(
+                Bucket=loader.bucket_name,
+                Key=analysis_key,
+                Body=buf.getvalue()
+            )
         else:
-            serializable_data[key] = value
+            # For non-tensor data, save as JSON
+            analysis_key = f"{base_path}/{key}.json"
+            loader.s3_client.put_object(
+                Bucket=loader.bucket_name,
+                Key=analysis_key,
+                Body=json.dumps(value)
+            )
+        print(f"Saved {key} to S3")
+    print(f"Saved all data to S3")
+
+def load_nn_data(loader: S3ModelLoader, process_folder_name: str):
+    """
+    Load neural network data from S3, where each piece of data is stored as a separate file.
+    Returns a dictionary containing all the loaded data.
+    """
+    base_path = f"analysis/process_data/{process_folder_name}"
+    nn_data = {}
     
-    # Use numpy's save function instead of JSON for better efficiency with numerical data
-    buf = io.BytesIO()
-    np.savez_compressed(buf, **serializable_data)
-    buf.seek(0)
-    
-    # Construct the analysis path with .npz extension
-    analysis_key = f"analysis/{sweep_id}/{run_id}/nn_data.npz"
-    
-    # Upload to S3
-    loader.s3_client.put_object(
+    # List all objects in the folder
+    response = loader.s3_client.list_objects_v2(
         Bucket=loader.bucket_name,
-        Key=analysis_key,
-        Body=buf.getvalue()
+        Prefix=base_path
     )
+    
+    # Load each file
+    for obj in response['Contents']:
+        key = obj['Key']
+        filename = key.split('/')[-1]  # Get just the filename
+        name = filename.split('.')[0]  # Remove extension
+        
+        # Get the file from S3
+        response = loader.s3_client.get_object(
+            Bucket=loader.bucket_name,
+            Key=key
+        )
+        
+        # Load based on file extension
+        if filename.endswith('.npy'):
+            # Load numpy array
+            buf = io.BytesIO(response['Body'].read())
+            nn_data[name] = torch.from_numpy(np.load(buf))
+        elif filename.endswith('.json'):
+            # Load JSON data
+            nn_data[name] = json.loads(response['Body'].read())
+            
+    return nn_data
+
+def plot_belief_predictions2_pyqt(
+    belief_predictions,
+    transformer_input_beliefs,
+    transformer_input_belief_indices,
+    type='tom',
+    title=None,
+    mode='both'
+):
+    """
+    Plot belief predictions using PyQtGraph.
+    
+    Parameters:
+    - belief_predictions (np.ndarray): Predicted belief states
+    - transformer_input_beliefs (torch.Tensor): True belief states
+    - transformer_input_belief_indices (torch.Tensor): Indices of belief states
+    - type (str): Type of plot ('tom', 'fanizza', or 'post')
+    - title (str): Title for the window
+    - mode (str): What to plot ('true', 'predicted', 'both')
+    """
+    import pyqtgraph as pg
+    from pyqtgraph.Qt import QtWidgets
+    import numpy as np
+
+    # Initialize Qt app if not already running
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        app = QtWidgets.QApplication([])
+
+    # Create window with GraphicsLayoutWidget
+    win = pg.GraphicsLayoutWidget(show=True, title=title if title else "Belief Predictions")
+    win.resize(800, 400)
+    plot = win.addPlot()
+
+    # Prepare data
+    belief_predictions_flat = belief_predictions.reshape(-1, belief_predictions.shape[-1])
+    transformer_input_beliefs_flat = transformer_input_beliefs.reshape(-1, transformer_input_beliefs.shape[-1]).cpu().numpy()
+    
+    # Compute distances from origin for true beliefs (this is our color parameter)
+    if type == 'tom':
+        inds = [1, 2]
+        size = [3, 1]
+        alpha = [100, 50]
+        c = np.sqrt(np.sum(transformer_input_beliefs_flat[:, 1:]**2, axis=1))
+    elif type == 'fanizza':
+        inds = [2, 3]
+        size = [5, 2]
+        alpha = [150, 100]
+        c = transformer_input_belief_indices.cpu().numpy().flatten()
+    elif type == 'post':
+        inds = [1, 2]
+        size = [5, 2]
+        alpha = [100, 100]
+        c = np.sqrt(np.sum(transformer_input_beliefs_flat[:, 1:]**2, axis=1))
+
+    # Create color map
+    cmap = pg.colormap.get('viridis')
+    # Normalize c to [0, 1]
+    c_norm = (c - c.min()) / (c.max() - c.min())
+    
+    # Create brushes for each point
+    brushes_true = [pg.mkBrush(color=cmap.map(val, mode='qcolor')) for val in c_norm]
+    brushes_pred = [pg.mkBrush(color=cmap.map(val, mode='qcolor')) for val in c_norm]
+    
+    # Adjust alpha for each brush
+    for brush in brushes_true:
+        color = brush.color()
+        color.setAlpha(alpha[0])
+        brush.setColor(color)
+    for brush in brushes_pred:
+        color = brush.color()
+        color.setAlpha(alpha[1])
+        brush.setColor(color)
+
+    # Plot based on mode
+    if mode in ['true', 'both']:
+        scatter_true = pg.ScatterPlotItem(
+            x=transformer_input_beliefs_flat[:, inds[0]],
+            y=transformer_input_beliefs_flat[:, inds[1]],
+            pen=None,
+            symbol='o',
+            size=size[0],
+            brush=brushes_true,
+            name='True Beliefs'
+        )
+        plot.addItem(scatter_true)
+
+    if mode in ['predicted', 'both']:
+        scatter_pred = pg.ScatterPlotItem(
+            x=belief_predictions_flat[:, inds[0]],
+            y=belief_predictions_flat[:, inds[1]],
+            pen=None,
+            symbol='o',
+            size=size[1],
+            brush=brushes_pred,
+            name='Predicted Beliefs'
+        )
+        plot.addItem(scatter_pred)
+
+    # Add legend if showing both
+    if mode == 'both':
+        plot.addLegend()
+
+    # Remove axes
+    plot.hideAxis('left')
+    plot.hideAxis('bottom')
+
+    # Set background to white
+    #plot.setBackground('w')
+
+    return win, app
+
+# Example usage in a standalone script:
+if __name__ == "__main__":
+    win, app = plot_belief_predictions2_pyqt(
+        belief_predictions=belief_predictions,
+        transformer_input_beliefs=transformer_input_beliefs,
+        transformer_input_belief_indices=transformer_input_belief_indices,
+        type='tom',
+        title='Belief Predictions',
+        mode='both'
+    )
+    app.exec_()  # Start the event loop
+
+
+class ProcessDataLoader:
+    def __init__(self, s3_loader: S3ModelLoader):
+        self.s3_loader = s3_loader
+
+    def load_or_generate_process_data(self, sweep_id: str, run: str, model, config):
+        """Load existing process data or generate new data if it doesn't exist."""
+        process_config = config['process_config']
+        process_folder_name = get_process_filename(process_config)
+
+        try:
+            return self._load_existing_data(process_folder_name)
+        except Exception as e:
+            print(f"No existing data found or error loading data: {e}")
+            return self._generate_new_data(process_folder_name, config, model)
+
+    def _load_existing_data(self, process_folder_name: str):
+        """Load existing process data from S3."""
+        print(f"Attempting to load existing process data for {process_folder_name}")
+        nn_data = load_nn_data(self.s3_loader, process_folder_name)
+        print(f"Successfully loaded existing process data")
+
+        # Extract and structure the data
+        base_data = {
+            'inputs': nn_data['inputs'],
+            'beliefs': nn_data['beliefs'],
+            'belief_indices': nn_data['belief_indices'],
+            'probs': nn_data['probs'],
+            'unnormalized_beliefs': nn_data['unnormalized_beliefs'],
+            'shuffled_beliefs': nn_data['shuffled_beliefs']
+        }
+
+        # Extract Markov data
+        markov_data = []
+        for order in range(3):
+            markov_data.append((
+                nn_data[f'markov_order_{order}_inputs'],
+                nn_data[f'markov_order_{order}_beliefs'],
+                nn_data[f'markov_order_{order}_indices'],
+                nn_data[f'markov_order_{order}_probs'],
+                nn_data[f'markov_order_{order}_unnormalized']
+            ))
+
+        return base_data, markov_data
+
+    def _generate_new_data(self, process_folder_name: str, config, model):
+        """Generate new process data and save it."""
+        print(f"Generating new process data...")
+        
+        # Generate base data
+        nn_data = prepare_msp_data(config, config['model_config'])
+        (nn_inputs, nn_beliefs, nn_belief_indices, 
+         nn_probs, nn_unnormalized_beliefs) = nn_data
+        
+        # Structure the data
+        data_to_save = {
+            'inputs': nn_inputs,
+            'beliefs': nn_beliefs,
+            'belief_indices': nn_belief_indices,
+            'probs': nn_probs,
+            'unnormalized_beliefs': nn_unnormalized_beliefs,
+            'shuffled_beliefs': shuffle_belief_norms(nn_unnormalized_beliefs)
+        }
+
+        # Generate Markov data
+        markov_data = markov_approx_msps(config, max_order=3)
+        for order, mark_data in enumerate(markov_data):
+            mark_inputs, mark_beliefs, mark_indices, mark_probs, mark_unnorm = mark_data
+            mark_shuffled = shuffle_belief_norms(mark_unnorm)
+            
+            data_to_save.update({
+                f'markov_order_{order}_inputs': mark_inputs,
+                f'markov_order_{order}_beliefs': mark_beliefs,
+                f'markov_order_{order}_indices': mark_indices,
+                f'markov_order_{order}_probs': mark_probs,
+                f'markov_order_{order}_unnormalized': mark_unnorm,
+                f'markov_order_{order}_shuffled': mark_shuffled
+            })
+
+        # Save the generated data
+        print(f'Data size = {sys.getsizeof(data_to_save)/1024**2} MB')
+        save_nn_data(self.s3_loader, process_folder_name, data_to_save)
+
+        base_data = {k: data_to_save[k] for k in ['inputs', 'beliefs', 'belief_indices', 'probs', 'unnormalized_beliefs', 'shuffled_beliefs']}
+        return base_data, markov_data
