@@ -701,17 +701,28 @@ def find_msp_subspace_in_residual_stream(model: HookedTransformer, process: GHMM
     return ground_truth_belief_states_reshaped, predicted_beliefs
 
 def get_activations(model, nn_inputs, nn_type):
-    if nn_type == 'transformer':
-        _, cache = model.run_with_cache(nn_inputs, names_filter=lambda x: 'resid' in x or 'ln_final.hook_normalized' in x)
-        max_layers = 10
-        relevant_activation_keys = ['blocks.0.hook_resid_pre'] + [f'blocks.{i}.hook_resid_post' for i in range(max_layers)] + ['ln_final.hook_normalized']
-        acts = torch.stack([v for k,v in cache.items() if k in relevant_activation_keys and k in cache], dim=0)
-        return  acts
-    elif nn_type == 'rnn':
-        a, b = model.forward_with_all_states(nn_inputs)
-        return b['layer_states']
-    else:
-        raise ValueError(f"Model type {nn_type} not supported")
+    print(f"Starting get_activations for {nn_type}")
+    try:
+        # move model to cpu
+        model = model.cpu()
+        if nn_type == 'transformer':
+            print("Running transformer activation collection")
+            _, cache = model.run_with_cache(nn_inputs, names_filter=lambda x: 'resid' in x or 'ln_final.hook_normalized' in x)
+            max_layers = 10
+            relevant_activation_keys = ['blocks.0.hook_resid_pre'] + [f'blocks.{i}.hook_resid_post' for i in range(max_layers)] + ['ln_final.hook_normalized']
+            acts = torch.stack([v for k,v in cache.items() if k in relevant_activation_keys and k in cache], dim=0)
+            print(f"Successfully collected transformer activations with shape {acts.shape}")
+            return acts
+        elif nn_type == 'rnn':
+            print("Running RNN activation collection")
+            a, b = model.forward_with_all_states(nn_inputs)
+            print(f"Successfully collected RNN activations with shape {b['layer_states'].shape}")
+            return b['layer_states']
+        else:
+            raise ValueError(f"Model type {nn_type} not supported")
+    except Exception as e:
+        print(f"Error in get_activations: {str(e)}")
+        raise
 
 def save_figure_to_s3(loader: S3ModelLoader, fig, sweep_id: str, run_id: str, checkpoint_key: str, title: str):
     """
