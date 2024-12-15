@@ -987,7 +987,6 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
                            loader=None, checkpoint_key=None, save_figure=False):
     """Analyze a single model checkpoint and optionally save results."""
     
-    print(f"Analyzing {checkpoint_key} - title {title}")
     acts = get_activations(model, nn_inputs, nn_type)
     results = {
         'model_type': nn_type,
@@ -1039,6 +1038,7 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
                             results=results,
                             title=title
                             )
+        print(f"Saved results for {title}")
     
     return results
 
