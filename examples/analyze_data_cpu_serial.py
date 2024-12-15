@@ -117,43 +117,8 @@ def main():
                 print(f"Error processing run {run}: {str(e)}")
                 continue
 
-def analyze_checkpoint(args):
-    """Function to analyze a single checkpoint (to be called in parallel)"""
-    ckpt_ind, model, nn_inputs, nn_type, nn_beliefs, nn_belief_indices, nn_probs, sweep_type, run, sweep_id, title, ckpt, is_final_ckpt = args
-    print(f"Analyzing ckpt {ckpt_ind} {title}")
-
-    # Create new loader instance for this process
-    loader = S3ModelLoader()
-    
-    # Check if this specific analysis has already been completed
-    if check_checkpoint_completed(loader, sweep_id, run, ckpt):
-        return f"Skipped completed analysis for {run} checkpoint {ckpt} - {title}"
-    
-    print(f"initiating analysis for {title}")
-    # Analyze model checkpoint with the prepared data
-    analyze_model_checkpoint(
-        model=model,
-        nn_inputs=nn_inputs,
-        nn_type=nn_type,
-        nn_beliefs=nn_beliefs,
-        nn_belief_indices=nn_belief_indices,
-        nn_probs=nn_probs,
-        sweep_type=sweep_type,
-        run_name=run,
-        sweep_id=sweep_id,
-        title=title,
-        loader=loader,
-        checkpoint_key=ckpt,
-        save_figure=is_final_ckpt
-    )
-    
-    # Mark this specific analysis as completed
-    mark_checkpoint_completed(loader, sweep_id, run, ckpt)
-    
-    return f"Completed analysis for {run} checkpoint {ckpt} - {title}"
-
 def analyze_single_run(args):
-    """Function to analyze a single run, parallelizing across checkpoints"""
+    """Function to analyze a single run serially"""
     sweep_id, run = args
     start_time = time.time()
     
@@ -184,16 +149,18 @@ def analyze_single_run(args):
     ckpts = loader.list_checkpoints(sweep_id, run)
     nn_type = model_type(model)
 
-    # Prepare arguments for parallel checkpoint analysis
-    prep_start = time.time()
-    checkpoint_args = []
-    for ckpt_ind, ckpt in enumerate(tqdm(ckpts, desc="Preparing checkpoint arguments")):
+    # Process checkpoints serially
+    for ckpt_ind, ckpt in enumerate(tqdm(ckpts, desc="Processing checkpoints")):
+        ckpt_start = time.time()
+        
         # Skip if checkpoint is already completed
         if check_checkpoint_completed(loader, sweep_id, run, ckpt):
+            print(f"Skipping completed checkpoint {ckpt_ind}")
             continue
 
-        is_final_ckpt = True
+        is_final_ckpt = ckpt == ckpts[-1]
         
+        # Load model for this checkpoint
         model, config = loader.load_checkpoint(
             sweep_id=sweep_id,
             run_id=run,
@@ -202,7 +169,7 @@ def analyze_single_run(args):
         )
         sweep_type = get_sweep_type(run)
         
-        # Add all analyses for this checkpoint
+        # Define analyses to run
         analyses = [
             (nn_inputs, nn_beliefs, "Normalized Beliefs"),
             (nn_inputs, nn_unnormalized_beliefs, "Unnormalized Beliefs"),
@@ -218,73 +185,33 @@ def analyze_single_run(args):
                 (mark_inputs, mark_shuffled, f"Order-{order} Approx. Shuffled Unnormalized")
             ])
         
-        # Create argument tuple for this checkpoint
-        checkpoint_args.append((
-            ckpt_ind, model, analyses, nn_type, nn_belief_indices, nn_probs, 
-            sweep_type, run, sweep_id, ckpt, is_final_ckpt
-        ))
-    print(f"Checkpoint argument preparation took {time.time() - prep_start:.2f}s")
-
-    if not checkpoint_args:
-        print("All checkpoints already analyzed")
-        return f"Skipped all checkpoints for {run}"
-
-    # Run parallel analysis
-    analysis_start = time.time()
-    n_processes = max(1, 4)
-    print(f"Using {n_processes} processes for checkpoint analysis")
-
-    batch_size = 200
-    checkpoint_batches = [checkpoint_args[i:i+batch_size] for i in range(0, len(checkpoint_args), batch_size)]
+        # Run each analysis for this checkpoint
+        print(f"\nProcessing checkpoint {ckpt_ind}")
+        for i, (inputs, beliefs, title) in enumerate(analyses):
+            analysis_start = time.time()
+            analyze_model_checkpoint(
+                model=model,
+                nn_inputs=inputs,
+                nn_type=nn_type,
+                nn_beliefs=beliefs,
+                nn_belief_indices=nn_belief_indices,
+                nn_probs=nn_probs,
+                sweep_type=sweep_type,
+                run_name=run,
+                sweep_id=sweep_id,
+                title=title,
+                loader=loader,
+                checkpoint_key=ckpt,
+                save_figure=is_final_ckpt
+            )
+            print(f"Analysis {i+1}/{len(analyses)} ({title}) took {time.time() - analysis_start:.2f}s")
+        
+        # Mark checkpoint as completed
+        mark_checkpoint_completed(loader, sweep_id, run, ckpt)
+        print(f"Checkpoint {ckpt_ind} took {time.time() - ckpt_start:.2f}s")
     
-    with Pool(processes=n_processes) as pool:
-        for batch_idx, batch in enumerate(checkpoint_batches):
-            batch_start = time.time()
-            results = list(tqdm(
-                pool.imap_unordered(analyze_checkpoint_batch, batch),
-                total=len(batch),
-                desc=f"Analyzing batch {batch_idx+1}/{len(checkpoint_batches)} for {run}"
-            ))
-            print(f"Batch {batch_idx+1} took {time.time() - batch_start:.2f}s")
-            time.sleep(.1)
-    
-    print(f"Total analysis time: {time.time() - analysis_start:.2f}s")
     print(f"Total run time: {time.time() - start_time:.2f}s")
     return f"Completed analysis for {run}"
-
-def analyze_checkpoint_batch(args):
-    """Analyze all analyses for a single checkpoint."""
-    ckpt_ind, model, analyses, nn_type, nn_belief_indices, nn_probs, sweep_type, run, sweep_id, ckpt, is_final_ckpt = args
-    
-    start_time = time.time()
-    loader = S3ModelLoader()
-    print(f"Starting analyses for checkpoint {ckpt_ind}")
-    
-    # Run all analyses for this checkpoint
-    for i, (inputs, beliefs, title) in enumerate(analyses):
-        analysis_start = time.time()
-        analyze_model_checkpoint(
-            model=model,
-            nn_inputs=inputs,
-            nn_type=nn_type,
-            nn_beliefs=beliefs,
-            nn_belief_indices=nn_belief_indices,
-            nn_probs=nn_probs,
-            sweep_type=sweep_type,
-            run_name=run,
-            sweep_id=sweep_id,
-            title=title,
-            loader=loader,
-            checkpoint_key=ckpt,
-            save_figure=is_final_ckpt
-        )
-        print(f"Checkpoint {ckpt_ind} analysis {i+1}/{len(analyses)} ({title}) took {time.time() - analysis_start:.2f}s")
-    
-    # Mark the entire checkpoint as completed
-    mark_checkpoint_completed(loader, sweep_id, run, ckpt)
-    
-    print(f"Total checkpoint {ckpt_ind} processing time: {time.time() - start_time:.2f}s")
-    return f"Completed all analyses for checkpoint {ckpt}"
 
 if __name__ == '__main__':
     main()

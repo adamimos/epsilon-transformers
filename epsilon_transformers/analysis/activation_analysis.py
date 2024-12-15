@@ -11,7 +11,7 @@ from epsilon_transformers.process.GHMM import TransitionMatrixGHMM
 from epsilon_transformers.training.networks import RNNWrapper
 from tqdm.auto import tqdm
 from epsilon_transformers.visualization.plots import _project_to_simplex
-
+import time
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -267,6 +267,8 @@ def prepare_msp_data(config, model_config, loader: S3ModelLoader = None):
     return nn_inputs, nn_beliefs, nn_belief_indices, nn_probs, nn_unnormalized_beliefs
 
 def run_activation_to_beliefs_regression(activations, ground_truth_beliefs, sample_weights=None):
+    start_time = time.time()
+    print("Starting activation to beliefs regression...")
 
     # make sure the first two dimensions are the same
     assert activations.shape[0] == ground_truth_beliefs.shape[0]
@@ -283,8 +285,10 @@ def run_activation_to_beliefs_regression(activations, ground_truth_beliefs, samp
     activations_flattened = activations.detach().reshape(-1, d_model) # [batch * n_ctx, d_model]
     ground_truth_beliefs_flattened = ground_truth_beliefs.view(-1, belief_dim) # [batch * n_ctx, belief_dim]
     sample_weights_flattened = sample_weights.view(-1) if sample_weights is not None else None
+    print(f"Data preparation took {time.time() - start_time:.2f}s")
 
     # run the regression
+    regression_start = time.time()
     regression = LinearRegression()
     regression.fit(activations_flattened, ground_truth_beliefs_flattened, sample_weight=sample_weights_flattened)
 
@@ -295,8 +299,10 @@ def run_activation_to_beliefs_regression(activations, ground_truth_beliefs, samp
         mse = (((torch.tensor(belief_predictions).view(-1, belief_dim) - ground_truth_beliefs_flattened)**2) * sample_weights_flattened.unsqueeze(-1)).mean()
     else:
         mse = ((torch.tensor(belief_predictions).view(-1, belief_dim) - ground_truth_beliefs_flattened)**2).mean()
+    print(f"Initial regression took {time.time() - regression_start:.2f}s")
 
     # cross-validation
+    cv_start = time.time()
     n_samples = activations_flattened.shape[0]
     n_train = n_samples // 2
     
@@ -320,8 +326,10 @@ def run_activation_to_beliefs_regression(activations, ground_truth_beliefs, samp
         mse_cv = (((torch.tensor(belief_predictions_cv).view(-1, belief_dim) - ground_truth_beliefs_flattened[test_inds])**2) * sample_weights_flattened[test_inds].unsqueeze(-1)).mean()
     else:
         mse_cv = ((torch.tensor(belief_predictions_cv).view(-1, belief_dim) - ground_truth_beliefs_flattened[test_inds])**2).mean()
-    
+    print(f"Cross-validation took {time.time() - cv_start:.2f}s")
 
+    # shuffled regression
+    shuffle_start = time.time()
     shuffle_indices = torch.randperm(activations_flattened.shape[0])
     activations_flattened_shuffled = activations_flattened
     ground_truth_beliefs_flattened_shuffled = ground_truth_beliefs_flattened[shuffle_indices]
@@ -333,8 +341,9 @@ def run_activation_to_beliefs_regression(activations, ground_truth_beliefs, samp
         mse_shuffled = (((torch.tensor(belief_predictions_shuffled).view(-1, belief_dim) - ground_truth_beliefs_flattened_shuffled)**2) * sample_weights_flattened.unsqueeze(-1)).mean()
     else:
         mse_shuffled = ((torch.tensor(belief_predictions_shuffled).view(-1, belief_dim) - ground_truth_beliefs_flattened_shuffled)**2).mean()
+    print(f"Shuffled regression took {time.time() - shuffle_start:.2f}s")
 
-    
+    print(f"Total regression analysis took {time.time() - start_time:.2f}s")
 
     return regression, belief_predictions, mse, mse_shuffled, belief_predictions_shuffled, mse_cv, belief_predictions_cv, test_inds
 
@@ -778,6 +787,7 @@ def plot_belief_prediction_comparison(
     run_id, title=None, loader=None, checkpoint_key=None, sweep_id=None
 ):
     """Plot and optionally save belief prediction comparisons."""
+    time_start = time.time()
     fig, ax = plt.subplots(1, 4, figsize=(10, 3))
     
     plot_belief_predictions2(
@@ -849,19 +859,24 @@ def plot_belief_prediction_comparison(
         )
     
     plt.close()  # Close the figure to free memory
-
+    print(f"Plotting took {time.time() - time_start:.2f}s")
 def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs, 
                  sweep_type, run_name, layer_idx, title=None, return_results=False,
                  loader=None, checkpoint_key=None, sweep_id=None, run_id=None, save_figure=False):  # Added save_figure parameter
     """Analyze a single layer's activations and plot results."""
+    start_time = time.time()
     #print(f"Layer {layer_idx} shape:", layer_acts.shape)
     
+    regression_start = time.time()
     (regression, belief_predictions, mse, mse_shuffled, 
      belief_predictions_shuffled, mse_cv, belief_predictions_cv, 
      test_inds) = run_activation_to_beliefs_regression(
         layer_acts, nn_beliefs, nn_probs
     )
+    print(f"Regression analysis took {time.time() - regression_start:.2f}s")
+    
     if save_figure:  # Use the parameter
+        plot_start = time.time()
         plot_belief_prediction_comparison(
             nn_beliefs, nn_belief_indices, 
             belief_predictions, belief_predictions_shuffled, belief_predictions_cv,
@@ -872,6 +887,9 @@ def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs,
             checkpoint_key=checkpoint_key,
             sweep_id=sweep_id,
         )
+        print(f"Plotting took {time.time() - plot_start:.2f}s")
+
+    print(f"Total layer analysis time: {time.time() - start_time:.2f}s")
 
     if return_results:
         return {
@@ -890,16 +908,22 @@ def analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
                       sweep_type, run_name, title=None, return_results=False,
                       loader=None, checkpoint_key=None, sweep_id=None, run_id=None, save_figure=False):
     """Analyze concatenated activations from all layers."""
+    start_time = time.time()
+    
     all_layers_acts = acts.permute(1,2,0,3).reshape(acts.shape[1], acts.shape[2], -1)
+    print(f"Reshaping activations took {time.time() - start_time:.2f}s")
     #print("All layers concatenated shape:", all_layers_acts.shape)
 
+    regression_start = time.time()
     (regression, belief_predictions, mse, mse_shuffled, 
      belief_predictions_shuffled, mse_cv, belief_predictions_cv, 
      test_inds) = run_activation_to_beliefs_regression(
         all_layers_acts, nn_beliefs, nn_probs
     )
+    print(f"Regression analysis took {time.time() - regression_start:.2f}s")
 
     if save_figure:
+        plot_start = time.time()
         plot_belief_prediction_comparison(
             nn_beliefs, nn_belief_indices, 
             belief_predictions, belief_predictions_shuffled, belief_predictions_cv,
@@ -910,6 +934,9 @@ def analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
             checkpoint_key=checkpoint_key,
             sweep_id=sweep_id,
         )   
+        print(f"Plotting took {time.time() - plot_start:.2f}s")
+
+    print(f"Total analysis time: {time.time() - start_time:.2f}s")
 
     if return_results:
         return {
@@ -928,6 +955,8 @@ def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, che
     """
     Save analysis results to S3, handling large files by splitting or compressing.
     """
+    start_time = time.time()
+    
     # Extract checkpoint number from key
     checkpoint_num = checkpoint_key.split('/')[-1].replace('.pt', '')
     
@@ -953,9 +982,12 @@ def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, che
                 metadata[full_key] = value
 
     # Process the results dictionary
+    dict_start = time.time()
     process_dict(results)
+    print(f"Processing dictionary took {time.time() - dict_start:.2f}s")
 
     # Save metadata
+    metadata_start = time.time()
     metadata_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/metadata.json"
     metadata_json = json.dumps(metadata, cls=NumpyEncoder)
     loader.s3_client.put_object(
@@ -963,8 +995,10 @@ def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, che
         Key=metadata_key,
         Body=metadata_json
     )
+    print(f"Saving metadata took {time.time() - metadata_start:.2f}s")
 
     # Save large arrays separately using numpy's compressed format
+    arrays_start = time.time()
     for key, data in large_data.items():
         array_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/arrays/{key}.npz"
         
@@ -983,6 +1017,9 @@ def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, che
             Key=array_key,
             Body=buf.getvalue()
         )
+    print(f"Saving large arrays took {time.time() - arrays_start:.2f}s")
+    
+    print(f"Total save time: {time.time() - start_time:.2f}s")
 
 def load_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, checkpoint_key: str):
     """
@@ -1009,14 +1046,14 @@ def load_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, che
 
 def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_indices, 
                            nn_probs, sweep_type, run_name, sweep_id, title=None, save_results=True, 
-                           loader=None, checkpoint_key=None, save_figure=False):
+                           loader=None, checkpoint_key=None, save_figure=False, return_results=False):
     """Analyze a single model checkpoint and optionally save results."""
+    start_time = time.time()
     
-    print(f"Getting activations for model checkpoint with title: {title}")
+    acts_start = time.time()
     acts = get_activations(model, nn_inputs, nn_type)
-    print(f"Successfully got activations with shape: {acts.shape}")
+    print(f"Getting activations took {time.time() - acts_start:.2f}s")
     
-    print("Creating results dictionary...")
     results = {
         'model_type': nn_type,
         'sweep_type': sweep_type,
@@ -1025,68 +1062,60 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
         'layers': []
     }
 
-    print("Determining layer names based on model type...")
+    layer_names_start = time.time()
     if nn_type == 'transformer':
-        print("Model is a transformer - using transformer layer naming convention")
         layer_names = ['embed'] + [f'layer {i}' for i in range(1, acts.shape[0]-1)] + ['final norm']
     elif nn_type == 'rnn':
-        print("Model is an RNN - using RNN layer naming convention") 
         layer_names = [f'layer {i}' for i in range(acts.shape[0])]
     else:
         raise ValueError(f"Model type {nn_type} not supported - must be 'transformer' or 'rnn'")
-    print(f"Layer names determined: {layer_names}")
+    print(f"Layer name determination took {time.time() - layer_names_start:.2f}s")
 
     # Special case for single-layer RNNs
     if nn_type == 'rnn' and acts.shape[0] == 1:
-        print("Single layer RNN detected - analyzing all layers together")
+        single_layer_start = time.time()
         title_all_layers = f"All Layers" + (f" - {title}" if title else "")
-        print(f"Analyzing with title: {title_all_layers}")
         
         layer_results = analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
                                          sweep_type, run_name, title_all_layers, return_results=True,
                                          loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, 
                                          run_id=run_name, save_figure=save_figure)
-        print("Analysis complete for single layer RNN")
+        print(f"Single layer analysis took {time.time() - single_layer_start:.2f}s")
         results['all_layers'] = layer_results
     else:
-        print("Multi-layer model detected - analyzing each layer individually")
+        multi_layer_start = time.time()
         # Analyze each layer individually
         for layer_idx in range(acts.shape[0]):
-            print(f"\nAnalyzing layer {layer_idx} of {acts.shape[0]-1}")
+            layer_start = time.time()
             title_layer = f"Layer {layer_idx}" + (f" - {title}" if title else "")
-            print(f"Layer title: {title_layer}")
             
-            print(f"Getting results for layer {layer_idx}...")
             layer_results = analyze_layer(acts[layer_idx], nn_beliefs, nn_belief_indices,
                                         nn_probs, sweep_type, run_name, layer_names[layer_idx], 
                                         title_layer, return_results=True,
                                         loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, 
                                         run_id=run_name, save_figure=save_figure)
-            print(f"Successfully analyzed layer {layer_idx}")
             
-            print("Appending layer results to overall results...")
             layer_dict = {
                 'layer_name': layer_names[layer_idx],
                 **layer_results
             }
             results['layers'].append(layer_dict)
+            print(f"Layer {layer_idx} analysis took {time.time() - layer_start:.2f}s")
         
-        print("\nAnalyzing all layers together...")
+        all_layers_start = time.time()
         title_all_layers = f"All Layers" + (f" - {title}" if title else "")
-        print(f"All layers title: {title_all_layers}")
         
         all_layers_results = analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
                                               sweep_type, run_name, title_all_layers, return_results=True,
                                               loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, 
                                               run_id=run_name)
-        print("Successfully analyzed all layers together")
+        print(f"All layers analysis took {time.time() - all_layers_start:.2f}s")
         results['all_layers'] = all_layers_results
+        print(f"Multi-layer analysis took {time.time() - multi_layer_start:.2f}s")
 
-    print("\nAnalysis complete - handling results saving...")
-    if save_results and loader is not None and checkpoint_key is not None:
-        print("Saving analysis results to storage...")
+    if save_results and loader is not None and checkpoint_key is not None and not return_results:
+        save_start = time.time()
         if title is None:
-            print("Warning: title is None, but required for saving results")
             title = "untitled_analysis"
         save_analysis_results(loader, 
                             sweep_id=sweep_id, 
@@ -1094,12 +1123,12 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
                             checkpoint_key=checkpoint_key, 
                             results=results,
                             title=title)
-        print(f"Successfully saved results with title: {title}")
-    else:
-        print("Skipping results saving - missing required parameters")
+        print(f"Saving results took {time.time() - save_start:.2f}s")
     
-    print("Returning analysis results")
-    return results
+    print(f"Total analysis time: {time.time() - start_time:.2f}s")
+    
+    if return_results:
+        return results
 
 def shuffle_belief_norms(unnormalized_beliefs, loader: S3ModelLoader = None, process_config: dict = None):
     """Shuffle the norms of the beliefs with caching."""
@@ -1364,7 +1393,8 @@ class ProcessDataLoader:
                 nn_data[f'markov_order_{order}_beliefs'],
                 nn_data[f'markov_order_{order}_indices'],
                 nn_data[f'markov_order_{order}_probs'],
-                nn_data[f'markov_order_{order}_unnormalized']
+                nn_data[f'markov_order_{order}_unnormalized'],
+                nn_data[f'markov_order_{order}_shuffled']  # Add shuffled data
             ))
 
         return base_data, markov_data
