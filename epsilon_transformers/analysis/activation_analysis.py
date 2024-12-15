@@ -24,6 +24,11 @@ import pickle
 import sys
 import json
 import numpy as np
+import asyncio
+import aioboto3
+from concurrent.futures import ThreadPoolExecutor
+from queue import Queue
+import threading
 
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -951,75 +956,38 @@ def analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
             'test_indices': test_inds
         }
 
-def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, checkpoint_key: str, results: dict, title: str = None):
-    """
-    Save analysis results to S3, handling large files by splitting or compressing.
-    """
-    start_time = time.time()
+def save_analysis_results(loader, sweep_id, run_id, checkpoint_key, results, title):
+    """Save analysis results with async uploading"""
+    queue_start = time.time()
     
-    # Extract checkpoint number from key
-    checkpoint_num = checkpoint_key.split('/')[-1].replace('.pt', '')
-    
-    # Separate large arrays from metadata
-    large_data = {}
-    metadata = {}
-    
-    def is_large_array(obj):
-        if isinstance(obj, (np.ndarray, torch.Tensor)):
-            return obj.nbytes > 1e8  # 100MB threshold
-        return False
-
-    def process_dict(d, prefix=''):
-        for key, value in d.items():
-            full_key = f"{prefix}/{key}" if prefix else key
-            
-            if isinstance(value, dict):
-                process_dict(value, full_key)
-            elif is_large_array(value):
-                large_data[full_key] = value
-                metadata[full_key] = f"large_array_ref:{full_key}"
-            else:
-                metadata[full_key] = value
-
-    # Process the results dictionary
-    dict_start = time.time()
-    process_dict(results)
-    print(f"Processing dictionary took {time.time() - dict_start:.2f}s")
-
-    # Save metadata
-    metadata_start = time.time()
-    metadata_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/metadata.json"
-    metadata_json = json.dumps(metadata, cls=NumpyEncoder)
-    loader.s3_client.put_object(
-        Bucket=loader.bucket_name,
-        Key=metadata_key,
-        Body=metadata_json
-    )
-    print(f"Saving metadata took {time.time() - metadata_start:.2f}s")
-
-    # Save large arrays separately using numpy's compressed format
-    arrays_start = time.time()
-    for key, data in large_data.items():
-        array_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/arrays/{key}.npz"
-        
-        # Convert to numpy if tensor
-        if isinstance(data, torch.Tensor):
-            data = data.cpu().numpy()
-        
-        # Use BytesIO to create compressed numpy file in memory
-        buf = io.BytesIO()
-        np.savez_compressed(buf, data=data)
-        buf.seek(0)
-        
-        # Upload compressed array
-        loader.s3_client.put_object(
-            Bucket=loader.bucket_name,
-            Key=array_key,
-            Body=buf.getvalue()
+    # Initialize uploader if not already done
+    if not hasattr(loader, 'async_uploader'):
+        loader.async_uploader = AsyncS3Uploader(
+            bucket_name=loader.bucket_name,
+            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+            region_name=os.getenv('AWS_DEFAULT_REGION')
         )
-    print(f"Saving large arrays took {time.time() - arrays_start:.2f}s")
+
+    # Prepare paths
+    checkpoint_num = checkpoint_key.split('/')[-1].replace('.pt', '')
+    base_path = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/{title}"
     
-    print(f"Total save time: {time.time() - start_time:.2f}s")
+    # Convert results to JSON
+    metadata = {
+        'sweep_id': sweep_id,
+        'run_id': run_id,
+        'checkpoint': checkpoint_num,
+        'title': title,
+        'results': results
+    }
+    metadata_json = json.dumps(metadata, cls=NumpyEncoder)
+    
+    # Queue the upload and immediately return
+    loader.async_uploader.queue_upload(f"{base_path}/metadata.json", metadata_json)
+    print(f"Queued upload for {base_path} (took {time.time() - queue_start:.2f}s to prepare and queue)")
+    
+    return f"Queued upload for {base_path}"
 
 def load_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, checkpoint_key: str):
     """
@@ -1439,3 +1407,50 @@ class ProcessDataLoader:
 
         base_data = {k: data_to_save[k] for k in ['inputs', 'beliefs', 'belief_indices', 'probs', 'unnormalized_beliefs', 'shuffled_beliefs']}
         return base_data, markov_data
+
+class AsyncS3Uploader:
+    def __init__(self, bucket_name, aws_access_key_id, aws_secret_access_key, region_name):
+        self.bucket_name = bucket_name
+        self.aws_access_key_id = aws_access_key_id
+        self.aws_secret_access_key = aws_secret_access_key
+        self.region_name = region_name
+        self.upload_queue = Queue()
+        self.upload_thread = threading.Thread(target=self._upload_worker, daemon=True)
+        self.upload_thread.start()
+
+    def _upload_worker(self):
+        """Background worker that processes uploads from the queue"""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        async def process_queue():
+            while True:
+                key, data = await loop.run_in_executor(None, self.upload_queue.get)
+                if key is None and data is None:
+                    break
+                    
+                try:
+                    upload_start = time.time()
+                    session = aioboto3.Session()
+                    async with session.client('s3',
+                        aws_access_key_id=self.aws_access_key_id,
+                        aws_secret_access_key=self.aws_secret_access_key,
+                        region_name=self.region_name
+                    ) as s3:
+                        await s3.put_object(Bucket=self.bucket_name, Key=key, Body=data)
+                        print(f"Background upload completed for {key} (took {time.time() - upload_start:.2f}s)")
+                except Exception as e:
+                    print(f"Error uploading {key}: {e}")
+                
+                self.upload_queue.task_done()
+
+        loop.run_until_complete(process_queue())
+
+    def queue_upload(self, key, data):
+        """Queue a file for upload"""
+        self.upload_queue.put((key, data))
+
+    def shutdown(self):
+        """Shutdown the uploader and wait for remaining uploads"""
+        self.upload_queue.put((None, None))  # Signal to stop
+        self.upload_thread.join()
