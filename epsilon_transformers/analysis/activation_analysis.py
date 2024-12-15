@@ -136,8 +136,88 @@ def prepare_data_from_msp(msp, path_length):
     
     return nn_inputs, nn_beliefs, nn_belief_indices, nn_probs, nn_unnormalized_beliefs
 
-def prepare_msp_data(config, model_config):
-    """Prepare MSP belief states and transformer inputs."""
+def get_process_hash(process_config: dict) -> str:
+    """Generate a unique hash for a process configuration."""
+    # Sort the dictionary to ensure consistent hashing
+    sorted_config = dict(sorted(process_config.items()))
+    # Convert to JSON string and encode
+    config_str = json.dumps(sorted_config, sort_keys=True)
+    # Create hash
+    return hashlib.md5(config_str.encode()).hexdigest()
+
+def get_process_data_path(process_config: dict, loader: S3ModelLoader) -> str:
+    """Generate the S3 path for cached process data."""
+    process_hash = get_process_hash(process_config)
+    process_name = process_config.get('process_name', 'unknown_process')
+    return f"analysis/process_data/{process_name}_{process_hash}"
+
+def save_process_data(data: dict, process_config: dict, loader: S3ModelLoader):
+    """Save process data to S3."""
+    path = get_process_data_path(process_config, loader)
+    
+    # Convert tensors to numpy arrays
+    serializable_data = {}
+    for key, value in data.items():
+        if isinstance(value, torch.Tensor):
+            serializable_data[key] = value.cpu().numpy()
+        else:
+            serializable_data[key] = value
+    
+    # Save the process config alongside the data
+    serializable_data['process_config'] = process_config
+    
+    # Use numpy's compressed format
+    buf = io.BytesIO()
+    np.savez_compressed(buf, **serializable_data)
+    buf.seek(0)
+    
+    loader.s3_client.put_object(
+        Bucket=loader.bucket_name,
+        Key=f"{path}/data.npz",
+        Body=buf.getvalue()
+    )
+
+def load_process_data(process_config: dict, loader: S3ModelLoader) -> dict:
+    """Load process data from S3 if it exists."""
+    path = get_process_data_path(process_config, loader)
+    
+    try:
+        # Try to load the data
+        response = loader.s3_client.get_object(
+            Bucket=loader.bucket_name,
+            Key=f"{path}/data.npz"
+        )
+        
+        # Load the compressed numpy data
+        with io.BytesIO(response['Body'].read()) as buf:
+            data = np.load(buf, allow_pickle=True)
+            
+            # Convert back to dictionary
+            result = {key: data[key] for key in data.files}
+            
+            # Convert numpy arrays back to tensors where appropriate
+            for key in ['nn_inputs', 'nn_beliefs', 'nn_belief_indices', 'nn_probs', 'nn_unnormalized_beliefs']:
+                if key in result:
+                    result[key] = torch.from_numpy(result[key])
+            
+            return result
+            
+    except loader.s3_client.exceptions.NoSuchKey:
+        return None
+
+def prepare_msp_data(config, model_config, loader: S3ModelLoader = None):
+    """Prepare MSP data with caching."""
+    if loader is not None:
+        # Try to load cached data
+        cached_data = load_process_data(config['process_config'], loader)
+        if cached_data is not None:
+            print("Loading cached MSP data...")
+            return (cached_data['nn_inputs'], cached_data['nn_beliefs'], 
+                   cached_data['nn_belief_indices'], cached_data['nn_probs'], 
+                   cached_data['nn_unnormalized_beliefs'])
+    
+    print("Computing MSP data...")
+    # If we get here, we need to compute the data
     msp = get_msp(config)
     tree_paths = msp.paths
     tree_beliefs = msp.belief_states
@@ -159,6 +239,16 @@ def prepare_msp_data(config, model_config):
         tree_unnormalized_beliefs,
         probs_dict
     )
+    
+    if loader is not None:
+        # Save the computed data
+        save_process_data({
+            'nn_inputs': nn_inputs,
+            'nn_beliefs': nn_beliefs,
+            'nn_belief_indices': nn_belief_indices,
+            'nn_probs': nn_probs,
+            'nn_unnormalized_beliefs': nn_unnormalized_beliefs
+        }, config['process_config'], loader)
     
     return nn_inputs, nn_beliefs, nn_belief_indices, nn_probs, nn_unnormalized_beliefs
 
@@ -465,6 +555,14 @@ def plot_belief_predictions2(belief_predictions,
 
     if mode not in ['true', 'predicted', 'both']:
         raise ValueError("Mode must be 'true', 'predicted', or 'both'.")
+    
+    belief_dims = transformer_input_beliefs_flat.shape[-1]
+
+    # if the inds are not in the range of the belief dimensions, then change the inds to the first and last available dimension
+    if inds[0] not in range(belief_dims):
+        inds[0] = 0
+    if inds[1] not in range(belief_dims):
+        inds[1] = 1
 
     # Determine common limits if plotting both
     if mode == 'both':
@@ -532,7 +630,16 @@ def get_msp(run_config):
     msp = ghmm.derive_mixed_state_tree(depth=run_config['model_config']['n_ctx'])
     return msp
 
-def markov_approx_msps(run_config, max_order=3):
+def markov_approx_msps(run_config, max_order=3, loader: S3ModelLoader = None):
+    """Run Markov approximations with caching."""
+    if loader is not None:
+        # Try to load cached data
+        cached_data = load_markov_data(run_config['process_config'], max_order, loader)
+        if cached_data is not None:
+            print("Loading cached Markov approximation data...")
+            return cached_data
+    
+    print("Computing Markov approximation data...")
     T = get_matrix_from_args(**run_config['process_config'])
     ghmm = TransitionMatrixGHMM(T)
     markov_data = []
@@ -540,6 +647,11 @@ def markov_approx_msps(run_config, max_order=3):
         markov_approx = markov_approximation(ghmm, order)
         msp = markov_approx.derive_mixed_state_tree(depth=run_config['model_config']['n_ctx'])
         markov_data.append(prepare_data_from_msp(msp, run_config['model_config']['n_ctx']))
+    
+    if loader is not None:
+        # Save the computed data
+        save_markov_data(markov_data, run_config['process_config'], max_order, loader)
+    
     return markov_data
 
 def model_type(model) -> str:
@@ -715,7 +827,7 @@ def plot_belief_prediction_comparison(
 
 def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs, 
                  sweep_type, run_name, layer_idx, title=None, return_results=False,
-                 loader=None, checkpoint_key=None, sweep_id=None, run_id=None):
+                 loader=None, checkpoint_key=None, sweep_id=None, run_id=None, save_figure=False):  # Added save_figure parameter
     """Analyze a single layer's activations and plot results."""
     #print(f"Layer {layer_idx} shape:", layer_acts.shape)
     
@@ -724,7 +836,7 @@ def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs,
      test_inds) = run_activation_to_beliefs_regression(
         layer_acts, nn_beliefs, nn_probs
     )
-    if save_figure:
+    if save_figure:  # Use the parameter
         plot_belief_prediction_comparison(
             nn_beliefs, nn_belief_indices, 
             belief_predictions, belief_predictions_shuffled, belief_predictions_cv,
@@ -734,7 +846,6 @@ def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs,
             loader=loader,
             checkpoint_key=checkpoint_key,
             sweep_id=sweep_id,
-            save_figure=save_figure
         )
 
     if return_results:
@@ -788,41 +899,88 @@ def analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
             'test_indices': test_inds
         }
 
-def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, checkpoint_key: str, results: dict):
+def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, checkpoint_key: str, results: dict, title: str = None):
     """
-    Save analysis results to S3 in an organized structure.
-    
-    Args:
-        loader: S3ModelLoader instance
-        sweep_id: ID of the sweep being analyzed (e.g., '20241121152808')
-        run_id: ID of the run being analyzed
-        checkpoint_key: Key of the checkpoint being analyzed
-        results: Dictionary containing analysis results
+    Save analysis results to S3, handling large files by splitting or compressing.
     """
-    # Extract checkpoint number from key (e.g., "sweep/run/1000.pt" -> "1000")
+    # Extract checkpoint number from key
     checkpoint_num = checkpoint_key.split('/')[-1].replace('.pt', '')
     
-    # Construct the analysis path
-    analysis_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/results.json"
+    # Separate large arrays from metadata
+    large_data = {}
+    metadata = {}
     
-    # Convert results to JSON
-    results_json = json.dumps(results, cls=NumpyEncoder)
-    
-    # Upload to S3
+    def is_large_array(obj):
+        if isinstance(obj, (np.ndarray, torch.Tensor)):
+            return obj.nbytes > 1e8  # 100MB threshold
+        return False
+
+    def process_dict(d, prefix=''):
+        for key, value in d.items():
+            full_key = f"{prefix}/{key}" if prefix else key
+            
+            if isinstance(value, dict):
+                process_dict(value, full_key)
+            elif is_large_array(value):
+                large_data[full_key] = value
+                metadata[full_key] = f"large_array_ref:{full_key}"
+            else:
+                metadata[full_key] = value
+
+    # Process the results dictionary
+    process_dict(results)
+
+    # Save metadata
+    metadata_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/metadata.json"
+    metadata_json = json.dumps(metadata, cls=NumpyEncoder)
     loader.s3_client.put_object(
         Bucket=loader.bucket_name,
-        Key=analysis_key,
-        Body=results_json
+        Key=metadata_key,
+        Body=metadata_json
     )
 
-class NumpyEncoder(json.JSONEncoder):
-    """Custom JSON encoder for numpy and torch types"""
-    def default(self, obj):
-        if isinstance(obj, (np.ndarray, torch.Tensor)):
-            return obj.tolist()
-        if isinstance(obj, np.float32):
-            return float(obj)
-        return super().default(obj)
+    # Save large arrays separately using numpy's compressed format
+    for key, data in large_data.items():
+        array_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/arrays/{key}.npz"
+        
+        # Convert to numpy if tensor
+        if isinstance(data, torch.Tensor):
+            data = data.cpu().numpy()
+        
+        # Use BytesIO to create compressed numpy file in memory
+        buf = io.BytesIO()
+        np.savez_compressed(buf, data=data)
+        buf.seek(0)
+        
+        # Upload compressed array
+        loader.s3_client.put_object(
+            Bucket=loader.bucket_name,
+            Key=array_key,
+            Body=buf.getvalue()
+        )
+
+def load_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, checkpoint_key: str):
+    """
+    Load analysis results from S3, reconstructing from split files.
+    """
+    checkpoint_num = checkpoint_key.split('/')[-1].replace('.pt', '')
+    
+    # Load metadata
+    metadata_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/metadata.json"
+    metadata = json.loads(loader.s3_client.get_object(Bucket=loader.bucket_name, Key=metadata_key)['Body'].read())
+    
+    # Reconstruct results
+    results = {}
+    for key, value in metadata.items():
+        if isinstance(value, str) and value.startswith('large_array_ref:'):
+            array_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/arrays/{value.split(':')[1]}.npz"
+            array_data = loader.s3_client.get_object(Bucket=loader.bucket_name, Key=array_key)['Body'].read()
+            with io.BytesIO(array_data) as buf:
+                results[key] = np.load(buf)['data']
+        else:
+            results[key] = value
+            
+    return results
 
 def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_indices, 
                            nn_probs, sweep_type, run_name, sweep_id, title=None, save_results=True, 
@@ -878,33 +1036,35 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
                             sweep_id=sweep_id, 
                             run_id=run_name, 
                             checkpoint_key=checkpoint_key, 
-                            results=results)
+                            results=results,
+                            title=title
+                            )
     
     return results
 
-def shuffle_belief_norms(unnormalized_beliefs):
-    """
-    Shuffle the norms of the beliefs.
-
-    Args:
-        unnormalized_beliefs: torch.Tensor [n_samples, n_context, num_states]
+def shuffle_belief_norms(unnormalized_beliefs, loader: S3ModelLoader = None, process_config: dict = None):
+    """Shuffle the norms of the beliefs with caching."""
+    if loader is not None and process_config is not None:
+        # Try to load cached shuffled beliefs
+        cached_shuffled = load_shuffled_beliefs(process_config, loader)
+        if cached_shuffled is not None:
+            print("Loading cached shuffled beliefs...")
+            return cached_shuffled
     
-    Returns:
-        torch.Tensor with same shape as input but shuffled norms
-    """
+    print("Computing shuffled beliefs...")
     # Create a copy to avoid modifying the original
     beliefs = unnormalized_beliefs.clone()
     
     # Reshape to 2D
-    beliefs_2d = beliefs.reshape(-1, beliefs.shape[-1])  # [n_samples * n_context, num_states]
+    beliefs_2d = beliefs.reshape(-1, beliefs.shape[-1])
     
-    # Calculate norms (keeping on same device as input)
-    norms = torch.norm(beliefs_2d, dim=1)  # [n_samples * n_context]
+    # Calculate norms
+    norms = torch.norm(beliefs_2d, dim=1)
     
     # Shuffle the norms
     shuffled_norms = norms[torch.randperm(norms.size(0))]
-
-    # apply the norms to beliefs_2d
+    
+    # Apply the norms to beliefs_2d
     beliefs_2d_unit = beliefs_2d / norms.reshape(-1, 1)
     beliefs_2d = beliefs_2d_unit * shuffled_norms.reshape(-1, 1)
     
