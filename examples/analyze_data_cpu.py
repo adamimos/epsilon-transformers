@@ -19,6 +19,7 @@ from epsilon_transformers.analysis.activation_analysis import (
     ProcessDataLoader
 
 )
+import time
 
 import torch
 import sys
@@ -168,15 +169,21 @@ def analyze_single_run(args):
             ))
     
     # Use multiprocessing to analyze checkpoints in parallel
-    n_processes = max(1, os.cpu_count() - 2)
+    n_processes = min(10, os.cpu_count() - 2)
     print(f"Using {n_processes} processes for checkpoint analysis")
+
+    batch_size = 4
+    checkpoint_batches = [checkpoint_args[i:i+batch_size] for i in range(0, len(checkpoint_args), batch_size)]
     
     with Pool(processes=n_processes) as pool:
-        results = list(tqdm(
-            pool.imap_unordered(analyze_checkpoint, checkpoint_args),
-            total=len(checkpoint_args),
-            desc=f"Analyzing checkpoints for {run}"
-        ))
+        for batch in checkpoint_batches:
+            results = list(tqdm(
+                pool.imap_unordered(analyze_checkpoint, batch),
+                total=len(batch),
+                desc=f"Analyzing checkpoints for {run}"
+            ))
+
+            time.sleep(.1)
 
     # Print results
     for result in results:
