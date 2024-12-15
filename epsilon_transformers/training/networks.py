@@ -21,6 +21,63 @@ class RNNWrapper(nn.Module):
 
     def forward_with_all_states(self, x):
         """Forward pass that returns states at all layers and timepoints"""
+        # Ensure model is on same device as input
+        self.to(x.device)
+        
+        with torch.no_grad():  # Add this to prevent memory leaks
+            batch_size, seq_len = x.shape
+            num_layers = self.rnn.num_layers
+            hidden_size = self.rnn.hidden_size
+            
+            # Input processing - explicitly specify device
+            one_hot = F.one_hot(x.to(torch.int64), num_classes=self.vocab_size).float().to(x.device)
+            
+            # Storage for all states - explicitly specify device
+            all_layer_states = torch.zeros(
+                num_layers, batch_size, seq_len, hidden_size, 
+                device=x.device, 
+                dtype=one_hot.dtype
+            )
+            
+            # Initialize hidden state
+            if isinstance(self.rnn, nn.LSTM):
+                h = torch.zeros(num_layers, batch_size, hidden_size, device=x.device, dtype=one_hot.dtype)
+                c = torch.zeros(num_layers, batch_size, hidden_size, device=x.device, dtype=one_hot.dtype)
+                hidden = (h, c)
+            else:  # GRU or RNN
+                hidden = torch.zeros(num_layers, batch_size, hidden_size, device=x.device, dtype=one_hot.dtype)
+            
+            # Process each timestep
+            for t in range(seq_len):
+                # Get single timestep input
+                timestep_input = one_hot[:, t:t+1, :].contiguous()  # Add contiguous to ensure memory layout
+                
+                # Run RNN for single timestep
+                output, new_hidden = self.rnn(timestep_input, hidden)
+                
+                # Store hidden states
+                if isinstance(self.rnn, nn.LSTM):
+                    # For LSTM, store h states
+                    all_layer_states[:, :, t, :] = new_hidden[0].detach()  # Add detach
+                else:
+                    # For GRU/RNN, store hidden states
+                    all_layer_states[:, :, t, :] = new_hidden.detach()  # Add detach
+                
+                # Update hidden for next timestep
+                hidden = new_hidden
+            
+            # Get final output sequence
+            output, _ = self.rnn(one_hot, None)
+            logits = self.output_layer(output)
+            
+            # Detach all outputs
+            return logits.detach(), {
+                'layer_states': all_layer_states.detach(),
+                'final_output': output.detach(),
+                'logits': logits.detach()
+            }
+    def forward_with_all_states_old(self, x):
+        """Forward pass that returns states at all layers and timepoints"""
         batch_size, seq_len = x.shape
         num_layers = self.rnn.num_layers
         hidden_size = self.rnn.hidden_size
