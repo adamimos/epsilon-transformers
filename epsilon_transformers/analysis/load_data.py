@@ -179,7 +179,7 @@ class S3ModelLoader:
         # Create and load model
         model_config = HookedTransformerConfig(**model_config)
         model = HookedTransformer(model_config)
-        model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+        model.load_state_dict(torch.load(checkpoint_path, map_location=device, weights_only=True))
         
         return model, configs['run_config']
     
@@ -210,7 +210,7 @@ class S3ModelLoader:
             config = yaml.safe_load(f)
             
         # Infer vocab size from the output layer in the state dict
-        state_dict = torch.load(checkpoint_path, map_location=device)
+        state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
         output_layer_weight = state_dict['output_layer.weight']
         vocab_size = output_layer_weight.size(0)  # First dimension is output size (vocab size)
 
@@ -220,7 +220,7 @@ class S3ModelLoader:
         model = create_RNN(config, vocab_size, device)
 
         # Load state dict
-        state_dict = torch.load(checkpoint_path, map_location=device)
+        state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
         model.load_state_dict(state_dict)
         
         return model, config

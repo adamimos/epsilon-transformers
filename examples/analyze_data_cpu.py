@@ -46,9 +46,9 @@ def main():
 
 def analyze_checkpoint(args):
     """Function to analyze a single checkpoint (to be called in parallel)"""
-    print(f"Analyzing checkpoint {args[9]}")
-    model, nn_inputs, nn_type, nn_beliefs, nn_belief_indices, nn_probs, sweep_type, run, sweep_id, title, ckpt, is_final_ckpt = args
-    
+    ckpt_ind, model, nn_inputs, nn_type, nn_beliefs, nn_belief_indices, nn_probs, sweep_type, run, sweep_id, title, ckpt, is_final_ckpt = args
+    print(f"Analyzing ckpt {ckpt_ind} {title}")
+
     # Create new loader instance for this process
     loader = S3ModelLoader()
     
@@ -103,7 +103,7 @@ def analyze_single_run(args):
 
     # Prepare arguments for parallel checkpoint analysis
     checkpoint_args = []
-    for ckpt in tqdm(ckpts):
+    for ckpt_ind, ckpt in enumerate(tqdm(ckpts)):
         is_final_ckpt = True
         
         model, config = loader.load_checkpoint(
@@ -116,7 +116,7 @@ def analyze_single_run(args):
         
         # Add arguments for different types of analysis
         # Normal beliefs
-        checkpoint_args.append((
+        checkpoint_args.append(( ckpt_ind,
             model, nn_inputs, nn_type, nn_beliefs, 
             nn_belief_indices, nn_probs, sweep_type,
             run, sweep_id, "Normalized Beliefs",
@@ -124,7 +124,7 @@ def analyze_single_run(args):
         ))
         
         # Unnormalized beliefs
-        checkpoint_args.append((
+        checkpoint_args.append(( ckpt_ind,
             model, nn_inputs, nn_type, nn_unnormalized_beliefs,
             nn_belief_indices, nn_probs, sweep_type,
             run, sweep_id, "Unnormalized Beliefs",
@@ -132,7 +132,7 @@ def analyze_single_run(args):
         ))
         
         # Shuffled beliefs
-        checkpoint_args.append((
+        checkpoint_args.append(( ckpt_ind,
             model, nn_inputs, nn_type, nn_shuffled_beliefs,
             nn_belief_indices, nn_probs, sweep_type,
             run, sweep_id, "Shuffled Unnormalized Beliefs",
@@ -144,7 +144,7 @@ def analyze_single_run(args):
             mark_inputs, mark_beliefs, mark_indices, mark_probs, mark_unnorm, mark_shuffled = mark_data
             
             # Normal Markov
-            checkpoint_args.append((
+            checkpoint_args.append(( ckpt_ind,
                 model, mark_inputs, nn_type, mark_beliefs,
                 mark_indices, mark_probs, sweep_type,
                 run, sweep_id, f"Order-{order} Approx.",
@@ -152,7 +152,7 @@ def analyze_single_run(args):
             ))
             
             # Unnormalized Markov
-            checkpoint_args.append((
+            checkpoint_args.append(( ckpt_ind,
                 model, mark_inputs, nn_type, mark_unnorm,
                 mark_indices, mark_probs, sweep_type,
                 run, sweep_id, f"Order-{order} Approx. Unnormalized",
@@ -160,7 +160,7 @@ def analyze_single_run(args):
             ))
             
             # Shuffled Markov
-            checkpoint_args.append((
+            checkpoint_args.append(( ckpt_ind,
                 model, mark_inputs, nn_type, mark_shuffled,
                 mark_indices, mark_probs, sweep_type,
                 run, sweep_id, f"Order-{order} Approx. Shuffled Unnormalized",
