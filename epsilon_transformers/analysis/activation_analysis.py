@@ -1023,6 +1023,7 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
                 **layer_results
             })
         
+        print(f"Analyzing all layers for {title}")
         # Analyze all layers together
         title_all_layers = f"All Layers" + (f" - {title}")
         all_layers_results = analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
@@ -1030,6 +1031,7 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
                                               loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, run_id=run_name)
         results['all_layers'] = all_layers_results
 
+    print(f"Saving results for {title}")
     if save_results and loader is not None and checkpoint_key is not None:
         save_analysis_results(loader, 
                             sweep_id=sweep_id, 
