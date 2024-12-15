@@ -47,7 +47,10 @@ def main():
 def analyze_checkpoint(args):
     """Function to analyze a single checkpoint (to be called in parallel)"""
     print(f"Analyzing checkpoint {args[9]}")
-    model, nn_inputs, nn_type, nn_beliefs, nn_belief_indices, nn_probs, sweep_type, run, sweep_id, title, loader, ckpt, is_final_ckpt = args
+    model, nn_inputs, nn_type, nn_beliefs, nn_belief_indices, nn_probs, sweep_type, run, sweep_id, title, ckpt, is_final_ckpt = args
+    
+    # Create new loader instance for this process
+    loader = S3ModelLoader()
     
     # Analyze model checkpoint with the prepared data
     analyze_model_checkpoint(
@@ -92,10 +95,16 @@ def analyze_single_run(args):
     ckpts = loader.list_checkpoints(sweep_id, run)
     nn_type = model_type(model)
 
+    for order in range(len(markov_data)):
+        mark_inputs, mark_beliefs, mark_indices, mark_probs, mark_unnorm = markov_data[order]
+        mark_shuffled = shuffle_belief_norms(mark_unnorm)
+        # Update the tuple in markov_data
+        markov_data[order] = (mark_inputs, mark_beliefs, mark_indices, mark_probs, mark_unnorm, mark_shuffled)
+
     # Prepare arguments for parallel checkpoint analysis
     checkpoint_args = []
     for ckpt in tqdm(ckpts):
-        is_final_ckpt = ckpt == ckpts[-1]
+        is_final_ckpt = True
         
         model, config = loader.load_checkpoint(
             sweep_id=sweep_id,
@@ -111,7 +120,7 @@ def analyze_single_run(args):
             model, nn_inputs, nn_type, nn_beliefs, 
             nn_belief_indices, nn_probs, sweep_type,
             run, sweep_id, "Normalized Beliefs",
-            loader, ckpt, is_final_ckpt
+            ckpt, is_final_ckpt  # Removed loader from args
         ))
         
         # Unnormalized beliefs
@@ -119,7 +128,7 @@ def analyze_single_run(args):
             model, nn_inputs, nn_type, nn_unnormalized_beliefs,
             nn_belief_indices, nn_probs, sweep_type,
             run, sweep_id, "Unnormalized Beliefs",
-            loader, ckpt, is_final_ckpt
+            ckpt, is_final_ckpt  # Removed loader from args
         ))
         
         # Shuffled beliefs
@@ -127,20 +136,19 @@ def analyze_single_run(args):
             model, nn_inputs, nn_type, nn_shuffled_beliefs,
             nn_belief_indices, nn_probs, sweep_type,
             run, sweep_id, "Shuffled Unnormalized Beliefs",
-            loader, ckpt, is_final_ckpt
+            ckpt, is_final_ckpt  # Removed loader from args
         ))
         
         # Markov approximations
         for order, mark_data in enumerate(markov_data):
-            mark_inputs, mark_beliefs, mark_indices, mark_probs, mark_unnorm = mark_data
-            mark_shuffled = shuffle_belief_norms(mark_unnorm)
+            mark_inputs, mark_beliefs, mark_indices, mark_probs, mark_unnorm, mark_shuffled = mark_data
             
             # Normal Markov
             checkpoint_args.append((
                 model, mark_inputs, nn_type, mark_beliefs,
                 mark_indices, mark_probs, sweep_type,
                 run, sweep_id, f"Order-{order} Approx.",
-                loader, ckpt, is_final_ckpt
+                ckpt, is_final_ckpt  # Removed loader from args
             ))
             
             # Unnormalized Markov
@@ -148,7 +156,7 @@ def analyze_single_run(args):
                 model, mark_inputs, nn_type, mark_unnorm,
                 mark_indices, mark_probs, sweep_type,
                 run, sweep_id, f"Order-{order} Approx. Unnormalized",
-                loader, ckpt, is_final_ckpt
+                ckpt, is_final_ckpt  # Removed loader from args
             ))
             
             # Shuffled Markov
@@ -156,7 +164,7 @@ def analyze_single_run(args):
                 model, mark_inputs, nn_type, mark_shuffled,
                 mark_indices, mark_probs, sweep_type,
                 run, sweep_id, f"Order-{order} Approx. Shuffled Unnormalized",
-                loader, ckpt, is_final_ckpt
+                ckpt, is_final_ckpt  # Removed loader from args
             ))
     
     # Use multiprocessing to analyze checkpoints in parallel
