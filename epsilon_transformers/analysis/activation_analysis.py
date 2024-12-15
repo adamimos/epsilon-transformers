@@ -22,7 +22,21 @@ import os
 from multiprocessing import Pool
 import pickle
 import sys
+import json
+import numpy as np
 
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if torch.is_tensor(obj):
+            return obj.cpu().detach().numpy().tolist()
+        return super().default(obj)
+    
 def get_process_filename(process_config):
     name = process_config['name']
     # all keys other than name are params

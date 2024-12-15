@@ -27,7 +27,35 @@ import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
 from multiprocessing import Pool
 import os
+import json
 
+
+def check_run_completed(loader: S3ModelLoader, sweep_id: str, run_id: str) -> bool:
+    """Check if a run has already been analyzed by looking for a completion marker."""
+    try:
+        loader.s3_client.head_object(
+            Bucket=loader.bucket_name,
+            Key=f"analysis/{sweep_id}/{run_id}/analysis_complete.json"
+        )
+        print(f"Run {run_id} already analyzed")
+        return True
+    except loader.s3_client.exceptions.ClientError:
+        return False
+
+def mark_run_completed(loader: S3ModelLoader, sweep_id: str, run_id: str):
+    """Mark a run as completed by creating a completion marker file."""
+    completion_data = {
+        'completed_at': time.strftime('%Y-%m-%d %H:%M:%S'),
+        'sweep_id': sweep_id,
+        'run_id': run_id
+    }
+    
+    loader.s3_client.put_object(
+        Bucket=loader.bucket_name,
+        Key=f"analysis/{sweep_id}/{run_id}/analysis_complete.json",
+        Body=json.dumps(completion_data)
+    )
+    print(f"Marked run {run_id} as completed")
 
 def main():
     sweeps = {
@@ -43,7 +71,18 @@ def main():
         # Process one run at a time
         for run in runs:
             print(f"\nProcessing sweep {sweep_id}, run {run}")
-            analyze_single_run((sweep_id, run))
+            
+            # Skip if run is already completed
+            if check_run_completed(loader, sweep_id, run):
+                print(f"Skipping completed run {run}")
+                continue
+                
+            try:
+                analyze_single_run((sweep_id, run))
+                mark_run_completed(loader, sweep_id, run)
+            except Exception as e:
+                print(f"Error processing run {run}: {str(e)}")
+                continue
 
 def analyze_checkpoint(args):
     """Function to analyze a single checkpoint (to be called in parallel)"""
@@ -170,10 +209,10 @@ def analyze_single_run(args):
             ))
     
     # Use multiprocessing to analyze checkpoints in parallel
-    n_processes = min(10, os.cpu_count() - 2)
+    n_processes = max(1, os.cpu_count() - 4)
     print(f"Using {n_processes} processes for checkpoint analysis")
 
-    batch_size = 4
+    batch_size = 200
     checkpoint_batches = [checkpoint_args[i:i+batch_size] for i in range(0, len(checkpoint_args), batch_size)]
     
     with Pool(processes=n_processes) as pool:
