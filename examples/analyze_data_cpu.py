@@ -53,6 +53,7 @@ def analyze_checkpoint(args):
     # Create new loader instance for this process
     loader = S3ModelLoader()
     
+    print(f"initiating analysis for {title}")
     # Analyze model checkpoint with the prepared data
     analyze_model_checkpoint(
         model=model,

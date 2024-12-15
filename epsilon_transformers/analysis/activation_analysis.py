@@ -987,7 +987,11 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
                            loader=None, checkpoint_key=None, save_figure=False):
     """Analyze a single model checkpoint and optionally save results."""
     
+    print(f"Getting activations for model checkpoint with title: {title}")
     acts = get_activations(model, nn_inputs, nn_type)
+    print(f"Successfully got activations with shape: {acts.shape}")
+    
+    print("Creating results dictionary...")
     results = {
         'model_type': nn_type,
         'sweep_type': sweep_type,
@@ -996,52 +1000,80 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
         'layers': []
     }
 
+    print("Determining layer names based on model type...")
     if nn_type == 'transformer':
+        print("Model is a transformer - using transformer layer naming convention")
         layer_names = ['embed'] + [f'layer {i}' for i in range(1, acts.shape[0]-1)] + ['final norm']
     elif nn_type == 'rnn':
+        print("Model is an RNN - using RNN layer naming convention") 
         layer_names = [f'layer {i}' for i in range(acts.shape[0])]
     else:
-        raise ValueError(f"Model type {nn_type} not supported")
+        raise ValueError(f"Model type {nn_type} not supported - must be 'transformer' or 'rnn'")
+    print(f"Layer names determined: {layer_names}")
 
-    # For RNNs with 1 layer, only analyze all layers together
+    # Special case for single-layer RNNs
     if nn_type == 'rnn' and acts.shape[0] == 1:
-        title_all_layers = f"All Layers" + (f" - {title}")
+        print("Single layer RNN detected - analyzing all layers together")
+        title_all_layers = f"All Layers" + (f" - {title}" if title else "")
+        print(f"Analyzing with title: {title_all_layers}")
+        
         layer_results = analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
                                          sweep_type, run_name, title_all_layers, return_results=True,
-                                         loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, run_id=run_name, save_figure=save_figure)
+                                         loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, 
+                                         run_id=run_name, save_figure=save_figure)
+        print("Analysis complete for single layer RNN")
         results['all_layers'] = layer_results
     else:
+        print("Multi-layer model detected - analyzing each layer individually")
         # Analyze each layer individually
         for layer_idx in range(acts.shape[0]):
-            title_layer = f"Layer {layer_idx}" + (f" - {title}")
+            print(f"\nAnalyzing layer {layer_idx} of {acts.shape[0]-1}")
+            title_layer = f"Layer {layer_idx}" + (f" - {title}" if title else "")
+            print(f"Layer title: {title_layer}")
+            
+            print(f"Getting results for layer {layer_idx}...")
             layer_results = analyze_layer(acts[layer_idx], nn_beliefs, nn_belief_indices,
                                         nn_probs, sweep_type, run_name, layer_names[layer_idx], 
                                         title_layer, return_results=True,
-                                        loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, run_id=run_name, save_figure=save_figure)
-            results['layers'].append({
+                                        loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, 
+                                        run_id=run_name, save_figure=save_figure)
+            print(f"Successfully analyzed layer {layer_idx}")
+            
+            print("Appending layer results to overall results...")
+            layer_dict = {
                 'layer_name': layer_names[layer_idx],
                 **layer_results
-            })
+            }
+            results['layers'].append(layer_dict)
         
-        print(f"Analyzing all layers for {title}")
-        # Analyze all layers together
-        title_all_layers = f"All Layers" + (f" - {title}")
+        print("\nAnalyzing all layers together...")
+        title_all_layers = f"All Layers" + (f" - {title}" if title else "")
+        print(f"All layers title: {title_all_layers}")
+        
         all_layers_results = analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
                                               sweep_type, run_name, title_all_layers, return_results=True,
-                                              loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, run_id=run_name)
+                                              loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, 
+                                              run_id=run_name)
+        print("Successfully analyzed all layers together")
         results['all_layers'] = all_layers_results
 
-    print(f"Saving results for {title}")
+    print("\nAnalysis complete - handling results saving...")
     if save_results and loader is not None and checkpoint_key is not None:
+        print("Saving analysis results to storage...")
+        if title is None:
+            print("Warning: title is None, but required for saving results")
+            title = "untitled_analysis"
         save_analysis_results(loader, 
                             sweep_id=sweep_id, 
                             run_id=run_name, 
                             checkpoint_key=checkpoint_key, 
                             results=results,
-                            title=title
-                            )
-        print(f"Saved results for {title}")
+                            title=title)
+        print(f"Successfully saved results with title: {title}")
+    else:
+        print("Skipping results saving - missing required parameters")
     
+    print("Returning analysis results")
     return results
 
 def shuffle_belief_norms(unnormalized_beliefs, loader: S3ModelLoader = None, process_config: dict = None):
