@@ -201,6 +201,7 @@ def analyze_single_run(args):
         process_folder_name = get_process_filename(process_config)
         ckpts = loader.list_checkpoints(sweep_id, run)
         if parse_args().reverse:  # Get args in the worker process
+            print("Reversing checkpoints")
             ckpts = ckpts[::-1]  # Reverse the list
         nn_type = model_type(model)
 
