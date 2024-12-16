@@ -952,95 +952,128 @@ def analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
         }
 
 def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, checkpoint_key: str, results: dict, title: str = None):
-    """
-    Save analysis results to S3, handling large files by splitting or compressing.
-    """
+    """Save analysis results to S3 directly based on known structure."""
     start_time = time.time()
-    
-    # Extract checkpoint number from key
     checkpoint_num = checkpoint_key.split('/')[-1].replace('.pt', '')
     
-    # Separate large arrays from metadata
-    large_data = {}
-    metadata = {}
+    # Save metadata (we know these are small values)
+    meta_start = time.time()
+    metadata = {
+        'model_type': results['model_type'],
+        'sweep_type': results['sweep_type'],
+        'run_name': results['run_name'],
+        'title': results['title']
+    }
     
-    def is_large_array(obj):
-        if isinstance(obj, (np.ndarray, torch.Tensor)):
-            return obj.nbytes > 1e8  # 100MB threshold
-        return False
-
-    def process_dict(d, prefix=''):
-        for key, value in d.items():
-            full_key = f"{prefix}/{key}" if prefix else key
-            
-            if isinstance(value, dict):
-                process_dict(value, full_key)
-            elif is_large_array(value):
-                large_data[full_key] = value
-                metadata[full_key] = f"large_array_ref:{full_key}"
-            else:
-                metadata[full_key] = value
-
-    # Process the results dictionary
-    dict_start = time.time()
-    process_dict(results)
-    print(f"Processing dictionary took {time.time() - dict_start:.2f}s")
-
-    # Save metadata
-    metadata_start = time.time()
     metadata_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/metadata.json"
-    metadata_json = json.dumps(metadata, cls=NumpyEncoder)
     loader.s3_client.put_object(
         Bucket=loader.bucket_name,
         Key=metadata_key,
-        Body=metadata_json
+        Body=json.dumps(metadata, cls=NumpyEncoder)
     )
-    print(f"Saving metadata took {time.time() - metadata_start:.2f}s")
+    print(f"Metadata save took {time.time() - meta_start:.2f}s")
 
-    # Save large arrays separately using numpy's compressed format
-    arrays_start = time.time()
-    for key, data in large_data.items():
-        array_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/arrays/{key}.npz"
-        
-        # Convert to numpy if tensor
-        if isinstance(data, torch.Tensor):
-            data = data.cpu().numpy()
-        
-        # Use BytesIO to create compressed numpy file in memory
-        buf = io.BytesIO()
-        np.savez_compressed(buf, data=data)
-        buf.seek(0)
-        
-        # Upload compressed array
+    # Save layer results (we know these contain large arrays)
+    layers_start = time.time()
+    for layer_dict in results['layers']:
+        layer_name = layer_dict['layer_name']
+        # Save regression data
+        regression_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/layers/{layer_name}/regression.json"
+        regression_data = {
+            'layer_name': layer_name,
+            'mse': layer_dict['mse'],
+            'mse_shuffled': layer_dict['mse_shuffled'],
+            'mse_cv': layer_dict['mse_cv'],
+            'regression_coef': layer_dict['regression_coef'].tolist(),
+            'regression_intercept': layer_dict['regression_intercept'].tolist()
+        }
         loader.s3_client.put_object(
             Bucket=loader.bucket_name,
-            Key=array_key,
-            Body=buf.getvalue()
+            Key=regression_key,
+            Body=json.dumps(regression_data, cls=NumpyEncoder)
         )
-    print(f"Saving large arrays took {time.time() - arrays_start:.2f}s")
-    
+
+        # Save large arrays
+        for array_name in ['predictions', 'predictions_shuffled', 'predictions_cv']:
+            array_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/layers/{layer_name}/{array_name}.npy"
+            buf = io.BytesIO()
+            np.save(buf, layer_dict[array_name])
+            buf.seek(0)
+            loader.s3_client.put_object(
+                Bucket=loader.bucket_name,
+                Key=array_key,
+                Body=buf.getvalue()
+            )
+    print(f"Layer results save took {time.time() - layers_start:.2f}s")
+
+    # Save all_layers results similarly
+    if 'all_layers' in results:
+        all_layers_start = time.time()
+        all_layers = results['all_layers']
+        
+        # Save regression data
+        regression_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/all_layers/regression.json"
+        regression_data = {
+            'mse': all_layers['mse'],
+            'mse_shuffled': all_layers['mse_shuffled'],
+            'mse_cv': all_layers['mse_cv'],
+            'regression_coef': all_layers['regression_coef'].tolist(),
+            'regression_intercept': all_layers['regression_intercept'].tolist()
+        }
+        loader.s3_client.put_object(
+            Bucket=loader.bucket_name,
+            Key=regression_key,
+            Body=json.dumps(regression_data, cls=NumpyEncoder)
+        )
+
+        # Save large arrays
+        for array_name in ['predictions', 'predictions_shuffled', 'predictions_cv']:
+            array_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/all_layers/{array_name}.npy"
+            buf = io.BytesIO()
+            np.save(buf, all_layers[array_name])
+            buf.seek(0)
+            loader.s3_client.put_object(
+                Bucket=loader.bucket_name,
+                Key=array_key,
+                Body=buf.getvalue()
+            )
+        print(f"All layers save took {time.time() - all_layers_start:.2f}s")
+
     print(f"Total save time: {time.time() - start_time:.2f}s")
 
 def load_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, checkpoint_key: str):
-    """
-    Load analysis results from S3, reconstructing from split files.
-    """
+    """Load analysis results from S3 in their native formats."""
     checkpoint_num = checkpoint_key.split('/')[-1].replace('.pt', '')
+    results = {}
     
     # Load metadata
     metadata_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/metadata.json"
     metadata = json.loads(loader.s3_client.get_object(Bucket=loader.bucket_name, Key=metadata_key)['Body'].read())
+    results.update(metadata)
     
-    # Reconstruct results
-    results = {}
-    for key, value in metadata.items():
-        if isinstance(value, str) and value.startswith('large_array_ref:'):
-            array_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/arrays/{value.split(':')[1]}.npz"
-            array_data = loader.s3_client.get_object(Bucket=loader.bucket_name, Key=array_key)['Body'].read()
-            with io.BytesIO(array_data) as buf:
-                results[key] = np.load(buf)['data']
-        else:
-            results[key] = value
+    # Load tensors
+    tensor_prefix = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/tensors/"
+    try:
+        tensor_objects = loader.s3_client.list_objects_v2(Bucket=loader.bucket_name, Prefix=tensor_prefix)
+        for obj in tensor_objects.get('Contents', []):
+            key = obj['Key']
+            name = key.split('/')[-1].replace('.pt', '')
+            buf = io.BytesIO(loader.s3_client.get_object(Bucket=loader.bucket_name, Key=key)['Body'].read())
+            results[name] = torch.load(buf)
+    except:
+        pass
+
+    # Load arrays
+    array_prefix = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/arrays/"
+    try:
+        array_objects = loader.s3_client.list_objects_v2(Bucket=loader.bucket_name, Prefix=array_prefix)
+        for obj in array_objects.get('Contents', []):
+            key = obj['Key']
+            name = key.split('/')[-1].replace('.npy', '')
+            buf = io.BytesIO(loader.s3_client.get_object(Bucket=loader.bucket_name, Key=key)['Body'].read())
+            results[name] = np.load(buf)
+    except:
+        pass
             
     return results
 

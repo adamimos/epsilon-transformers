@@ -158,7 +158,7 @@ def analyze_single_run(args):
             print(f"Skipping completed checkpoint {ckpt_ind}")
             continue
 
-        is_final_ckpt = ckpt == ckpts[-1]
+        is_final_ckpt = True
         
         # Load model for this checkpoint
         model, config = loader.load_checkpoint(
@@ -178,7 +178,13 @@ def analyze_single_run(args):
         
         # Add Markov analyses
         for order, mark_data in enumerate(markov_data):
-            mark_inputs, mark_beliefs, mark_indices, mark_probs, mark_unnorm, mark_shuffled = mark_data
+            # Unpack the tuple, handling both 5 and 6 value cases
+            if len(mark_data) == 6:
+                mark_inputs, mark_beliefs, mark_indices, mark_probs, mark_unnorm, mark_shuffled = mark_data
+            else:
+                mark_inputs, mark_beliefs, mark_indices, mark_probs, mark_unnorm = mark_data
+                mark_shuffled = shuffle_belief_norms(mark_unnorm)
+                
             analyses.extend([
                 (mark_inputs, mark_beliefs, f"Order-{order} Approx."),
                 (mark_inputs, mark_unnorm, f"Order-{order} Approx. Unnormalized"),
