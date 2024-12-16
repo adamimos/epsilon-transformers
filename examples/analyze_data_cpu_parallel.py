@@ -272,7 +272,7 @@ def analyze_single_run(args):
                 print(f"Checkpoint {ckpt_ind} took {time.time() - ckpt_start:.2f}s")
                 
             except Exception as e:
-                print(f"Error processing checkpoint {ckpt} for run {run}: {str(e)}")
+                print(f"Error processing checkpoint {ckpt} for run {run}, title {title}: {str(e)}")
                 continue
 
         print(f"Total run time for {run}: {time.time() - start_time:.2f}s")
