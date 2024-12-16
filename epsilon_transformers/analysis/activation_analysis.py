@@ -735,7 +735,10 @@ def get_activations(model, nn_inputs, nn_type):
         model = model.cpu()
         if nn_type == 'transformer':
             print("Running transformer activation collection")
+            # make nn_inputs ints
+            nn_inputs = nn_inputs.int()
             _, cache = model.run_with_cache(nn_inputs, names_filter=lambda x: 'resid' in x or 'ln_final.hook_normalized' in x)
+            print(type(cache))
             max_layers = 10
             relevant_activation_keys = ['blocks.0.hook_resid_pre'] + [f'blocks.{i}.hook_resid_post' for i in range(max_layers)] + ['ln_final.hook_normalized']
             acts = torch.stack([v for k,v in cache.items() if k in relevant_activation_keys and k in cache], dim=0)
