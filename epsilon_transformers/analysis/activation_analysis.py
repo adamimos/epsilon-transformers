@@ -854,6 +854,7 @@ def plot_belief_prediction_comparison(
     
     # Save figure if requested
     if loader is not None and checkpoint_key is not None:
+        save_figure_start = time.time()
         save_figure_to_s3(
             loader=loader,
             fig=fig,
@@ -862,7 +863,7 @@ def plot_belief_prediction_comparison(
             checkpoint_key=checkpoint_key,
             title=f"belief_predictions_{title}" if title else "belief_predictions"
         )
-    
+        print(f"Saving figure upload took {time.time() - save_figure_start:.2f}s")
     plt.close()  # Close the figure to free memory
     print(f"Plotting took {time.time() - time_start:.2f}s")
 def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs, 
