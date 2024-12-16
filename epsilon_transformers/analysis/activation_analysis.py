@@ -584,6 +584,9 @@ def plot_belief_predictions2(belief_predictions,
             pca.fit(transformer_input_beliefs_flat)
             transformer_input_beliefs_flat = pca.transform(transformer_input_beliefs_flat)
             belief_predictions_flat = pca.transform(belief_predictions_flat)
+    if transformer_input_beliefs_flat.shape[-1] < 3:
+        inds = [0,1]
+
 
     if mode not in ['true', 'predicted', 'both']:
         raise ValueError("Mode must be 'true', 'predicted', or 'both'.")
