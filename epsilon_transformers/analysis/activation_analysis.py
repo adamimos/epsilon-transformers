@@ -769,7 +769,7 @@ def save_figure_to_s3(loader: S3ModelLoader, fig, sweep_id: str, run_id: str, ch
     
     # Create a buffer to store the image
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', dpi=300, bbox_inches='tight')
+    fig.savefig(buf, format='png', dpi=100, bbox_inches='tight')
     buf.seek(0)
     
     # Construct the analysis path (sanitize title for use in filename)
