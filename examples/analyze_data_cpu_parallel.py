@@ -229,7 +229,7 @@ def analyze_single_run(args):
                         title=title,
                         loader=loader,
                         checkpoint_key=ckpt,
-                        save_figure=is_final_ckpt
+                        save_figure=True
                     )
                     print(f"Analysis {i+1}/{len(analyses)} ({title}) took {time.time() - analysis_start:.2f}s")
                 
