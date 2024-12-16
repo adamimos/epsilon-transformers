@@ -101,6 +101,11 @@ def parse_args():
         default='all',
         help='Type of model to analyze (rnn, transformer, or all)'
     )
+    parser.add_argument(
+        '--reverse',
+        action='store_true',
+        help='Process checkpoints in reverse order'
+    )
     return parser.parse_args()
 
 def main():
@@ -195,6 +200,8 @@ def analyze_single_run(args):
         process_config = config['process_config']
         process_folder_name = get_process_filename(process_config)
         ckpts = loader.list_checkpoints(sweep_id, run)
+        if parse_args().reverse:  # Get args in the worker process
+            ckpts = ckpts[::-1]  # Reverse the list
         nn_type = model_type(model)
 
         # Filter out already completed checkpoints
