@@ -974,7 +974,7 @@ def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, che
         'title': results['title']
     }
     
-    metadata_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/metadata.json"
+    metadata_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/{title}_metadata.json"
     loader.s3_client.put_object(
         Bucket=loader.bucket_name,
         Key=metadata_key,
@@ -987,7 +987,7 @@ def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, che
     for layer_dict in results['layers']:
         layer_name = layer_dict['layer_name']
         # Save regression data
-        regression_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/layers/{layer_name}/regression.json"
+        regression_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/layers/{layer_name}/{title}_regression.json"
         regression_data = {
             'layer_name': layer_name,
             'mse': layer_dict['mse'],
@@ -1004,7 +1004,7 @@ def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, che
 
         # Save large arrays
         for array_name in ['predictions', 'predictions_shuffled', 'predictions_cv']:
-            array_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/layers/{layer_name}/{array_name}.npy"
+            array_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/layers/{layer_name}/{title}_{array_name}.npy"
             buf = io.BytesIO()
             np.save(buf, layer_dict[array_name])
             buf.seek(0)
@@ -1021,7 +1021,7 @@ def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, che
         all_layers = results['all_layers']
         
         # Save regression data
-        regression_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/all_layers/regression.json"
+        regression_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/all_layers/{title}_regression.json"
         regression_data = {
             'mse': all_layers['mse'],
             'mse_shuffled': all_layers['mse_shuffled'],
@@ -1037,7 +1037,7 @@ def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, che
 
         # Save large arrays
         for array_name in ['predictions', 'predictions_shuffled', 'predictions_cv']:
-            array_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/all_layers/{array_name}.npy"
+            array_key = f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/all_layers/{title}_{array_name}.npy"
             buf = io.BytesIO()
             np.save(buf, all_layers[array_name])
             buf.seek(0)
