@@ -739,7 +739,7 @@ def get_activations(model, nn_inputs, nn_type):
     #print(f"Starting get_activations for {nn_type}")
     try:
         # move model to cpu
-        model = model.cpu()
+        #model = model.cpu()
         if nn_type == 'transformer':
             #print("Running transformer activation collection")
             # make nn_inputs ints
