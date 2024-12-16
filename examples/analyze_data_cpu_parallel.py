@@ -70,7 +70,7 @@ def check_checkpoint_completed(loader: S3ModelLoader, sweep_id: str, run_id: str
             Bucket=loader.bucket_name,
             Key=f"analysis/{sweep_id}/{run_id}/checkpoint_{checkpoint_num}/completed.json"
         )
-        print(f"Checkpoint {checkpoint_num} already analyzed")
+        print(f"Checkpoint {checkpoint_num} of {run_id} already analyzed")
         return True
     except loader.s3_client.exceptions.ClientError:
         return False

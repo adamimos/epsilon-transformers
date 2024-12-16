@@ -786,7 +786,7 @@ def save_figure_to_s3(loader: S3ModelLoader, fig, sweep_id: str, run_id: str, ch
         Body=buf.getvalue(),
         ContentType='image/png'
     )
-    print(f"Saved figure to S3: {analysis_key}")
+    print(f"Saved fig S3: {sweep_id}-{run_id}-{checkpoint_num}/{safe_title}")
 
 def plot_belief_prediction_comparison(
     nn_beliefs, nn_belief_indices, 
@@ -931,7 +931,7 @@ def analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
      test_inds) = run_activation_to_beliefs_regression(
         all_layers_acts, nn_beliefs, nn_probs
     )
-    print(f"Regression analysis took {time.time() - regression_start:.2f}s")
+    #print(f"Regression analysis took {time.time() - regression_start:.2f}s")
 
     if save_figure:
         plot_start = time.time()
@@ -945,9 +945,9 @@ def analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
             checkpoint_key=checkpoint_key,
             sweep_id=sweep_id,
         )   
-        print(f"Plotting took {time.time() - plot_start:.2f}s")
+        #print(f"Plotting took {time.time() - plot_start:.2f}s")
 
-    print(f"Total analysis time: {time.time() - start_time:.2f}s")
+    #print(f"Total analysis time: {time.time() - start_time:.2f}s")
 
     if return_results:
         return {
