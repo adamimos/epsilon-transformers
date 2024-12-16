@@ -196,6 +196,12 @@ def analyze_single_run(args):
         nn_probs = base_data['probs']
         nn_unnormalized_beliefs = base_data['unnormalized_beliefs']
         nn_shuffled_beliefs = base_data['shuffled_beliefs']
+        print(f"nn_inputs.shape: {nn_inputs.shape}")
+        print(f"nn_beliefs.shape: {nn_beliefs.shape}")
+        print(f"nn_belief_indices.shape: {nn_belief_indices.shape}")
+        print(f"nn_probs.shape: {nn_probs.shape}")
+        print(f"nn_unnormalized_beliefs.shape: {nn_unnormalized_beliefs.shape}")
+        print(f"nn_shuffled_beliefs.shape: {nn_shuffled_beliefs.shape}")
  
         process_config = config['process_config']
         process_folder_name = get_process_filename(process_config)
@@ -247,6 +253,12 @@ def analyze_single_run(args):
                         (mark_inputs, mark_unnorm, f"Order-{order} Approx. Unnormalized"),
                         (mark_inputs, mark_shuffled, f"Order-{order} Approx. Shuffled Unnormalized")
                     ])
+                    print(f"mark_inputs.shape: {mark_inputs.shape}")
+                    print(f"mark_beliefs.shape: {mark_beliefs.shape}")
+                    print(f"mark_indices.shape: {mark_indices.shape}")
+                    print(f"mark_probs.shape: {mark_probs.shape}")
+                    print(f"mark_unnorm.shape: {mark_unnorm.shape}")
+                    print(f"mark_shuffled.shape: {mark_shuffled.shape}")
                 
                 # Run analyses for this checkpoint
                 for i, (inputs, beliefs, title) in enumerate(analyses):
