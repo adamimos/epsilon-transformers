@@ -29,6 +29,7 @@ from multiprocessing import Pool, cpu_count
 import os
 import json
 import numpy as np
+import argparse
 
 
 def check_run_completed(loader: S3ModelLoader, sweep_id: str, run_id: str) -> bool:
@@ -91,11 +92,37 @@ def mark_checkpoint_completed(loader: S3ModelLoader, sweep_id: str, run_id: str,
     )
     print(f"Marked checkpoint {checkpoint_num} as completed")
 
+def parse_args():
+    parser = argparse.ArgumentParser(description='Analyze model data in parallel')
+    parser.add_argument(
+        '--model-type',
+        type=str,
+        choices=['rnn', 'transformer', 'all'],
+        default='all',
+        help='Type of model to analyze (rnn, transformer, or all)'
+    )
+    return parser.parse_args()
+
 def main():
+    args = parse_args()
+    
+    # Define all sweeps
     sweeps = {
         '20241121152808': 'RNN',
         '20241205175736': 'Transformer'
     }
+    
+    # Filter sweeps based on model type argument
+    if args.model_type != 'all':
+        sweeps = {
+            sweep_id: model_type 
+            for sweep_id, model_type in sweeps.items() 
+            if model_type.lower() == args.model_type.lower()
+        }
+    
+    if not sweeps:
+        print(f"No sweeps found for model type: {args.model_type}")
+        return
 
     # Get number of available CPUs, leaving some headroom
     num_cpus = cpu_count()
