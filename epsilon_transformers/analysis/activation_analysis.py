@@ -24,6 +24,11 @@ import pickle
 import sys
 import json
 import numpy as np
+import asyncio
+import aioboto3
+from concurrent.futures import ThreadPoolExecutor
+from queue import Queue
+import threading
 
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -1472,3 +1477,50 @@ class ProcessDataLoader:
 
         base_data = {k: data_to_save[k] for k in ['inputs', 'beliefs', 'belief_indices', 'probs', 'unnormalized_beliefs', 'shuffled_beliefs']}
         return base_data, markov_data
+
+class AsyncS3Uploader:
+    def __init__(self, bucket_name, aws_access_key_id, aws_secret_access_key, region_name):
+        self.bucket_name = bucket_name
+        self.aws_access_key_id = aws_access_key_id
+        self.aws_secret_access_key = aws_secret_access_key
+        self.region_name = region_name
+        self.upload_queue = Queue()
+        self.upload_thread = threading.Thread(target=self._upload_worker, daemon=True)
+        self.upload_thread.start()
+
+    def _upload_worker(self):
+        """Background worker that processes uploads from the queue"""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        async def process_queue():
+            while True:
+                key, data = await loop.run_in_executor(None, self.upload_queue.get)
+                if key is None and data is None:
+                    break
+                    
+                try:
+                    upload_start = time.time()
+                    session = aioboto3.Session()
+                    async with session.client('s3',
+                        aws_access_key_id=self.aws_access_key_id,
+                        aws_secret_access_key=self.aws_secret_access_key,
+                        region_name=self.region_name
+                    ) as s3:
+                        await s3.put_object(Bucket=self.bucket_name, Key=key, Body=data)
+                        print(f"Background upload completed for {key} (took {time.time() - upload_start:.2f}s)")
+                except Exception as e:
+                    print(f"Error uploading {key}: {e}")
+                
+                self.upload_queue.task_done()
+
+        loop.run_until_complete(process_queue())
+
+    def queue_upload(self, key, data):
+        """Queue a file for upload"""
+        self.upload_queue.put((key, data))
+
+    def shutdown(self):
+        """Shutdown the uploader and wait for remaining uploads"""
+        self.upload_queue.put((None, None))  # Signal to stop
+        self.upload_thread.join()

@@ -117,6 +117,10 @@ def main():
                 print(f"Error processing run {run}: {str(e)}")
                 continue
 
+        # Make sure to shutdown the uploader when done
+        if hasattr(loader, 'async_uploader'):
+            loader.async_uploader.shutdown()
+
 def analyze_single_run(args):
     """Function to analyze a single run serially"""
     sweep_id, run = args
