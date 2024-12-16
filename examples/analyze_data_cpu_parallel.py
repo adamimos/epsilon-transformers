@@ -196,13 +196,7 @@ def analyze_single_run(args):
         nn_probs = base_data['probs']
         nn_unnormalized_beliefs = base_data['unnormalized_beliefs']
         nn_shuffled_beliefs = base_data['shuffled_beliefs']
-        print(f"{run} nn_inputs.shape: {nn_inputs.shape}")
-        print(f"{run} nn_beliefs.shape: {nn_beliefs.shape}")
-        print(f"{run} nn_belief_indices.shape: {nn_belief_indices.shape}")
-        print(f"{run} nn_probs.shape: {nn_probs.shape}")
-        print(f"{run} nn_unnormalized_beliefs.shape: {nn_unnormalized_beliefs.shape}")
-        print(f"{run} nn_shuffled_beliefs.shape: {nn_shuffled_beliefs.shape}")
- 
+
         process_config = config['process_config']
         process_folder_name = get_process_filename(process_config)
         ckpts = loader.list_checkpoints(sweep_id, run)
@@ -234,9 +228,9 @@ def analyze_single_run(args):
                 
                 # Define analyses to run
                 analyses = [
-                    (nn_inputs, nn_beliefs, "Normalized Beliefs"),
-                    (nn_inputs, nn_unnormalized_beliefs, "Unnormalized Beliefs"),
-                    (nn_inputs, nn_shuffled_beliefs, "Shuffled Unnormalized Beliefs")
+                    (nn_inputs, nn_beliefs, "Normalized Beliefs", nn_belief_indices, nn_probs),
+                    (nn_inputs, nn_unnormalized_beliefs, "Unnormalized Beliefs", nn_belief_indices, nn_probs),
+                    (nn_inputs, nn_shuffled_beliefs, "Shuffled Unnormalized Beliefs", nn_belief_indices, nn_probs)
                 ]
                 
                 # Add Markov analyses
@@ -249,27 +243,22 @@ def analyze_single_run(args):
                         mark_shuffled = shuffle_belief_norms(mark_unnorm)
                         
                     analyses.extend([
-                        (mark_inputs, mark_beliefs, f"Order-{order} Approx."),
-                        (mark_inputs, mark_unnorm, f"Order-{order} Approx. Unnormalized"),
-                        (mark_inputs, mark_shuffled, f"Order-{order} Approx. Shuffled Unnormalized")
+                        (mark_inputs, mark_beliefs, f"Order-{order} Approx.", mark_indices, mark_probs),
+                        (mark_inputs, mark_unnorm, f"Order-{order} Approx. Unnormalized", mark_indices, mark_probs),
+                        (mark_inputs, mark_shuffled, f"Order-{order} Approx. Shuffled Unnormalized", mark_indices, mark_probs)
                     ])
-                    print(f"{run} mark_inputs.shape: {mark_inputs.shape}")
-                    print(f"{run} mark_beliefs.shape: {mark_beliefs.shape}")
-                    print(f"{run} mark_indices.shape: {mark_indices.shape}")
-                    print(f"{run} mark_probs.shape: {mark_probs.shape}")
-                    print(f"{run} mark_unnorm.shape: {mark_unnorm.shape}")
-                    print(f"{run} mark_shuffled.shape: {mark_shuffled.shape}")
+
                 
                 # Run analyses for this checkpoint
-                for i, (inputs, beliefs, title) in enumerate(analyses):
+                for i, (inputs, beliefs, title, indices, probs) in enumerate(analyses):
                     analysis_start = time.time()
                     analyze_model_checkpoint(
                         model=model,
                         nn_inputs=inputs,
                         nn_type=nn_type,
                         nn_beliefs=beliefs,
-                        nn_belief_indices=nn_belief_indices,
-                        nn_probs=nn_probs,
+                        nn_belief_indices=indices,
+                        nn_probs=probs,
                         sweep_type=sweep_type,
                         run_name=run,
                         sweep_id=sweep_id,
