@@ -273,7 +273,7 @@ def prepare_msp_data(config, model_config, loader: S3ModelLoader = None):
 
 def run_activation_to_beliefs_regression(activations, ground_truth_beliefs, sample_weights=None):
     start_time = time.time()
-    print("Starting activation to beliefs regression...")
+    #print("Starting activation to beliefs regression...")
 
     # make sure the first two dimensions are the same
     assert activations.shape[0] == ground_truth_beliefs.shape[0]
@@ -290,7 +290,7 @@ def run_activation_to_beliefs_regression(activations, ground_truth_beliefs, samp
     activations_flattened = activations.detach().reshape(-1, d_model) # [batch * n_ctx, d_model]
     ground_truth_beliefs_flattened = ground_truth_beliefs.view(-1, belief_dim) # [batch * n_ctx, belief_dim]
     sample_weights_flattened = sample_weights.view(-1) if sample_weights is not None else None
-    print(f"Data preparation took {time.time() - start_time:.2f}s")
+    #print(f"Data preparation took {time.time() - start_time:.2f}s")
 
     # run the regression
     regression_start = time.time()
@@ -304,7 +304,7 @@ def run_activation_to_beliefs_regression(activations, ground_truth_beliefs, samp
         mse = (((torch.tensor(belief_predictions).view(-1, belief_dim) - ground_truth_beliefs_flattened)**2) * sample_weights_flattened.unsqueeze(-1)).mean()
     else:
         mse = ((torch.tensor(belief_predictions).view(-1, belief_dim) - ground_truth_beliefs_flattened)**2).mean()
-    print(f"Initial regression took {time.time() - regression_start:.2f}s")
+    #print(f"Initial regression took {time.time() - regression_start:.2f}s")
 
     # cross-validation
     cv_start = time.time()
@@ -331,7 +331,7 @@ def run_activation_to_beliefs_regression(activations, ground_truth_beliefs, samp
         mse_cv = (((torch.tensor(belief_predictions_cv).view(-1, belief_dim) - ground_truth_beliefs_flattened[test_inds])**2) * sample_weights_flattened[test_inds].unsqueeze(-1)).mean()
     else:
         mse_cv = ((torch.tensor(belief_predictions_cv).view(-1, belief_dim) - ground_truth_beliefs_flattened[test_inds])**2).mean()
-    print(f"Cross-validation took {time.time() - cv_start:.2f}s")
+    #print(f"Cross-validation took {time.time() - cv_start:.2f}s")
 
     # shuffled regression
     shuffle_start = time.time()
@@ -346,9 +346,9 @@ def run_activation_to_beliefs_regression(activations, ground_truth_beliefs, samp
         mse_shuffled = (((torch.tensor(belief_predictions_shuffled).view(-1, belief_dim) - ground_truth_beliefs_flattened_shuffled)**2) * sample_weights_flattened.unsqueeze(-1)).mean()
     else:
         mse_shuffled = ((torch.tensor(belief_predictions_shuffled).view(-1, belief_dim) - ground_truth_beliefs_flattened_shuffled)**2).mean()
-    print(f"Shuffled regression took {time.time() - shuffle_start:.2f}s")
+    #print(f"Shuffled regression took {time.time() - shuffle_start:.2f}s")
 
-    print(f"Total regression analysis took {time.time() - start_time:.2f}s")
+    #print(f"Total regression analysis took {time.time() - start_time:.2f}s")
 
     return regression, belief_predictions, mse, mse_shuffled, belief_predictions_shuffled, mse_cv, belief_predictions_cv, test_inds
 
@@ -729,23 +729,23 @@ def find_msp_subspace_in_residual_stream(model: HookedTransformer, process: GHMM
     return ground_truth_belief_states_reshaped, predicted_beliefs
 
 def get_activations(model, nn_inputs, nn_type):
-    print(f"Starting get_activations for {nn_type}")
+    #print(f"Starting get_activations for {nn_type}")
     try:
         # move model to cpu
         model = model.cpu()
         if nn_type == 'transformer':
-            print("Running transformer activation collection")
+            #print("Running transformer activation collection")
             # make nn_inputs ints
             nn_inputs = nn_inputs.int()
             _, cache = model.run_with_cache(nn_inputs, names_filter=lambda x: 'resid' in x or 'ln_final.hook_normalized' in x)
-            print(type(cache))
+            #print(type(cache))
             max_layers = 10
             relevant_activation_keys = ['blocks.0.hook_resid_pre'] + [f'blocks.{i}.hook_resid_post' for i in range(max_layers)] + ['ln_final.hook_normalized']
             acts = torch.stack([v for k,v in cache.items() if k in relevant_activation_keys and k in cache], dim=0)
-            print(f"Successfully collected transformer activations with shape {acts.shape}")
+            #print(f"Successfully collected transformer activations with shape {acts.shape}")
             return acts
         elif nn_type == 'rnn':
-            print("Running RNN activation collection")
+            #print("Running RNN activation collection")
             a, b = model.forward_with_all_states(nn_inputs)
             print(f"Successfully collected RNN activations with shape {b['layer_states'].shape}")
             return b['layer_states']
@@ -869,6 +869,7 @@ def plot_belief_prediction_comparison(
         print(f"Saving figure upload took {time.time() - save_figure_start:.2f}s")
     plt.close()  # Close the figure to free memory
     print(f"Plotting took {time.time() - time_start:.2f}s")
+
 def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs, 
                  sweep_type, run_name, layer_idx, title=None, return_results=False,
                  loader=None, checkpoint_key=None, sweep_id=None, run_id=None, save_figure=False):  # Added save_figure parameter
@@ -917,11 +918,12 @@ def analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
                       sweep_type, run_name, title=None, return_results=False,
                       loader=None, checkpoint_key=None, sweep_id=None, run_id=None, save_figure=False):
     """Analyze concatenated activations from all layers."""
+    print(f"acts.shape: {acts.shape}")
     start_time = time.time()
     
     all_layers_acts = acts.permute(1,2,0,3).reshape(acts.shape[1], acts.shape[2], -1)
     print(f"Reshaping activations took {time.time() - start_time:.2f}s")
-    #print("All layers concatenated shape:", all_layers_acts.shape)
+    print("All layers concatenated shape:", all_layers_acts.shape)
 
     regression_start = time.time()
     (regression, belief_predictions, mse, mse_shuffled, 

@@ -182,12 +182,12 @@ def analyze_single_run(args):
         # Load initial model and config 
         load_start = time.time()
         model, config = loader.load_checkpoint(sweep_id, run, loader.list_checkpoints(sweep_id, run)[-1], device='cpu')
-        print(f"Initial model loading took {time.time() - load_start:.2f}s")
+        #print(f"Initial model loading took {time.time() - load_start:.2f}s")
 
         # Load or generate process data
         data_start = time.time()
         base_data, markov_data = process_loader.load_or_generate_process_data(sweep_id, run, model, config)
-        print(f"Process data preparation took {time.time() - data_start:.2f}s")
+        #print(f"Process data preparation took {time.time() - data_start:.2f}s")
 
         # unpack base data
         nn_inputs = base_data['inputs']
@@ -266,21 +266,21 @@ def analyze_single_run(args):
                         checkpoint_key=ckpt,
                         save_figure=True
                     )
-                    print(f"Analysis {i+1}/{len(analyses)} ({title}) took {time.time() - analysis_start:.2f}s")
+                    #print(f"Analysis {i+1}/{len(analyses)} ({title}) took {time.time() - analysis_start:.2f}s")
                 
                 mark_checkpoint_completed(loader, sweep_id, run, ckpt)
                 print(f"Checkpoint {ckpt_ind} took {time.time() - ckpt_start:.2f}s")
                 
             except Exception as e:
-                print(f"Error processing checkpoint {ckpt} for run {run}, title {title}: {str(e)}")
+                print(f"ERROR processing checkpoint {ckpt} for run {run}, title {title}: {str(e)}")
                 continue
 
         print(f"Total run time for {run}: {time.time() - start_time:.2f}s")
         return f"Completed analysis for {run}"
         
     except Exception as e:
-        print(f"Error processing run {run}: {str(e)}")
-        return f"Failed to process run {run}: {str(e)}"
+        print(f"ERROR processing run {run}: {str(e)}")
+        return f"ERROR processing run {run}: {str(e)}"
 
 if __name__ == '__main__':
     main()
