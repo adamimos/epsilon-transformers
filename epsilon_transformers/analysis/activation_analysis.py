@@ -868,7 +868,7 @@ def plot_belief_prediction_comparison(
         )
         print(f"Saving figure upload took {time.time() - save_figure_start:.2f}s")
     plt.close()  # Close the figure to free memory
-    print(f"Plotting took {time.time() - time_start:.2f}s")
+    #print(f"Plotting took {time.time() - time_start:.2f}s")
 
 def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs, 
                  sweep_type, run_name, layer_idx, title=None, return_results=False,
@@ -883,7 +883,7 @@ def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs,
      test_inds) = run_activation_to_beliefs_regression(
         layer_acts, nn_beliefs, nn_probs
     )
-    print(f"Regression analysis took {time.time() - regression_start:.2f}s")
+    #print(f"Regression analysis took {time.time() - regression_start:.2f}s")
     
     if save_figure:  # Use the parameter
         plot_start = time.time()
@@ -897,7 +897,7 @@ def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs,
             checkpoint_key=checkpoint_key,
             sweep_id=sweep_id,
         )
-        print(f"Plotting took {time.time() - plot_start:.2f}s")
+        #print(f"Plotting took {time.time() - plot_start:.2f}s")
 
     print(f"Total layer analysis time: {time.time() - start_time:.2f}s")
 
