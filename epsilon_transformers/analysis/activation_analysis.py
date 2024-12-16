@@ -576,10 +576,14 @@ def plot_belief_predictions2(belief_predictions,
         com = True
         c = belief_indices.flatten()
         # do pca on ground truth
-        pca = PCA(n_components=3)
-        pca.fit(transformer_input_beliefs_flat)
-        transformer_input_beliefs_flat = pca.transform(transformer_input_beliefs_flat)
-        belief_predictions_flat = pca.transform(belief_predictions_flat)
+        # if belief dims < 3, then use the first two dimensions
+        if transformer_input_beliefs_flat.shape[-1] < 3:
+            inds = [0,1]
+        else:
+            pca = PCA(n_components=3)
+            pca.fit(transformer_input_beliefs_flat)
+            transformer_input_beliefs_flat = pca.transform(transformer_input_beliefs_flat)
+            belief_predictions_flat = pca.transform(belief_predictions_flat)
 
     if mode not in ['true', 'predicted', 'both']:
         raise ValueError("Mode must be 'true', 'predicted', or 'both'.")
@@ -747,7 +751,7 @@ def get_activations(model, nn_inputs, nn_type):
         elif nn_type == 'rnn':
             #print("Running RNN activation collection")
             a, b = model.forward_with_all_states(nn_inputs)
-            print(f"Successfully collected RNN activations with shape {b['layer_states'].shape}")
+            #print(f"Successfully collected RNN activations with shape {b['layer_states'].shape}")
             return b['layer_states']
         else:
             raise ValueError(f"Model type {nn_type} not supported")
@@ -866,7 +870,7 @@ def plot_belief_prediction_comparison(
             checkpoint_key=checkpoint_key,
             title=f"belief_predictions_{title}" if title else "belief_predictions"
         )
-        print(f"Saving figure upload took {time.time() - save_figure_start:.2f}s")
+        #print(f"Saving figure upload took {time.time() - save_figure_start:.2f}s")
     plt.close()  # Close the figure to free memory
     #print(f"Plotting took {time.time() - time_start:.2f}s")
 
@@ -899,7 +903,7 @@ def analyze_layer(layer_acts, nn_beliefs, nn_belief_indices, nn_probs,
         )
         #print(f"Plotting took {time.time() - plot_start:.2f}s")
 
-    print(f"Total layer analysis time: {time.time() - start_time:.2f}s")
+    #print(f"Total layer analysis time: {time.time() - start_time:.2f}s")
 
     if return_results:
         return {
@@ -918,12 +922,12 @@ def analyze_all_layers(acts, nn_beliefs, nn_belief_indices, nn_probs,
                       sweep_type, run_name, title=None, return_results=False,
                       loader=None, checkpoint_key=None, sweep_id=None, run_id=None, save_figure=False):
     """Analyze concatenated activations from all layers."""
-    print(f"acts.shape: {acts.shape}")
+    #print(f"acts.shape: {acts.shape}")
     start_time = time.time()
     
     all_layers_acts = acts.permute(1,2,0,3).reshape(acts.shape[1], acts.shape[2], -1)
-    print(f"Reshaping activations took {time.time() - start_time:.2f}s")
-    print("All layers concatenated shape:", all_layers_acts.shape)
+    #print(f"Reshaping activations took {time.time() - start_time:.2f}s")
+    #print("All layers concatenated shape:", all_layers_acts.shape)
 
     regression_start = time.time()
     (regression, belief_predictions, mse, mse_shuffled, 
@@ -982,7 +986,7 @@ def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, che
         Key=metadata_key,
         Body=json.dumps(metadata, cls=NumpyEncoder)
     )
-    print(f"Metadata save took {time.time() - meta_start:.2f}s")
+    #print(f"Metadata save took {time.time() - meta_start:.2f}s")
 
     # Save layer results (we know these contain large arrays)
     layers_start = time.time()
@@ -1015,7 +1019,7 @@ def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, che
                 Key=array_key,
                 Body=buf.getvalue()
             )
-    print(f"Layer results save took {time.time() - layers_start:.2f}s")
+    #print(f"Layer results save took {time.time() - layers_start:.2f}s")
 
     # Save all_layers results similarly
     if 'all_layers' in results:
@@ -1048,9 +1052,9 @@ def save_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, che
                 Key=array_key,
                 Body=buf.getvalue()
             )
-        print(f"All layers save took {time.time() - all_layers_start:.2f}s")
+        #print(f"All layers save took {time.time() - all_layers_start:.2f}s")
 
-    print(f"Total save time: {time.time() - start_time:.2f}s")
+    #print(f"Total save time: {time.time() - start_time:.2f}s")
 
 def load_analysis_results(loader: S3ModelLoader, sweep_id: str, run_id: str, checkpoint_key: str):
     """Load analysis results from S3 in their native formats."""
@@ -1096,7 +1100,7 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
     
     acts_start = time.time()
     acts = get_activations(model, nn_inputs, nn_type)
-    print(f"Getting activations took {time.time() - acts_start:.2f}s")
+    #print(f"Getting activations took {time.time() - acts_start:.2f}s")
     
     results = {
         'model_type': nn_type,
@@ -1113,7 +1117,7 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
         layer_names = [f'layer {i}' for i in range(acts.shape[0])]
     else:
         raise ValueError(f"Model type {nn_type} not supported - must be 'transformer' or 'rnn'")
-    print(f"Layer name determination took {time.time() - layer_names_start:.2f}s")
+    #print(f"Layer name determination took {time.time() - layer_names_start:.2f}s")
 
     # Special case for single-layer RNNs
     if nn_type == 'rnn' and acts.shape[0] == 1:
@@ -1124,7 +1128,7 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
                                          sweep_type, run_name, title_all_layers, return_results=True,
                                          loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, 
                                          run_id=run_name, save_figure=save_figure)
-        print(f"Single layer analysis took {time.time() - single_layer_start:.2f}s")
+        #print(f"Single layer analysis took {time.time() - single_layer_start:.2f}s")
         results['all_layers'] = layer_results
     else:
         multi_layer_start = time.time()
@@ -1144,7 +1148,7 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
                 **layer_results
             }
             results['layers'].append(layer_dict)
-            print(f"Layer {layer_idx} analysis took {time.time() - layer_start:.2f}s")
+            #print(f"Layer {layer_idx} analysis took {time.time() - layer_start:.2f}s")
         
         all_layers_start = time.time()
         title_all_layers = f"All Layers" + (f" - {title}" if title else "")
@@ -1153,9 +1157,9 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
                                               sweep_type, run_name, title_all_layers, return_results=True,
                                               loader=loader, checkpoint_key=checkpoint_key, sweep_id=sweep_id, 
                                               run_id=run_name)
-        print(f"All layers analysis took {time.time() - all_layers_start:.2f}s")
+        #print(f"All layers analysis took {time.time() - all_layers_start:.2f}s")
         results['all_layers'] = all_layers_results
-        print(f"Multi-layer analysis took {time.time() - multi_layer_start:.2f}s")
+        #print(f"Multi-layer analysis took {time.time() - multi_layer_start:.2f}s")
 
     if save_results and loader is not None and checkpoint_key is not None and not return_results:
         save_start = time.time()
@@ -1167,9 +1171,9 @@ def analyze_model_checkpoint(model, nn_inputs, nn_type, nn_beliefs, nn_belief_in
                             checkpoint_key=checkpoint_key, 
                             results=results,
                             title=title)
-        print(f"Saving results took {time.time() - save_start:.2f}s")
+        #print(f"Saving results took {time.time() - save_start:.2f}s")
     
-    print(f"Total analysis time: {time.time() - start_time:.2f}s")
+    #print(f"Total analysis time: {time.time() - start_time:.2f}s")
     
     if return_results:
         return results

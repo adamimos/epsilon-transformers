@@ -147,6 +147,12 @@ def analyze_single_run(args):
     nn_probs = base_data['probs']
     nn_unnormalized_beliefs = base_data['unnormalized_beliefs']
     nn_shuffled_beliefs = base_data['shuffled_beliefs']
+    print(f"nn_inputs.shape: {nn_inputs.shape}")
+    print(f"nn_beliefs.shape: {nn_beliefs.shape}")
+    print(f"nn_belief_indices.shape: {nn_belief_indices.shape}")
+    print(f"nn_probs.shape: {nn_probs.shape}")
+    print(f"nn_unnormalized_beliefs.shape: {nn_unnormalized_beliefs.shape}")
+    print(f"nn_shuffled_beliefs.shape: {nn_shuffled_beliefs.shape}")
  
     process_config = config['process_config']
     process_folder_name = get_process_filename(process_config)
@@ -188,6 +194,12 @@ def analyze_single_run(args):
             else:
                 mark_inputs, mark_beliefs, mark_indices, mark_probs, mark_unnorm = mark_data
                 mark_shuffled = shuffle_belief_norms(mark_unnorm)
+                print(f"mark_inputs.shape: {mark_inputs.shape}")
+                print(f"mark_beliefs.shape: {mark_beliefs.shape}")
+                print(f"mark_indices.shape: {mark_indices.shape}")
+                print(f"mark_probs.shape: {mark_probs.shape}")
+                print(f"mark_unnorm.shape: {mark_unnorm.shape}")
+                print(f"mark_shuffled.shape: {mark_shuffled.shape}")
                 
             analyses.extend([
                 (mark_inputs, mark_beliefs, f"Order-{order} Approx."),
