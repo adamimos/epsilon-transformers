@@ -248,7 +248,13 @@ def main():
             all_tasks.extend([(sweep_id, run, ckpt) for ckpt in ckpts])
 
     # take out tasks that are already completed
-    all_tasks = [task for task in all_tasks if not check_checkpoint_completed(loader, task[0], task[1], task[2])]
+    # Process tasks in parallel to check completion status
+    with Pool(num_workers) as pool:
+        completion_checks = list(pool.starmap(
+            check_checkpoint_completed,
+            [(loader, task[0], task[1], task[2]) for task in all_tasks]
+        ))
+    all_tasks = [task for task, is_complete in zip(all_tasks, completion_checks) if not is_complete]
 
     # Process checkpoints in parallel
     with Pool(num_workers) as pool:
