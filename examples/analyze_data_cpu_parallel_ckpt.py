@@ -106,6 +106,12 @@ def parse_args():
         action='store_true',
         help='Process checkpoints in reverse order'
     )
+    parser.add_argument(
+        '--num-cpus',
+        type=int,
+        default=None,
+        help='Number of CPU workers to use. Defaults to number of CPUs minus 2'
+    )
     return parser.parse_args()
 
 def analyze_single_checkpoint(args):
@@ -214,17 +220,22 @@ def main():
         print(f"No sweeps found for model type: {args.model_type}")
         return
 
-    # Get number of available CPUs, leaving some headroom
-    num_cpus = cpu_count()
-    num_workers = max(1, num_cpus - 2)
-    print(f"Using {num_workers} workers out of {num_cpus} available CPUs")
+    # Get number of available CPUs
+    if args.num_cpus is not None:
+        num_workers = args.num_cpus
+    else:
+        num_cpus = cpu_count()
+        num_workers = max(1, num_cpus - 2)
+    print(f"Using {num_workers} workers out of {cpu_count()} available CPUs")
 
     # Collect all checkpoint tasks
     all_tasks = []
     for sweep_id in sweeps:
         loader = S3ModelLoader()
         runs = loader.list_runs_in_sweep(sweep_id)
-        
+        if args.reverse:
+            runs = runs[::-1]
+            
         for run in runs:
             ckpts = loader.list_checkpoints(sweep_id, run)
             if args.reverse:
