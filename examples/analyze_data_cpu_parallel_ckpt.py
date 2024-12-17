@@ -235,6 +235,9 @@ def main():
         runs = loader.list_runs_in_sweep(sweep_id)
         if args.reverse:
             runs = runs[::-1]
+
+        # only take runs that are not already completed
+        runs = [run for run in runs if not check_run_completed(loader, sweep_id, run)]
             
         for run in runs:
             ckpts = loader.list_checkpoints(sweep_id, run)
