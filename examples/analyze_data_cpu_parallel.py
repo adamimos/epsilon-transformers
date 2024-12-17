@@ -205,15 +205,15 @@ def analyze_single_run(args):
             ckpts = ckpts[::-1]  # Reverse the list
         nn_type = model_type(model)
 
-        # Filter out already completed checkpoints
-        ckpts_to_process = [
-            ckpt for ckpt in ckpts 
-            if not check_checkpoint_completed(loader, sweep_id, run, ckpt)
-        ]
 
         # Process each checkpoint
-        for ckpt_ind, ckpt in enumerate(tqdm(ckpts_to_process, desc=f"Processing checkpoints for run {run}")):
+        for ckpt_ind, ckpt in enumerate(tqdm(ckpts, desc=f"Processing checkpoints for run {run}")):
             try:
+
+                if check_checkpoint_completed(loader, sweep_id, run, ckpt):
+                    print(f"Checkpoint {ckpt} already analyzed, skipping")
+                    continue
+                
                 ckpt_start = time.time()
                 
                 # Load model for this checkpoint
