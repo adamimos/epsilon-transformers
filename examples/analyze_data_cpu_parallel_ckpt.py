@@ -31,6 +31,11 @@ import json
 import numpy as np
 import argparse
 
+def check_checkpoint_completed_wrapper(args):
+    """Wrapper function that creates its own S3 client"""
+    sweep_id, run_id, checkpoint_key = args
+    loader = S3ModelLoader()  # Create new loader instance in this process
+    return check_checkpoint_completed(loader, sweep_id, run_id, checkpoint_key)
 
 def check_run_completed(loader: S3ModelLoader, sweep_id: str, run_id: str) -> bool:
     """Check if a run has already been analyzed by looking for a completion marker."""
@@ -228,33 +233,51 @@ def main():
         num_workers = max(1, num_cpus - 2)
     print(f"Using {num_workers} workers out of {cpu_count()} available CPUs")
 
+
     # Collect all checkpoint tasks
     all_tasks = []
+    temp_loader = S3ModelLoader()  # Temporary loader just for listing
     for sweep_id in sweeps:
-        loader = S3ModelLoader()
-        runs = loader.list_runs_in_sweep(sweep_id)
+        runs = temp_loader.list_runs_in_sweep(sweep_id)
         if args.reverse:
             runs = runs[::-1]
 
         # only take runs that are not already completed
-        runs = [run for run in runs if not check_run_completed(loader, sweep_id, run)]
+        runs = [run for run in runs if not check_run_completed(temp_loader, sweep_id, run)]
             
         for run in runs:
-            ckpts = loader.list_checkpoints(sweep_id, run)
+            ckpts = temp_loader.list_checkpoints(sweep_id, run)
             if args.reverse:
                 ckpts = ckpts[::-1]
             
             # Add each checkpoint as a task
             all_tasks.extend([(sweep_id, run, ckpt) for ckpt in ckpts])
 
-    # take out tasks that are already completed
     # Process tasks in parallel to check completion status
     with Pool(num_workers) as pool:
-        completion_checks = list(pool.starmap(
-            check_checkpoint_completed,
-            [(loader, task[0], task[1], task[2]) for task in all_tasks]
-        ))
+        try:
+            completion_checks = list(pool.map(
+                check_checkpoint_completed_wrapper,
+                all_tasks
+            ))
+        except Exception as e:
+            print(f"Error during completion checks: {str(e)}")
+            return
+
     all_tasks = [task for task, is_complete in zip(all_tasks, completion_checks) if not is_complete]
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     # Process checkpoints in parallel
     with Pool(num_workers) as pool:
