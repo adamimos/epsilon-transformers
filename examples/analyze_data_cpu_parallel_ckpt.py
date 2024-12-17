@@ -108,105 +108,32 @@ def parse_args():
     )
     return parser.parse_args()
 
-def main():
-    args = parse_args()
-    
-    # Define all sweeps
-    sweeps = {
-        '20241121152808': 'RNN',
-        '20241205175736': 'Transformer'
-    }
-    
-    # Filter sweeps based on model type argument
-    if args.model_type != 'all':
-        sweeps = {
-            sweep_id: model_type 
-            for sweep_id, model_type in sweeps.items() 
-            if model_type.lower() == args.model_type.lower()
-        }
-    
-    if not sweeps:
-        print(f"No sweeps found for model type: {args.model_type}")
-        return
-
-    # Get number of available CPUs, leaving some headroom
-    num_cpus = cpu_count()
-    num_workers = max(1, num_cpus - 2)  # Leave 2 CPUs free for system tasks
-    print(f"Using {num_workers} workers out of {num_cpus} available CPUs")
-
-    for sweep_id in sweeps:
-        loader = S3ModelLoader()
-        runs = loader.list_runs_in_sweep(sweep_id)
-        
-        # Process runs serially
-        for run in runs:
-            if check_run_completed(loader, sweep_id, run):
-                print(f"Run {run} already processed, skipping...")
-                continue
-                
-            try:
-                print(f"\nProcessing run {run}")
-                # Process checkpoints in parallel for this run
-                process_single_run_parallel(sweep_id, run, num_workers, args.reverse)
-                mark_run_completed(loader, sweep_id, run)
-            except Exception as e:
-                print(f"Error processing run {run}: {str(e)}")
-                continue
-
-        if hasattr(loader, 'async_uploader'):
-            loader.async_uploader.shutdown()
-
-def process_single_run_parallel(sweep_id, run, num_workers, reverse=False):
-    """Process a single run with parallel checkpoint processing"""
-    loader = S3ModelLoader()
-    process_loader = ProcessDataLoader(loader)
-
-    # Load initial model and config 
-    model, config = loader.load_checkpoint(sweep_id, run, loader.list_checkpoints(sweep_id, run)[-1], device='cpu')
-
-    # Load or generate process data
-    base_data, markov_data = process_loader.load_or_generate_process_data(sweep_id, run, model, config)
-
-    # Get checkpoints and filter completed ones
-    ckpts = loader.list_checkpoints(sweep_id, run)
-    if reverse:
-        ckpts = ckpts[::-1]
-
-    ckpts_to_process = [
-        ckpt for ckpt in ckpts 
-        if not check_checkpoint_completed(loader, sweep_id, run, ckpt)
-    ]
-
-    if not ckpts_to_process:
-        print(f"All checkpoints for run {run} already processed")
-        return
-
-    # Prepare arguments for parallel processing
-    ckpt_args = [(sweep_id, run, ckpt, base_data, markov_data) for ckpt in ckpts_to_process]
-
-    # Process checkpoints in parallel
-    with Pool(num_workers) as pool:
-        results = list(tqdm(
-            pool.imap_unordered(analyze_single_checkpoint, ckpt_args),
-            total=len(ckpt_args),
-            desc=f"Processing checkpoints for run {run}"
-        ))
-
 def analyze_single_checkpoint(args):
     """Function to analyze a single checkpoint"""
-    sweep_id, run, ckpt, base_data, markov_data = args
+    sweep_id, run, checkpoint = args
     start_time = time.time()
     
     try:
+        print(f"\nStarting analysis for checkpoint {checkpoint} of run {run}")
         loader = S3ModelLoader()
         
-        # Load model for this checkpoint
+        # Check if checkpoint is already completed
+        if check_checkpoint_completed(loader, sweep_id, run, checkpoint):
+            print(f"Checkpoint {checkpoint} in {run} already completed, skipping...")
+            return f"Skipped {checkpoint} (already completed)"
+        
+        process_loader = ProcessDataLoader(loader)
+
+        # Load model and config
         model, config = loader.load_checkpoint(
             sweep_id=sweep_id,
             run_id=run,
-            checkpoint_key=ckpt,
+            checkpoint_key=checkpoint,
             device='cpu'
         )
+
+        # Load or generate process data
+        base_data, markov_data = process_loader.load_or_generate_process_data(sweep_id, run, model, config)
 
         # Unpack base data
         nn_inputs = base_data['inputs']
@@ -216,16 +143,16 @@ def analyze_single_checkpoint(args):
         nn_unnormalized_beliefs = base_data['unnormalized_beliefs']
         nn_shuffled_beliefs = base_data['shuffled_beliefs']
 
-        sweep_type = get_sweep_type(run)
         nn_type = model_type(model)
-
+        sweep_type = get_sweep_type(run)
+        
         # Define analyses to run
         analyses = [
             (nn_inputs, nn_beliefs, "Normalized Beliefs", nn_belief_indices, nn_probs),
             (nn_inputs, nn_unnormalized_beliefs, "Unnormalized Beliefs", nn_belief_indices, nn_probs),
             (nn_inputs, nn_shuffled_beliefs, "Shuffled Unnormalized Beliefs", nn_belief_indices, nn_probs)
         ]
-
+        
         # Add Markov analyses
         for order, mark_data in enumerate(markov_data):
             if len(mark_data) == 6:
@@ -254,17 +181,65 @@ def analyze_single_checkpoint(args):
                 sweep_id=sweep_id,
                 title=title,
                 loader=loader,
-                checkpoint_key=ckpt,
+                checkpoint_key=checkpoint,
                 save_figure=True
             )
-
-        mark_checkpoint_completed(loader, sweep_id, run, ckpt)
-        print(f"Checkpoint {ckpt} completed in {time.time() - start_time:.2f}s")
-        return f"Completed analysis for checkpoint {ckpt}"
-
+        
+        mark_checkpoint_completed(loader, sweep_id, run, checkpoint)
+        print(f"Checkpoint {checkpoint} took {time.time() - start_time:.2f}s")
+        return f"Completed analysis for {checkpoint}"
+        
     except Exception as e:
-        print(f"ERROR processing checkpoint {ckpt}: {str(e)}")
-        return f"ERROR processing checkpoint {ckpt}: {str(e)}"
+        print(f"ERROR processing checkpoint {checkpoint} for run {run}: {str(e)}")
+        return f"ERROR processing checkpoint {checkpoint}: {str(e)}"
+
+def main():
+    args = parse_args()
+    
+    # Define all sweeps
+    sweeps = {
+        '20241121152808': 'RNN',
+        '20241205175736': 'Transformer'
+    }
+    
+    # Filter sweeps based on model type argument
+    if args.model_type != 'all':
+        sweeps = {
+            sweep_id: model_type 
+            for sweep_id, model_type in sweeps.items() 
+            if model_type.lower() == args.model_type.lower()
+        }
+    
+    if not sweeps:
+        print(f"No sweeps found for model type: {args.model_type}")
+        return
+
+    # Get number of available CPUs, leaving some headroom
+    num_cpus = cpu_count()
+    num_workers = max(1, num_cpus - 2)
+    print(f"Using {num_workers} workers out of {num_cpus} available CPUs")
+
+    # Collect all checkpoint tasks
+    all_tasks = []
+    for sweep_id in sweeps:
+        loader = S3ModelLoader()
+        runs = loader.list_runs_in_sweep(sweep_id)
+        
+        for run in runs:
+            ckpts = loader.list_checkpoints(sweep_id, run)
+            if args.reverse:
+                ckpts = ckpts[::-1]
+            
+            # Add each checkpoint as a task
+            all_tasks.extend([(sweep_id, run, ckpt) for ckpt in ckpts])
+
+    # Process checkpoints in parallel
+    with Pool(num_workers) as pool:
+        results = list(tqdm(
+            pool.imap_unordered(analyze_single_checkpoint, all_tasks),
+            total=len(all_tasks),
+            desc="Processing checkpoints"
+        ))
 
 if __name__ == '__main__':
     main()
