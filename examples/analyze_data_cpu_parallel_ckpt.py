@@ -244,6 +244,9 @@ def main():
             # Add each checkpoint as a task
             all_tasks.extend([(sweep_id, run, ckpt) for ckpt in ckpts])
 
+    # take out tasks that are already completed
+    all_tasks = [task for task in all_tasks if not check_checkpoint_completed(loader, task[0], task[1], task[2])]
+
     # Process checkpoints in parallel
     with Pool(num_workers) as pool:
         results = list(tqdm(
