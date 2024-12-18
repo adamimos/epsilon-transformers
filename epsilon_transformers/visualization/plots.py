@@ -2,7 +2,7 @@ import numpy as np
 from jaxtyping import Float
 import pandas as pd
 import plotly.graph_objects as go
-from dash import Dash, dcc, html, Input, Output
+from dash import Dash, dcc, html, Input, Output, State
 import dash_bootstrap_components as dbc
 
 def _project_to_simplex(points: Float[np.ndarray, "num_points num_states"]):
