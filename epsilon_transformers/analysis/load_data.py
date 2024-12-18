@@ -10,6 +10,7 @@ import torch
 from epsilon_transformers.training.networks import create_RNN
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 from typing import Optional
+from io import BytesIO
 
 class S3ModelLoader:
     def __init__(self):
@@ -295,4 +296,85 @@ class S3ModelLoader:
             configs['loss_csv'] = None
 
         return configs
+    
+    def save_mse_csv(self, sweep_id: str, run_id: str, df: pd.DataFrame) -> None:
+        """
+        Save MSE DataFrame to S3 as a CSV file.
+        
+        Args:
+            sweep_id (str): ID of the sweep
+            run_id (str): ID of the run
+            df (pd.DataFrame): DataFrame containing MSE data
+        """
+        # Convert DataFrame to CSV string in memory
+        csv_buffer = StringIO()
+        df.to_csv(csv_buffer, index=False)
+        
+        # Define the S3 key for this file
+        key = f"analysis/{sweep_id}/{run_id}/mse_data.csv"
+        
+        # Upload to S3
+        try:
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=key,
+                Body=csv_buffer.getvalue()
+            )
+            print(f"Successfully saved MSE data to s3://{self.bucket_name}/{key}")
+        except Exception as e:
+            print(f"Error saving MSE data: {str(e)}")
+
+    def load_mse_csv(self, sweep_id: str, run_id: str) -> pd.DataFrame:
+        """
+        Load MSE DataFrame from S3.
+        
+        Args:
+            sweep_id (str): ID of the sweep
+            run_id (str): ID of the run
+            
+        Returns:
+            pd.DataFrame: DataFrame containing MSE data
+        
+        Raises:
+            FileNotFoundError: If the MSE data file doesn't exist
+        """
+        key = f"analysis/{sweep_id}/{run_id}/mse_data.csv"
+        
+        try:
+            # Get the object from S3
+            response = self.s3_client.get_object(
+                Bucket=self.bucket_name,
+                Key=key
+            )
+            
+            # Read CSV directly from the response
+            df = pd.read_csv(BytesIO(response['Body'].read()))
+            print(f"Successfully loaded MSE data from s3://{self.bucket_name}/{key}")
+            return df
+        
+        except self.s3_client.exceptions.NoSuchKey:
+            raise FileNotFoundError(f"No MSE data found for sweep {sweep_id}, run {run_id}")
+        except Exception as e:
+            raise Exception(f"Error loading MSE data: {str(e)}")
+
+    def check_mse_exists(self, sweep_id: str, run_id: str) -> bool:
+        """
+        Check if MSE data exists for a given sweep and run.
+        
+        Args:
+            sweep_id (str): ID of the sweep
+            run_id (str): ID of the run
+            
+        Returns:
+            bool: True if MSE data exists, False otherwise
+        """
+        key = f"analysis/{sweep_id}/{run_id}/mse_data.csv"
+        try:
+            self.s3_client.head_object(
+                Bucket=self.bucket_name,
+                Key=key
+            )
+            return True
+        except self.s3_client.exceptions.ClientError:
+            return False
     
