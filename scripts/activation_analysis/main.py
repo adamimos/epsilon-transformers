@@ -9,18 +9,20 @@ import traceback
 from tqdm.auto import tqdm
 from datetime import datetime
 import json
+import argparse
 
-from config import (
+from scripts.activation_analysis.config import (
     OUTPUT_DIR, DEFAULT_DEVICE, SWEEPS, RCOND_SWEEP_LIST, 
     MAX_MARKOV_ORDER, TRANSFORMER_ACTIVATION_KEYS,
     MAX_CHECKPOINTS, PROCESS_ALL_CHECKPOINTS
 )
-from data_loading import ModelDataManager, ActivationExtractor
-from belief_states import BeliefStateGenerator
-from regression import RegressionAnalyzer
-from utils import (
+from scripts.activation_analysis.data_loading import ModelDataManager, ActivationExtractor
+from scripts.activation_analysis.belief_states import BeliefStateGenerator
+from scripts.activation_analysis.regression import RegressionAnalyzer
+from scripts.activation_analysis.utils import (
     save_results_to_h5, extract_checkpoint_number, setup_logging,
-    save_unified_results, save_results_csv, save_results_in_csv_format
+    save_unified_results, save_results_csv, save_results_in_csv_format,
+    ensure_dir, is_s3_path
 )
 
 # Set up module logger
@@ -82,7 +84,7 @@ def process_checkpoint(checkpoint, sweep_id, run_id, model_type,
         'best_singular': best_singular
     }
 
-def process_run(sweep_id, run_id, model_type, device=DEFAULT_DEVICE):
+def process_run(sweep_id, run_id, model_type, device=DEFAULT_DEVICE, output_dir=None):
     """Process a single run."""
     # Only process runs with 'L4' in run_id (4-layer networks)
     if 'L4' not in run_id:
@@ -92,8 +94,8 @@ def process_run(sweep_id, run_id, model_type, device=DEFAULT_DEVICE):
     logger.info(f"Processing run {run_id} (model type: {model_type}) on device {device}")
 
     # Setup output directory
-    base_outdir = os.path.join(OUTPUT_DIR, sweep_id)
-    os.makedirs(base_outdir, exist_ok=True)
+    base_outdir = output_dir if output_dir is not None else os.path.join(OUTPUT_DIR, sweep_id)
+    ensure_dir(base_outdir)
 
     # Initialize components
     model_data_manager = ModelDataManager(device=device)
@@ -380,28 +382,81 @@ def process_run(sweep_id, run_id, model_type, device=DEFAULT_DEVICE):
 
 def main():
     """Main entry point."""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Run activation analysis pipeline')
+    parser.add_argument('--output-dir', type=str, default=None,
+                      help=f'Output directory (default: {OUTPUT_DIR})')
+    parser.add_argument('--s3-output', type=str, default=None,
+                      help='S3 output path (e.g., s3://bucket-name/path/to/output)')
+    parser.add_argument('--sweep-id', type=str, default=None,
+                      help='Process only runs from this sweep (default: all sweeps)')
+    parser.add_argument('--run-id', type=str, default=None,
+                      help='Process only this specific run')
+    parser.add_argument('--device', type=str, default=None,
+                      help=f'Device to use (default: {DEFAULT_DEVICE})')
+    args = parser.parse_args()
+    
+    # Determine output directory (local or S3)
+    output_dir = None
+    if args.s3_output:
+        if not args.s3_output.startswith('s3://'):
+            logger.warning(f"S3 output path should start with 's3://'. Got: {args.s3_output}")
+            logger.warning(f"Prepending 's3://' to the path")
+            output_dir = f"s3://{args.s3_output}"
+        else:
+            output_dir = args.s3_output
+        logger.info(f"Using S3 output directory: {output_dir}")
+    elif args.output_dir:
+        output_dir = args.output_dir
+        logger.info(f"Using custom output directory: {output_dir}")
+    
     # Set up logging with a directory based on OUTPUT_DIR
     log_dir = os.path.join(OUTPUT_DIR, "logs")
     log_file = setup_logging(log_dir=log_dir)
     logger.info(f"Starting activation analysis pipeline. Log file: {log_file}")
     
+    # Set device to use
+    device = args.device or DEFAULT_DEVICE
+    
     # Process each sweep
-    for sweep_id, model_type in SWEEPS.items():
+    sweeps_to_process = SWEEPS
+    if args.sweep_id:
+        if args.sweep_id in SWEEPS:
+            sweeps_to_process = {args.sweep_id: SWEEPS[args.sweep_id]}
+        else:
+            logger.error(f"Sweep ID '{args.sweep_id}' not found in config.")
+            return
+    
+    for sweep_id, model_type in sweeps_to_process.items():
         logger.info(f"Processing sweep {sweep_id} ({model_type})")
         
         # Initialize data manager
-        model_data_manager = ModelDataManager(device=DEFAULT_DEVICE)
+        model_data_manager = ModelDataManager(device=device)
         
-        # Get all runs in the sweep with 4 layers
-        runs = [run_id for run_id in model_data_manager.list_runs_in_sweep(sweep_id) 
-                if 'L4' in run_id]
-        
-        logger.info(f"Found {len(runs)} runs with 4 layers in sweep {sweep_id}")
+        # Get runs to process
+        if args.run_id:
+            runs = [args.run_id]
+            logger.info(f"Processing single run: {args.run_id}")
+        else:
+            # Get all runs in the sweep with 4 layers
+            runs = [run_id for run_id in model_data_manager.list_runs_in_sweep(sweep_id) 
+                    if 'L4' in run_id]
+            logger.info(f"Found {len(runs)} runs with 4 layers in sweep {sweep_id}")
         
         # Process each run
         for run_id in runs:
             try:
-                result = process_run(sweep_id, run_id, model_type)
+                sweep_output_dir = output_dir
+                if sweep_output_dir is None:
+                    # Use default directory structure
+                    sweep_output_dir = os.path.join(OUTPUT_DIR, sweep_id)
+                    
+                # For S3 paths, we might want to include the sweep ID in the path
+                elif is_s3_path(sweep_output_dir) and not args.sweep_id:
+                    # Add sweep ID to the path to maintain the same structure as local directories
+                    sweep_output_dir = os.path.join(sweep_output_dir, sweep_id)
+                    
+                result = process_run(sweep_id, run_id, model_type, device=device, output_dir=sweep_output_dir)
                 logger.info(result)
             except Exception as e:
                 logger.error(f"Error processing run {run_id} in sweep {sweep_id}:")

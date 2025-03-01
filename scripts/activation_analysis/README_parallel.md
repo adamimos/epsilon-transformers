@@ -9,6 +9,7 @@ The `main_parallel.py` script provides a flexible way to run activation analysis
 1. Process a single run on a specific GPU
 2. Auto-detect available runs and distribute them across GPUs
 3. Distribute runs from a provided list across multiple GPUs
+4. Save results to local directories or directly to S3 storage
 
 ## Basic Usage
 
@@ -47,6 +48,20 @@ Where `run_list.json` is a JSON file containing a list of run IDs:
 ]
 ```
 
+### Save Results to S3
+
+To save results directly to an S3 bucket:
+
+```bash
+python -m scripts.activation_analysis.main_parallel --run-id YOUR_RUN_ID --s3-output s3://your-bucket/output/path
+```
+
+You can also use the main.py script directly with S3 storage:
+
+```bash
+python -m scripts.activation_analysis.main --run-id YOUR_RUN_ID --s3-output s3://your-bucket/output/path
+```
+
 ## Command-Line Options
 
 ### Run Selection Options
@@ -65,6 +80,7 @@ Where `run_list.json` is a JSON file containing a list of run IDs:
 
 - `--sweep-id SWEEPID`: Process only runs from this sweep (defaults to auto-detect)
 - `--output-dir DIR`: Output directory (defaults to value in config)
+- `--s3-output PATH`: S3 output path (e.g., s3://bucket-name/path/to/output)
 - `--log-dir DIR`: Log directory (defaults to OUTPUT_DIR/logs)
 - `--max-checkpoints N`: Maximum number of checkpoints to process
 - `--process-all-checkpoints`: Process all checkpoints, not just the most recent ones
@@ -94,11 +110,74 @@ python -m scripts.activation_analysis.main_parallel --run-list my_runs.json --di
 python -m scripts.activation_analysis.main_parallel --auto-detect --sweep-id my_sweep --distribute --num-gpus 2
 ```
 
+### Save Results Directly to S3
+
+```bash
+python -m scripts.activation_analysis.main_parallel --run-id my_test_run --s3-output s3://my-bucket/analysis
+```
+
 ### Dry Run to Test Configuration
 
 ```bash
 python -m scripts.activation_analysis.main_parallel --auto-detect --distribute --num-gpus 4 --dry-run
 ```
+
+## Using S3 Storage
+
+Both `main.py` and `main_parallel.py` now support saving results directly to Amazon S3 storage. This feature requires:
+
+1. AWS credentials configured either via environment variables or the AWS CLI
+2. The boto3 Python package (installed via pip)
+
+### Setting Up S3 Access
+
+1. Install the AWS SDK for Python:
+   ```bash
+   pip install boto3
+   ```
+
+2. Configure your AWS credentials using one of these methods:
+   
+   a. Environment variables:
+   ```bash
+   export AWS_ACCESS_KEY_ID=your_access_key
+   export AWS_SECRET_ACCESS_KEY=your_secret_key
+   export AWS_DEFAULT_REGION=your_region
+   ```
+   
+   b. AWS CLI configuration:
+   ```bash
+   aws configure
+   ```
+
+3. Create a bucket in S3 if you don't already have one:
+   ```bash
+   aws s3 mb s3://your-bucket-name
+   ```
+
+### Using S3 Output
+
+To save analysis results directly to S3, use the `--s3-output` flag:
+
+```bash
+python -m scripts.activation_analysis.main --s3-output s3://your-bucket/output/path
+```
+
+The script will automatically:
+1. Detect that the path is an S3 URL
+2. Save all output files (CSV, JSON, etc.) directly to the specified S3 path
+3. Maintain the same directory structure in S3 as it would locally
+
+### S3 Path Format
+
+S3 paths should be in the format `s3://bucket-name/path/to/directory`. The script will verify and fix the format if necessary.
+
+### Benefits of Using S3
+
+- **Persistence**: Results are stored in the cloud and won't be lost if the compute instance terminates
+- **Accessibility**: Access your data from anywhere without having to transfer files manually
+- **Scalability**: S3 can handle large amounts of data without space constraints
+- **Integration**: Easily integrate with other AWS services or analysis tools
 
 ## Tips for Running on Remote Systems
 
@@ -109,6 +188,7 @@ When running on cloud or cluster systems:
 3. Limit the number of checkpoints with `--max-checkpoints` to reduce processing time
 4. Test with `--dry-run` first to make sure everything is configured correctly
 5. Check logs in the output directory to debug any issues
+6. When using S3, keep your AWS credentials secure and consider using IAM roles
 
 ## Creating a Run List
 
@@ -126,8 +206,9 @@ This approach lets you prepare lists of runs for different processing tasks or d
 
 ## Files
 
+- `main.py`: Original script that processes all available runs
 - `main_parallel.py`: A version of the main script that processes a single run_id on a specific GPU
-- `distribute_jobs.py`: A script to distribute runs across multiple GPUs
+- `main_parallel_simple.py`: A simplified version that combines the functionality of multiple scripts
 - `example_run_list.json`: An example file showing the format for specifying runs to process
 
 ## Using with vast.ai
@@ -185,12 +266,32 @@ This will distribute jobs across 2 GPUs and wait for all jobs to complete.
 
 ## Command-Line Options
 
+### main.py
+
+```
+usage: main.py [-h] [--output-dir OUTPUT_DIR] [--s3-output S3_OUTPUT]
+               [--sweep-id SWEEP_ID] [--run-id RUN_ID] [--device DEVICE]
+
+Run activation analysis pipeline
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --output-dir OUTPUT_DIR
+                        Output directory (default: analysis)
+  --s3-output S3_OUTPUT
+                        S3 output path (e.g., s3://bucket-name/path/to/output)
+  --sweep-id SWEEP_ID  Process only runs from this sweep (default: all sweeps)
+  --run-id RUN_ID      Process only this specific run
+  --device DEVICE      Device to use (default: cuda:0)
+```
+
 ### main_parallel.py
 
 ```
 usage: main_parallel.py [-h] --run-id RUN_ID [--sweep-id SWEEP_ID]
                         [--gpu-id GPU_ID] [--output-dir OUTPUT_DIR]
-                        [--log-dir LOG_DIR] [--max-checkpoints MAX_CHECKPOINTS]
+                        [--s3-output S3_OUTPUT] [--log-dir LOG_DIR] 
+                        [--max-checkpoints MAX_CHECKPOINTS]
                         [--process-all-checkpoints]
 
 Run activation analysis on specific runs
@@ -203,6 +304,8 @@ optional arguments:
   --gpu-id GPU_ID       GPU ID to use (default: 0)
   --output-dir OUTPUT_DIR
                         Output directory (default: analysis)
+  --s3-output S3_OUTPUT
+                        S3 output path (e.g., s3://bucket-name/path/to/output)
   --log-dir LOG_DIR     Log directory (defaults to OUTPUT_DIR/logs)
   --max-checkpoints MAX_CHECKPOINTS
                         Maximum number of checkpoints to process
@@ -210,37 +313,9 @@ optional arguments:
                         Process all checkpoints, not just the most recent ones
 ```
 
-### distribute_jobs.py
-
-```
-usage: distribute_jobs.py [-h] --num-gpus NUM_GPUS [--sweep-id SWEEP_ID]
-                         [--run-list RUN_LIST] [--output-dir OUTPUT_DIR]
-                         [--dry-run] [--wait] [--max-checkpoints MAX_CHECKPOINTS]
-                         [--process-all-checkpoints] [--generate-vast-ai]
-
-Distribute activation analysis jobs across multiple GPUs
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --num-gpus NUM_GPUS   Number of GPUs to distribute jobs across
-  --sweep-id SWEEP_ID   Process only runs from this sweep (default: all sweeps)
-  --run-list RUN_LIST   JSON file with list of run_ids to process (default: 
-                        auto-detect)
-  --output-dir OUTPUT_DIR
-                        Output directory (default: analysis)
-  --dry-run             Print commands without executing them
-  --wait                Wait for each batch to complete before starting the next
-  --max-checkpoints MAX_CHECKPOINTS
-                        Maximum number of checkpoints to process per run
-  --process-all-checkpoints
-                        Process all checkpoints for each run
-  --generate-vast-ai    Generate vast.ai compatible shell scripts instead of
-                        running directly
-```
-
 ## Tips for vast.ai
 
 1. **Choose the right instance type**: For GPU-intensive tasks, look for instances with at least 16GB GPU memory
-2. **Data persistence**: Use persistent storage options if you need data to survive instance restarts
+2. **Data persistence**: Use S3 for output to ensure data is preserved even if the instance goes down
 3. **Cost management**: Monitor your usage and shut down instances when not needed
 4. **Checkpoint frequently**: Save intermediate results to avoid losing progress if an instance fails 

@@ -12,13 +12,13 @@ import subprocess
 from datetime import datetime
 from collections import defaultdict
 
-from config import (
+from scripts.activation_analysis.config import (
     OUTPUT_DIR, SWEEPS, RCOND_SWEEP_LIST, 
     MAX_MARKOV_ORDER, TRANSFORMER_ACTIVATION_KEYS,
     MAX_CHECKPOINTS, PROCESS_ALL_CHECKPOINTS
 )
-from main import process_run
-from utils import setup_logging
+from scripts.activation_analysis.main import process_run
+from scripts.activation_analysis.utils import setup_logging
 
 # Set up module logger
 logger = logging.getLogger("main_parallel")

@@ -11,6 +11,9 @@ import h5py
 from datetime import datetime
 import glob
 import pandas as pd
+import boto3
+import io
+from urllib.parse import urlparse
 
 # Set up logging
 def setup_logging(log_dir="logs", log_level=logging.INFO):
@@ -682,13 +685,13 @@ def find_results_csv_files(directory):
 
 def save_regression_results(output_dir, run_id, dataframe, is_random=False):
     """
-    Save regression results to CSV file.
+    Save regression results to a CSV file.
     
     Args:
         output_dir: Directory to save the results
         run_id: Identifier for the run
-        dataframe: DataFrame containing regression results
-        is_random: Whether this is a random baseline result
+        dataframe: DataFrame with results
+        is_random: Whether this is for random baseline
     
     Returns:
         str: Path to the saved CSV file
@@ -919,35 +922,40 @@ def save_singular_values_csv(output_dir, run_id, target, singular_values_dict):
 
 def save_metadata(output_dir, run_id, metadata_dict):
     """
-    Save metadata and file index for a run.
+    Save metadata for a run to a JSON file.
     
     Args:
-        output_dir: Directory to save the metadata
+        output_dir: Directory to save the results
         run_id: Identifier for the run
-        metadata_dict: Dictionary containing metadata and file index
+        metadata_dict: Dictionary of metadata
     
     Returns:
-        str: Path to the saved JSON file
+        str: Path to the saved metadata file
     """
     # Create run_id specific directory
     run_dir = os.path.join(output_dir, run_id)
     os.makedirs(run_dir, exist_ok=True)
     
-    # Create metadata file path
-    file_path = os.path.join(run_dir, f"{run_id}_metadata.json")
+    # Create filename
+    filename = f"{run_id}_metadata.json"
+    file_path = os.path.join(run_dir, filename)
     
-    # Add format version and timestamp if not present
-    if 'format_version' not in metadata_dict:
-        metadata_dict['format_version'] = 'csv_v1'
-    if 'creation_time' not in metadata_dict:
-        metadata_dict['creation_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Prepare metadata with creation time and format version
+    metadata = {
+        "creation_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "format_version": "csv_v1",
+        **metadata_dict
+    }
     
-    # Save metadata as JSON
-    with open(file_path, 'w') as f:
-        json.dump(metadata_dict, f, indent=2)
-    
-    logging.info(f"Saved metadata to {file_path}")
-    return file_path
+    # Save the metadata
+    if is_s3_path(file_path):
+        return save_file_to_s3(metadata, file_path, is_json=True)
+    else:
+        with open(file_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        
+        logging.info(f"Saved metadata to {file_path}")
+        return file_path
 
 def save_results_in_csv_format(output_dir, run_id, checkpoint_data, random_data=None):
     """
@@ -1260,3 +1268,60 @@ def find_csv_format_files(directory):
                 logging.error(f"Error processing metadata file {metadata_file}: {e}")
     
     return results_files, random_baseline_files, metadata_files
+
+def is_s3_path(path):
+    """Check if a path is an S3 path."""
+    return path.startswith('s3://') if path else False
+
+def parse_s3_path(s3_path):
+    """Parse an S3 path into bucket and key."""
+    parsed = urlparse(s3_path)
+    bucket = parsed.netloc
+    key = parsed.path.lstrip('/')
+    return bucket, key
+
+def save_file_to_s3(data, s3_path, use_pandas=False, is_json=False, is_binary=False):
+    """
+    Save data to an S3 path.
+    
+    Args:
+        data: The data to save (string, bytes, or DataFrame)
+        s3_path: The S3 path to save to
+        use_pandas: Whether to use pandas to save the data (for DataFrames)
+        is_json: Whether the data is JSON
+        is_binary: Whether the data is binary
+    """
+    bucket, key = parse_s3_path(s3_path)
+    s3_client = boto3.client('s3')
+    
+    if use_pandas:
+        # For DataFrames, use pandas to_csv to a buffer
+        buffer = io.StringIO()
+        data.to_csv(buffer, index=False)
+        s3_client.put_object(Bucket=bucket, Key=key, Body=buffer.getvalue())
+    elif is_json:
+        # For JSON data
+        if isinstance(data, (dict, list)):
+            data = json.dumps(data, indent=2)
+        s3_client.put_object(Bucket=bucket, Key=key, Body=data)
+    elif is_binary:
+        # For binary data
+        s3_client.put_object(Bucket=bucket, Key=key, Body=data)
+    else:
+        # For string data
+        s3_client.put_object(Bucket=bucket, Key=key, Body=data)
+    
+    logger.info(f"Saved data to S3: s3://{bucket}/{key}")
+    return f"s3://{bucket}/{key}"
+
+def ensure_dir(path):
+    """
+    Ensure a directory exists. For S3 paths, this is a no-op as S3 doesn't have directories.
+    For local paths, create the directory if it doesn't exist.
+    """
+    if is_s3_path(path):
+        # S3 doesn't have directories, so this is a no-op
+        return
+    else:
+        # For local paths, create the directory if it doesn't exist
+        os.makedirs(path, exist_ok=True)

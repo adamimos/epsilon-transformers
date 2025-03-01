@@ -12,13 +12,13 @@ import subprocess
 from datetime import datetime
 from collections import defaultdict
 
-from config import (
+from scripts.activation_analysis.config import (
     OUTPUT_DIR, SWEEPS, RCOND_SWEEP_LIST, 
     MAX_MARKOV_ORDER, TRANSFORMER_ACTIVATION_KEYS,
     MAX_CHECKPOINTS, PROCESS_ALL_CHECKPOINTS
 )
-from main import process_run
-from utils import setup_logging
+from scripts.activation_analysis.main import process_run
+from scripts.activation_analysis.utils import setup_logging, is_s3_path
 
 # Set up module logger
 logger = logging.getLogger("main_parallel")
@@ -49,6 +49,8 @@ def parse_arguments():
                       help='Sweep ID to process (default: auto-detect from run ID)')
     parser.add_argument('--output-dir', type=str, default=None,
                       help=f'Output directory (default: {OUTPUT_DIR})')
+    parser.add_argument('--s3-output', type=str, default=None,
+                      help='S3 output path (e.g., s3://bucket-name/path/to/output)')
     parser.add_argument('--log-dir', type=str, default=None,
                       help='Log directory (defaults to OUTPUT_DIR/logs)')
     parser.add_argument('--max-checkpoints', type=int, default=None,
@@ -118,6 +120,19 @@ def setup_device(gpu_id):
         logger.info("Using CPU device")
     return device
 
+def get_output_dir(args):
+    """Get the appropriate output directory from the arguments."""
+    # S3 output path takes precedence if specified
+    if args.s3_output:
+        if not args.s3_output.startswith('s3://'):
+            logger.warning(f"S3 output path should start with 's3://'. Got: {args.s3_output}")
+            logger.warning(f"Prepending 's3://' to the path")
+            return f"s3://{args.s3_output}"
+        return args.s3_output
+    
+    # Otherwise use local output directory
+    return args.output_dir or OUTPUT_DIR
+
 def process_single_run(args, sweep_id, run_id, model_type, gpu_id=0):
     """Process a single run on the specified GPU."""
     try:
@@ -130,8 +145,12 @@ def process_single_run(args, sweep_id, run_id, model_type, gpu_id=0):
             MAX_CHECKPOINTS = args.max_checkpoints
         if args.process_all_checkpoints:
             PROCESS_ALL_CHECKPOINTS = True
+        
+        # Get output directory (local or S3)
+        output_dir = get_output_dir(args)
+        logger.info(f"Using output directory: {output_dir}")
             
-        result = process_run(sweep_id, run_id, model_type, device=device)
+        result = process_run(sweep_id, run_id, model_type, device=device, output_dir=output_dir)
         logger.info(result)
         return True
     except Exception as e:
@@ -201,7 +220,11 @@ def distribute_runs(run_list, args):
                     if sweep_id:
                         cmd.extend(["--sweep-id", sweep_id])
                     
-                    if args.output_dir:
+                    # Pass output directory
+                    output_dir = get_output_dir(args)
+                    if is_s3_path(output_dir):
+                        cmd.extend(["--s3-output", output_dir])
+                    elif args.output_dir:
                         cmd.extend(["--output-dir", args.output_dir])
                     
                     if args.max_checkpoints is not None:
@@ -238,15 +261,19 @@ def main():
     parser = parse_arguments()
     args = parser
     
-    # Set up output directory
-    output_dir = args.output_dir or OUTPUT_DIR
-    os.makedirs(output_dir, exist_ok=True)
+    # Get appropriate output directory (local or S3)
+    output_dir = get_output_dir(args)
+    
+    # Create local output directory if needed
+    if not is_s3_path(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
     
     # Set up logging
-    log_dir = args.log_dir or os.path.join(output_dir, "logs")
+    log_dir = args.log_dir or os.path.join(output_dir if not is_s3_path(output_dir) else OUTPUT_DIR, "logs")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = setup_logging(log_dir=log_dir)
     logger.info(f"Starting activation analysis with parallel processing. Log file: {log_file}")
+    logger.info(f"Using output directory: {output_dir}")
     
     # Override config settings if specified
     if args.max_checkpoints is not None:
