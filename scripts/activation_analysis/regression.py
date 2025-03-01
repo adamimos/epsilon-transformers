@@ -2,13 +2,14 @@
 Regression analysis functions for mapping activations to belief states.
 """
 import torch
+import numpy as np
 import pandas as pd
 import logging
 import traceback
 from tqdm.auto import tqdm
 
-from utils import standardize, unstandardize_coefficients, report_variance_explained, setup_logging
-from config import REPORT_VARIANCE, DO_BASELINE
+from scripts.activation_analysis.utils import standardize, unstandardize_coefficients, report_variance_explained, setup_logging
+from scripts.activation_analysis.config import REPORT_VARIANCE, DO_BASELINE
 
 # Module logger
 logger = logging.getLogger("regression")

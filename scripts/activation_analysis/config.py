@@ -97,7 +97,7 @@ MAX_CHECKPOINTS = CONFIG.MAX_CHECKPOINTS
 TRANSFORMER_ACTIVATION_KEYS = CONFIG.TRANSFORMER_ACTIVATION_KEYS
 
 # Import convenience - allows importing directly from config
-from utils import setup_logging
+from scripts.activation_analysis.utils import setup_logging
 
 # Automatically set up logging when this module is imported
 os.makedirs(CONFIG.LOG_DIR, exist_ok=True)

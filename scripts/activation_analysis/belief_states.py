@@ -4,6 +4,8 @@ Functions for generating and working with belief states.
 import torch
 import logging
 import traceback
+import json
+import os
 from tqdm.auto import tqdm
 
 from epsilon_transformers.process.GHMM import markov_approximation
@@ -11,7 +13,7 @@ from epsilon_transformers.process.GHMM import TransitionMatrixGHMM
 from epsilon_transformers.process.transition_matrices import get_matrix_from_args
 from epsilon_transformers.analysis.activation_analysis import get_beliefs_for_nn_inputs
 
-from utils import setup_logging
+from scripts.activation_analysis.utils import setup_logging
 
 # Module logger
 logger = logging.getLogger("belief_states")
