@@ -293,6 +293,83 @@ def run_activation_to_beliefs_regression_fast(
     mse = np.mean((y_pred - y)**2)
     return mse
 
+def run_activation_to_beliefs_regression_fast_weighted(
+    activations, ground_truth_beliefs, word_probs=None, train_samples=None
+):
+    """
+    A faster version that does weighted regression using pseudoinverse.
+    Takes into account word probabilities and returns MSE.
+    Uses float16 precision to save memory.
+    
+    Args:
+        activations: Tensor of shape (batch_size, n_ctx, d_model)
+        ground_truth_beliefs: Tensor of shape (batch_size, n_ctx, belief_dim)
+        word_probs: Tensor of shape (batch_size, n_ctx) containing probabilities for each word
+        train_samples: Integer number of samples to use for training. Default: use all data.
+    
+    Returns:
+        mse: Mean squared error weighted by word probabilities
+        weights: Regression weights matrix of shape (d_model, belief_dim)
+        bias: Regression bias vector of shape (belief_dim,)
+    """
+    # Flatten
+    batch_size, n_ctx, d_model = activations.shape
+    belief_dim = ground_truth_beliefs.shape[-1]
+    X = activations.view(-1, d_model).numpy().astype(np.float32)  # Convert to float16
+    y = ground_truth_beliefs.view(-1, belief_dim).numpy().astype(np.float32)
+    if word_probs is not None:
+        w = word_probs.view(-1).numpy().astype(np.float32)  # Flatten probs
+    else:
+        # uniform weights
+        w = np.ones(X.shape[0], dtype=np.float32)
+
+    # Split into train/validation if train_samples specified
+    if train_samples is not None:
+        n_samples = X.shape[0]
+        if not 0 < train_samples < n_samples:
+            raise ValueError(f"train_samples must be between 0 and {n_samples}")
+            
+        # Make train_samples divisible by n_ctx to keep sequences intact
+        train_samples = (train_samples // n_ctx) * n_ctx
+        
+        # Random split
+        indices = np.random.permutation(n_samples)
+        train_idx, val_idx = indices[:train_samples], indices[train_samples:]
+        
+        X_train, X_val = X[train_idx], X[val_idx]
+        y_train, y_val = y[train_idx], y[val_idx]
+        w_train, w_val = w[train_idx], w[val_idx]
+    else:
+        X_train, y_train, w_train = X, y, w
+        X_val, y_val, w_val = None, None, None
+    
+    # Add bias term to training X
+    X_train_bias = np.hstack([X_train, np.ones((X_train.shape[0], 1), dtype=np.float32)])
+    
+    # Calculate weighted matrices for training
+    W_train = np.diag(w_train)
+    WX = W_train @ X_train_bias
+    Wy = W_train @ y_train
+    
+    # Compute pseudoinverse solution: (X^T W X)^-1 X^T W y
+    XtWX = X_train_bias.T @ WX
+    XtWy = X_train_bias.T @ Wy
+    theta = np.linalg.pinv(XtWX) @ XtWy
+    
+    # Extract weights and bias
+    weights = theta[:-1]
+    bias = theta[-1]
+    
+    # Compute MSE on validation set if it exists, otherwise on training set
+    if X_val is not None:
+        X_val_bias = np.hstack([X_val, np.ones((X_val.shape[0], 1), dtype=np.float32)])
+        y_pred = X_val_bias @ theta
+        mse = np.average((y_pred - y_val)**2, weights=w_val, axis=0).mean()
+    else:
+        y_pred = X_train_bias @ theta
+        mse = np.average((y_pred - y_train)**2, weights=w_train, axis=0).mean()
+    
+    return mse
 
 def run_activation_to_beliefs_regression(activations, ground_truth_beliefs, sample_weights=None):
     start_time = time.time()
@@ -308,7 +385,7 @@ def run_activation_to_beliefs_regression(activations, ground_truth_beliefs, samp
 
     # flatten the activations
     batch_size, n_ctx, d_model = activations.shape
-    #print(batch_size, n_ctx, d_model)
+    print(batch_size, n_ctx, d_model)
     belief_dim = ground_truth_beliefs.shape[-1]
     activations_flattened = activations.detach().reshape(-1, d_model) # [batch * n_ctx, d_model]
     ground_truth_beliefs_flattened = ground_truth_beliefs.view(-1, belief_dim) # [batch * n_ctx, belief_dim]

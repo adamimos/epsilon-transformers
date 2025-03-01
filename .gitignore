@@ -8,6 +8,8 @@ poetry.lock
 .mypy_cache/
 .pytest_cache
 **.env
+**.csv
+**.yaml
 wandb/
 .DS_Store
 *.pt
@@ -19,3 +21,15 @@ examples/quantum_animation2.gif
 results/
 data/
 notebooks/
+**.json
+**.npy
+**.npy
+**.log
+**.json
+**.csv
+**.yaml
+**.svg
+**.gif
+**.mp4
+**.mp4
+**.zip
