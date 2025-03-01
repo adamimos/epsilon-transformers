@@ -84,7 +84,7 @@ def get_run_list(args):
     # Case 3: Auto-detect runs
     if args.auto_detect:
         try:
-            from data_loading import ModelDataManager
+            from scripts.activation_analysis.data_loading import ModelDataManager
             mdm = ModelDataManager()
             
             for sweep_id, model_type in SWEEPS.items():
