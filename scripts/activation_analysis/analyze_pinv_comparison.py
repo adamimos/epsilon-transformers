@@ -182,6 +182,156 @@ def analyze_comparison_results(csv_file, output_dir=None):
         plt.tight_layout()
         pdf.savefig()
         plt.close()
+        
+        # Add a specific plot for the layer/target with largest minimum distance discrepancy
+        max_diff_layer = max_min_diff_row['layer_name']
+        max_diff_target = max_min_diff_row['target']
+        
+        # Filter data for this layer/target
+        layer_target_data = results[(results['layer_name'] == max_diff_layer) & 
+                                   (results['target'] == max_diff_target)]
+        
+        # Sort by rcond for proper line plotting
+        layer_target_data = layer_target_data.sort_values('rcond')
+        
+        # Plot distances vs rcond for this layer/target
+        plt.figure(figsize=(12, 8))
+        
+        # Plot on linear scale
+        plt.subplot(2, 1, 1)
+        plt.plot(layer_target_data['rcond'], layer_target_data['norm_dist_orig'], 'b-', label='Original')
+        plt.plot(layer_target_data['rcond'], layer_target_data['norm_dist_opt'], 'r--', label='Optimized')
+        plt.title(f'Distance vs rcond for {max_diff_layer} / {max_diff_target}')
+        plt.xlabel('rcond value')
+        plt.ylabel('Distance')
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+        
+        # Also plot on log-log scale to better see differences
+        plt.subplot(2, 1, 2)
+        plt.loglog(layer_target_data['rcond'], layer_target_data['norm_dist_orig'], 'b-', label='Original')
+        plt.loglog(layer_target_data['rcond'], layer_target_data['norm_dist_opt'], 'r--', label='Optimized')
+        plt.title(f'Distance vs rcond (log-log scale) for {max_diff_layer} / {max_diff_target}')
+        plt.xlabel('rcond value (log scale)')
+        plt.ylabel('Distance (log scale)')
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+        
+        plt.tight_layout()
+        pdf.savefig()
+        plt.close()
+        
+        # Add another plot to show absolute and relative differences
+        plt.figure(figsize=(12, 8))
+        
+        # Plot absolute difference
+        plt.subplot(2, 1, 1)
+        plt.plot(layer_target_data['rcond'], layer_target_data['norm_dist_diff'].abs())
+        plt.title(f'Absolute Difference vs rcond for {max_diff_layer} / {max_diff_target}')
+        plt.xlabel('rcond value')
+        plt.ylabel('Absolute Difference')
+        plt.grid(True, alpha=0.3)
+        
+        # Plot relative difference
+        plt.subplot(2, 1, 2)
+        plt.plot(layer_target_data['rcond'], layer_target_data['norm_dist_rel_diff'])
+        plt.title(f'Relative Difference vs rcond for {max_diff_layer} / {max_diff_target}')
+        plt.xlabel('rcond value')
+        plt.ylabel('Relative Difference')
+        plt.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        pdf.savefig()
+        plt.close()
+        
+        # Create a section header page for individual plots
+        plt.figure(figsize=(8.5, 11))
+        plt.text(0.5, 0.5, 'Individual Layer/Target Analysis', 
+                horizontalalignment='center', fontsize=20)
+        plt.axis('off')
+        pdf.savefig()
+        plt.close()
+        
+        # Generate separate plots for each unique target and layer combination
+        print("\n=== GENERATING INDIVIDUAL LAYER/TARGET PLOTS ===")
+        # Get unique combinations of layer and target
+        layer_target_combos = results[['layer_name', 'target']].drop_duplicates()
+        print(f"Creating plots for {len(layer_target_combos)} layer/target combinations...")
+        
+        for _, row in layer_target_combos.iterrows():
+            layer = row['layer_name']
+            target = row['target']
+            
+            # Filter data for this layer/target
+            combo_data = results[(results['layer_name'] == layer) & 
+                                (results['target'] == target)]
+            
+            # Skip if no data (shouldn't happen, but just in case)
+            if len(combo_data) == 0:
+                continue
+                
+            # Sort by rcond for proper line plotting
+            combo_data = combo_data.sort_values('rcond')
+            
+            # Calculate min distances and relative difference for this combo
+            min_orig = combo_data['norm_dist_orig'].min()
+            min_opt = combo_data['norm_dist_opt'].min()
+            rel_diff = abs(min_orig - min_opt) / min_orig if min_orig > 0 else 0
+            
+            # Plot distances vs rcond for this layer/target
+            plt.figure(figsize=(12, 8))
+            
+            # Add a title showing the min distance stats
+            plt.suptitle(f"{layer} / {target}\nMin Dist Orig: {min_orig:.8e}, Min Dist Opt: {min_opt:.8e}\nRel Diff: {rel_diff:.8e}", 
+                         fontsize=12, y=0.98)
+            
+            # Plot on linear scale
+            plt.subplot(2, 1, 1)
+            plt.plot(combo_data['rcond'], combo_data['norm_dist_orig'], 'b-', label='Original')
+            plt.plot(combo_data['rcond'], combo_data['norm_dist_opt'], 'r--', label='Optimized')
+            plt.title(f'Distance vs rcond')
+            plt.xlabel('rcond value')
+            plt.ylabel('Distance')
+            plt.grid(True, alpha=0.3)
+            plt.legend()
+            
+            # Also plot on log-log scale
+            plt.subplot(2, 1, 2)
+            plt.loglog(combo_data['rcond'], combo_data['norm_dist_orig'], 'b-', label='Original')
+            plt.loglog(combo_data['rcond'], combo_data['norm_dist_opt'], 'r--', label='Optimized')
+            plt.title(f'Distance vs rcond (log-log scale)')
+            plt.xlabel('rcond value (log scale)')
+            plt.ylabel('Distance (log scale)')
+            plt.grid(True, alpha=0.3)
+            plt.legend()
+            
+            plt.tight_layout(rect=(0, 0, 1, 0.95))  # Adjust layout to accommodate suptitle
+            pdf.savefig()
+            plt.close()
+            
+            # Add a second plot showing the differences
+            plt.figure(figsize=(12, 8))
+            plt.suptitle(f"{layer} / {target} - Differences", fontsize=12, y=0.98)
+            
+            # Plot absolute difference
+            plt.subplot(2, 1, 1)
+            plt.plot(combo_data['rcond'], combo_data['norm_dist_diff'].abs())
+            plt.title(f'Absolute Difference vs rcond')
+            plt.xlabel('rcond value')
+            plt.ylabel('Absolute Difference')
+            plt.grid(True, alpha=0.3)
+            
+            # Plot relative difference
+            plt.subplot(2, 1, 2)
+            plt.plot(combo_data['rcond'], combo_data['norm_dist_rel_diff'])
+            plt.title(f'Relative Difference vs rcond')
+            plt.xlabel('rcond value')
+            plt.ylabel('Relative Difference')
+            plt.grid(True, alpha=0.3)
+            
+            plt.tight_layout(rect=(0, 0, 1, 0.95))
+            pdf.savefig()
+            plt.close()
     
     print(f"\nAnalysis complete. Report saved to {pdf_path}")
     return results
