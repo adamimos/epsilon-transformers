@@ -14,11 +14,53 @@ from scripts.activation_analysis.config import REPORT_VARIANCE, DO_BASELINE
 # Module logger
 logger = logging.getLogger("regression")
 
+def compute_efficient_pinv_from_svd(matrix, rcond_values):
+    """
+    Efficiently compute pseudoinverses for multiple rcond values using a single SVD.
+    
+    Args:
+        matrix: The input matrix for which to compute pseudoinverses
+        rcond_values: List of rcond values to use for thresholding
+        
+    Returns:
+        Dictionary mapping each rcond value to its corresponding pseudoinverse matrix,
+        and the singular values from the SVD
+    """
+    # Compute SVD once
+    U, S, Vh = torch.linalg.svd(matrix, full_matrices=False)
+    
+    # Get the maximum singular value for relative thresholding
+    max_singular_value = S[0]
+    
+    # Dictionary to store results
+    pinvs = {}
+    
+    # For each rcond value, create a custom pseudoinverse
+    for rcond in rcond_values:
+        # Compute threshold for this rcond value
+        threshold = rcond * max_singular_value
+        
+        # Create reciprocal of singular values with thresholding
+        S_pinv = torch.zeros_like(S)
+        above_threshold = S > threshold
+        S_pinv[above_threshold] = 1.0 / S[above_threshold]
+        
+        # Compute pseudoinverse as V * S_pinv * U.T
+        # Use broadcasting to multiply each singular value with corresponding column of V
+        S_pinv_diag = torch.diag(S_pinv)
+        pinv_matrix = Vh.T @ S_pinv_diag @ U.T
+        
+        # Store result for this rcond value
+        pinvs[rcond] = pinv_matrix
+    
+    return pinvs, S
+
 class RegressionAnalyzer:
     """Class for performing regression analysis on activations."""
     
-    def __init__(self, device='cpu'):
+    def __init__(self, device='cpu', use_efficient_pinv=False):
         self.device = device
+        self.use_efficient_pinv = use_efficient_pinv
     
     def process_single_layer(self, act_tensor, belief_states, nn_word_probs, rcond, layer_name=None):
         """Process regression for a single layer."""
@@ -123,35 +165,70 @@ class RegressionAnalyzer:
                 std = cached_svds[layer_name]['std']
                 dims = X.shape[1]
                 
-                # Only need to compute the regression with the given rcond
-                # Apply weights
-                ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
-                X_std_bias = torch.cat([ones, X_std], dim=1)
-                sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
-                X_weighted = X_std_bias * sqrt_weights
-                Y_weighted = Y * sqrt_weights
-                
-                # Calculate beta using pseudoinverse with specified regularization
-                A = X_weighted.T @ X_weighted
-                beta_std = torch.pinverse(A, rcond=rcond) @ (X_weighted.T @ Y_weighted)
-                
-                # Convert coefficients back to original scale
-                beta = unstandardize_coefficients(beta_std, mean, std)
-                
-                # Make predictions and calculate metrics
-                ones_orig = torch.ones(X.shape[0], 1, device=X.device)
-                X_orig_bias = torch.cat([ones_orig, X], dim=1)
-                Y_pred = X_orig_bias @ beta
-                
-                # Calculate weighted error
-                distances = torch.sqrt(torch.sum((Y_pred - Y)**2, dim=1))
-                weighted_distances = distances * weights_tensor
-                norm_dist = weighted_distances.sum().item()
-                
-                # Calculate R-squared
-                total_var = torch.sum((Y_weighted - Y_weighted.mean(dim=0))**2)
-                explained_var = torch.sum((Y_pred * sqrt_weights - Y_weighted.mean(dim=0))**2)
-                r_squared = (explained_var / total_var).item()
+                # Check if we have precomputed efficient pinvs
+                if self.use_efficient_pinv and 'efficient_pinvs' in cached_svds[layer_name] and cached_svds[layer_name]['efficient_pinvs'] is not None:
+                    # Use the precomputed efficient pseudoinverse
+                    if rcond in cached_svds[layer_name]['efficient_pinvs']:
+                        # Get the optimized pinv for this rcond value
+                        X_weighted = cached_svds[layer_name]['X_weighted']
+                        Y_weighted = cached_svds[layer_name]['Y_weighted']
+                        pinv_A = cached_svds[layer_name]['efficient_pinvs'][rcond]
+                        
+                        # Calculate beta using precomputed pseudoinverse
+                        beta_std = pinv_A @ (X_weighted.T @ Y_weighted)
+                        
+                        # Convert coefficients back to original scale
+                        beta = unstandardize_coefficients(beta_std, mean, std)
+                        
+                        # Make predictions and calculate metrics
+                        ones_orig = torch.ones(X.shape[0], 1, device=X.device)
+                        X_orig_bias = torch.cat([ones_orig, X], dim=1)
+                        Y_pred = X_orig_bias @ beta
+                        
+                        # Calculate weighted error
+                        distances = torch.sqrt(torch.sum((Y_pred - Y)**2, dim=1))
+                        weighted_distances = distances * weights_tensor
+                        norm_dist = weighted_distances.sum().item()
+                        
+                        # Calculate R-squared
+                        sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                        total_var = torch.sum((Y_weighted - Y_weighted.mean(dim=0))**2)
+                        explained_var = torch.sum((Y_pred * sqrt_weights - Y_weighted.mean(dim=0))**2)
+                        r_squared = (explained_var / total_var).item()
+                    else:
+                        # If this rcond isn't in the precomputed pinvs, fall back to standard method
+                        logger.warning(f"rcond {rcond} not found in precomputed efficient_pinvs, falling back to standard pinv")
+                        # Use standard method (below)
+                        use_efficient = False
+                else:
+                    # Use standard pinv method
+                    ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
+                    X_std_bias = torch.cat([ones, X_std], dim=1)
+                    sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                    X_weighted = X_std_bias * sqrt_weights
+                    Y_weighted = Y * sqrt_weights
+                    
+                    # Calculate beta using pseudoinverse with specified regularization
+                    A = X_weighted.T @ X_weighted
+                    beta_std = torch.pinverse(A, rcond=rcond) @ (X_weighted.T @ Y_weighted)
+                    
+                    # Convert coefficients back to original scale
+                    beta = unstandardize_coefficients(beta_std, mean, std)
+                    
+                    # Make predictions and calculate metrics
+                    ones_orig = torch.ones(X.shape[0], 1, device=X.device)
+                    X_orig_bias = torch.cat([ones_orig, X], dim=1)
+                    Y_pred = X_orig_bias @ beta
+                    
+                    # Calculate weighted error
+                    distances = torch.sqrt(torch.sum((Y_pred - Y)**2, dim=1))
+                    weighted_distances = distances * weights_tensor
+                    norm_dist = weighted_distances.sum().item()
+                    
+                    # Calculate R-squared
+                    total_var = torch.sum((Y_weighted - Y_weighted.mean(dim=0))**2)
+                    explained_var = torch.sum((Y_pred * sqrt_weights - Y_weighted.mean(dim=0))**2)
+                    r_squared = (explained_var / total_var).item()
                 
             else:
                 # Compute everything from scratch
@@ -189,7 +266,7 @@ class RegressionAnalyzer:
             layer_name = "concat_no_input"
             concat_acts = torch.cat([non_input_layers[k] for k in non_input_layers], dim=-1)
             
-            # Use cached SVD if available
+            # Use cached SVD if available - same logic as above
             if cached_svds and layer_name in cached_svds:
                 X = cached_svds[layer_name]['X']
                 X_std = cached_svds[layer_name]['X_std']
@@ -201,29 +278,86 @@ class RegressionAnalyzer:
                 std = cached_svds[layer_name]['std']
                 dims = X.shape[1]
                 
-                # Only need to compute the regression with the given rcond
-                ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
-                X_std_bias = torch.cat([ones, X_std], dim=1)
-                sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
-                X_weighted = X_std_bias * sqrt_weights
-                Y_weighted = Y * sqrt_weights
-                
-                A = X_weighted.T @ X_weighted
-                beta_std = torch.pinverse(A, rcond=rcond) @ (X_weighted.T @ Y_weighted)
-                
-                beta = unstandardize_coefficients(beta_std, mean, std)
-                
-                ones_orig = torch.ones(X.shape[0], 1, device=X.device)
-                X_orig_bias = torch.cat([ones_orig, X], dim=1)
-                Y_pred = X_orig_bias @ beta
-                
-                distances = torch.sqrt(torch.sum((Y_pred - Y)**2, dim=1))
-                weighted_distances = distances * weights_tensor
-                norm_dist = weighted_distances.sum().item()
-                
-                total_var = torch.sum((Y_weighted - Y_weighted.mean(dim=0))**2)
-                explained_var = torch.sum((Y_pred * sqrt_weights - Y_weighted.mean(dim=0))**2)
-                r_squared = (explained_var / total_var).item()
+                # Check if we have precomputed efficient pinvs
+                if self.use_efficient_pinv and 'efficient_pinvs' in cached_svds[layer_name] and cached_svds[layer_name]['efficient_pinvs'] is not None:
+                    # Use the precomputed efficient pseudoinverse
+                    if rcond in cached_svds[layer_name]['efficient_pinvs']:
+                        # Get the optimized pinv for this rcond value
+                        X_weighted = cached_svds[layer_name]['X_weighted']
+                        Y_weighted = cached_svds[layer_name]['Y_weighted']
+                        pinv_A = cached_svds[layer_name]['efficient_pinvs'][rcond]
+                        
+                        # Calculate beta using precomputed pseudoinverse
+                        beta_std = pinv_A @ (X_weighted.T @ Y_weighted)
+                        
+                        # Convert coefficients back to original scale
+                        beta = unstandardize_coefficients(beta_std, mean, std)
+                        
+                        # Make predictions and calculate metrics
+                        ones_orig = torch.ones(X.shape[0], 1, device=X.device)
+                        X_orig_bias = torch.cat([ones_orig, X], dim=1)
+                        Y_pred = X_orig_bias @ beta
+                        
+                        # Calculate weighted error
+                        distances = torch.sqrt(torch.sum((Y_pred - Y)**2, dim=1))
+                        weighted_distances = distances * weights_tensor
+                        norm_dist = weighted_distances.sum().item()
+                        
+                        # Calculate R-squared
+                        sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                        total_var = torch.sum((Y_weighted - Y_weighted.mean(dim=0))**2)
+                        explained_var = torch.sum((Y_pred * sqrt_weights - Y_weighted.mean(dim=0))**2)
+                        r_squared = (explained_var / total_var).item()
+                    else:
+                        # If this rcond isn't in the precomputed pinvs, fall back to standard method
+                        logger.warning(f"rcond {rcond} not found in precomputed efficient_pinvs, falling back to standard pinv")
+                        # Original method below
+                        ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
+                        X_std_bias = torch.cat([ones, X_std], dim=1)
+                        sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                        X_weighted = X_std_bias * sqrt_weights
+                        Y_weighted = Y * sqrt_weights
+                        
+                        A = X_weighted.T @ X_weighted
+                        beta_std = torch.pinverse(A, rcond=rcond) @ (X_weighted.T @ Y_weighted)
+                        
+                        beta = unstandardize_coefficients(beta_std, mean, std)
+                        
+                        ones_orig = torch.ones(X.shape[0], 1, device=X.device)
+                        X_orig_bias = torch.cat([ones_orig, X], dim=1)
+                        Y_pred = X_orig_bias @ beta
+                        
+                        distances = torch.sqrt(torch.sum((Y_pred - Y)**2, dim=1))
+                        weighted_distances = distances * weights_tensor
+                        norm_dist = weighted_distances.sum().item()
+                        
+                        total_var = torch.sum((Y_weighted - Y_weighted.mean(dim=0))**2)
+                        explained_var = torch.sum((Y_pred * sqrt_weights - Y_weighted.mean(dim=0))**2)
+                        r_squared = (explained_var / total_var).item()
+                else:
+                    # Use standard method
+                    ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
+                    X_std_bias = torch.cat([ones, X_std], dim=1)
+                    sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                    X_weighted = X_std_bias * sqrt_weights
+                    Y_weighted = Y * sqrt_weights
+                    
+                    A = X_weighted.T @ X_weighted
+                    beta_std = torch.pinverse(A, rcond=rcond) @ (X_weighted.T @ Y_weighted)
+                    
+                    beta = unstandardize_coefficients(beta_std, mean, std)
+                    
+                    ones_orig = torch.ones(X.shape[0], 1, device=X.device)
+                    X_orig_bias = torch.cat([ones_orig, X], dim=1)
+                    Y_pred = X_orig_bias @ beta
+                    
+                    distances = torch.sqrt(torch.sum((Y_pred - Y)**2, dim=1))
+                    weighted_distances = distances * weights_tensor
+                    norm_dist = weighted_distances.sum().item()
+                    
+                    total_var = torch.sum((Y_weighted - Y_weighted.mean(dim=0))**2)
+                    explained_var = torch.sum((Y_pred * sqrt_weights - Y_weighted.mean(dim=0))**2)
+                    r_squared = (explained_var / total_var).item()
             else:
                 norm_dist, dims, var_expl, singular_vals, beta, r_squared = self.process_single_layer(
                     concat_acts, belief_states, nn_word_probs, rcond
@@ -263,29 +397,86 @@ class RegressionAnalyzer:
             std = cached_svds[layer_name]['std']
             dims = X.shape[1]
             
-            # Only need to compute the regression with the given rcond
-            ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
-            X_std_bias = torch.cat([ones, X_std], dim=1)
-            sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
-            X_weighted = X_std_bias * sqrt_weights
-            Y_weighted = Y * sqrt_weights
-            
-            A = X_weighted.T @ X_weighted
-            beta_std = torch.pinverse(A, rcond=rcond) @ (X_weighted.T @ Y_weighted)
-            
-            beta = unstandardize_coefficients(beta_std, mean, std)
-            
-            ones_orig = torch.ones(X.shape[0], 1, device=X.device)
-            X_orig_bias = torch.cat([ones_orig, X], dim=1)
-            Y_pred = X_orig_bias @ beta
-            
-            distances = torch.sqrt(torch.sum((Y_pred - Y)**2, dim=1))
-            weighted_distances = distances * weights_tensor
-            norm_dist = weighted_distances.sum().item()
-            
-            total_var = torch.sum((Y_weighted - Y_weighted.mean(dim=0))**2)
-            explained_var = torch.sum((Y_pred * sqrt_weights - Y_weighted.mean(dim=0))**2)
-            r_squared = (explained_var / total_var).item()
+            # Check if we have precomputed efficient pinvs
+            if self.use_efficient_pinv and 'efficient_pinvs' in cached_svds[layer_name] and cached_svds[layer_name]['efficient_pinvs'] is not None:
+                # Use the precomputed efficient pseudoinverse
+                if rcond in cached_svds[layer_name]['efficient_pinvs']:
+                    # Get the optimized pinv for this rcond value
+                    X_weighted = cached_svds[layer_name]['X_weighted']
+                    Y_weighted = cached_svds[layer_name]['Y_weighted']
+                    pinv_A = cached_svds[layer_name]['efficient_pinvs'][rcond]
+                    
+                    # Calculate beta using precomputed pseudoinverse
+                    beta_std = pinv_A @ (X_weighted.T @ Y_weighted)
+                    
+                    # Convert coefficients back to original scale
+                    beta = unstandardize_coefficients(beta_std, mean, std)
+                    
+                    # Make predictions and calculate metrics
+                    ones_orig = torch.ones(X.shape[0], 1, device=X.device)
+                    X_orig_bias = torch.cat([ones_orig, X], dim=1)
+                    Y_pred = X_orig_bias @ beta
+                    
+                    # Calculate weighted error
+                    distances = torch.sqrt(torch.sum((Y_pred - Y)**2, dim=1))
+                    weighted_distances = distances * weights_tensor
+                    norm_dist = weighted_distances.sum().item()
+                    
+                    # Calculate R-squared
+                    sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                    total_var = torch.sum((Y_weighted - Y_weighted.mean(dim=0))**2)
+                    explained_var = torch.sum((Y_pred * sqrt_weights - Y_weighted.mean(dim=0))**2)
+                    r_squared = (explained_var / total_var).item()
+                else:
+                    # If this rcond isn't in the precomputed pinvs, fall back to standard method
+                    logger.warning(f"rcond {rcond} not found in precomputed efficient_pinvs, falling back to standard pinv")
+                    # Original method
+                    ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
+                    X_std_bias = torch.cat([ones, X_std], dim=1)
+                    sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                    X_weighted = X_std_bias * sqrt_weights
+                    Y_weighted = Y * sqrt_weights
+                    
+                    A = X_weighted.T @ X_weighted
+                    beta_std = torch.pinverse(A, rcond=rcond) @ (X_weighted.T @ Y_weighted)
+                    
+                    beta = unstandardize_coefficients(beta_std, mean, std)
+                    
+                    ones_orig = torch.ones(X.shape[0], 1, device=X.device)
+                    X_orig_bias = torch.cat([ones_orig, X], dim=1)
+                    Y_pred = X_orig_bias @ beta
+                    
+                    distances = torch.sqrt(torch.sum((Y_pred - Y)**2, dim=1))
+                    weighted_distances = distances * weights_tensor
+                    norm_dist = weighted_distances.sum().item()
+                    
+                    total_var = torch.sum((Y_weighted - Y_weighted.mean(dim=0))**2)
+                    explained_var = torch.sum((Y_pred * sqrt_weights - Y_weighted.mean(dim=0))**2)
+                    r_squared = (explained_var / total_var).item()
+            else:
+                # Standard method
+                ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
+                X_std_bias = torch.cat([ones, X_std], dim=1)
+                sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                X_weighted = X_std_bias * sqrt_weights
+                Y_weighted = Y * sqrt_weights
+                
+                A = X_weighted.T @ X_weighted
+                beta_std = torch.pinverse(A, rcond=rcond) @ (X_weighted.T @ Y_weighted)
+                
+                beta = unstandardize_coefficients(beta_std, mean, std)
+                
+                ones_orig = torch.ones(X.shape[0], 1, device=X.device)
+                X_orig_bias = torch.cat([ones_orig, X], dim=1)
+                Y_pred = X_orig_bias @ beta
+                
+                distances = torch.sqrt(torch.sum((Y_pred - Y)**2, dim=1))
+                weighted_distances = distances * weights_tensor
+                norm_dist = weighted_distances.sum().item()
+                
+                total_var = torch.sum((Y_weighted - Y_weighted.mean(dim=0))**2)
+                explained_var = torch.sum((Y_pred * sqrt_weights - Y_weighted.mean(dim=0))**2)
+                r_squared = (explained_var / total_var).item()
         else:
             norm_dist, dims, var_expl, singular_vals, beta, r_squared = self.process_single_layer(
                 concat_acts, belief_states, nn_word_probs, rcond
@@ -312,7 +503,7 @@ class RegressionAnalyzer:
         best_layer = records[best_idx]["layer_name"]
         return pd.DataFrame(records), singular_values_dict, weights, best_layer, best_layers
 
-    def analyze_checkpoint_with_activations(self, target_activations, belief_targets, rcond_sweep_list):
+    def analyze_checkpoint_with_activations(self, target_activations, belief_targets, rcond_sweep_list, compare_implementations=False):
         """
         Analyze activations across all targets and regularization parameters.
         
@@ -320,11 +511,10 @@ class RegressionAnalyzer:
             target_activations: Dictionary mapping target names to their corresponding activation dictionaries
             belief_targets: Dictionary of belief targets to analyze
             rcond_sweep_list: List of regularization parameters to sweep
+            compare_implementations: If True, run both original and optimized implementations and compare
             
         Returns:
-            all_results: List of DataFrames with results
-            best_weights_dict: Dictionary of best weights
-            best_singular_dict: Dictionary of singular values
+            tuple: (list of DataFrames, best weights dictionary, best singular values dictionary)
         """
         all_results = []
         best_weights_dict = {}
@@ -365,6 +555,28 @@ class RegressionAnalyzer:
                     # SVD for variance analysis
                     var_expl_str, singular_values = report_variance_explained(X_std, REPORT_VARIANCE)
                     
+                    # Add bias term 
+                    ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
+                    X_std_bias = torch.cat([ones, X_std], dim=1)
+                    
+                    # Apply weights
+                    sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                    X_weighted = X_std_bias * sqrt_weights
+                    Y_weighted = Y * sqrt_weights
+                    
+                    # Compute weighted design matrix
+                    A = X_weighted.T @ X_weighted
+                    
+                    # If using efficient implementation or comparing, precompute all pinvs
+                    if self.use_efficient_pinv or compare_implementations:
+                        # Pre-compute all pseudoinverses in one go using optimized method
+                        pinv_matrices, _ = compute_efficient_pinv_from_svd(A, rcond_sweep_list)
+                        
+                        # Store for use in regression
+                        efficient_pinvs = pinv_matrices
+                    else:
+                        efficient_pinvs = None
+                    
                     # Cache computations
                     cached_svds[layer_name] = {
                         'X': X,
@@ -374,7 +586,10 @@ class RegressionAnalyzer:
                         'mean': mean,
                         'std': std,
                         'singular_values': singular_values,
-                        'var_expl': var_expl_str
+                        'var_expl': var_expl_str,
+                        'X_weighted': X_weighted,
+                        'Y_weighted': Y_weighted,
+                        'efficient_pinvs': efficient_pinvs
                     }
                     
                     # Store singular values for later use - they don't depend on rcond
@@ -408,6 +623,26 @@ class RegressionAnalyzer:
                     X_std, mean, std = standardize(X)
                     var_expl_str, singular_values = report_variance_explained(X_std, REPORT_VARIANCE)
                     
+                    # Add bias term 
+                    ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
+                    X_std_bias = torch.cat([ones, X_std], dim=1)
+                    
+                    # Apply weights
+                    sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                    X_weighted = X_std_bias * sqrt_weights
+                    Y_weighted = Y * sqrt_weights
+                    
+                    # Compute weighted design matrix
+                    A = X_weighted.T @ X_weighted
+                    
+                    # If using efficient implementation or comparing, precompute all pinvs
+                    if self.use_efficient_pinv or compare_implementations:
+                        # Pre-compute all pseudoinverses in one go
+                        pinv_matrices, _ = compute_efficient_pinv_from_svd(A, rcond_sweep_list)
+                        efficient_pinvs = pinv_matrices
+                    else:
+                        efficient_pinvs = None
+                    
                     cached_svds["concat_no_input"] = {
                         'X': X,
                         'X_std': X_std,
@@ -416,7 +651,10 @@ class RegressionAnalyzer:
                         'mean': mean,
                         'std': std,
                         'singular_values': singular_values,
-                        'var_expl': var_expl_str
+                        'var_expl': var_expl_str,
+                        'X_weighted': X_weighted,
+                        'Y_weighted': Y_weighted,
+                        'efficient_pinvs': efficient_pinvs
                     }
                 except Exception as e:
                     logger.warning(f"Error precomputing SVD for concat_no_input: {e}")
@@ -433,6 +671,26 @@ class RegressionAnalyzer:
                 X_std, mean, std = standardize(X)
                 var_expl_str, singular_values = report_variance_explained(X_std, REPORT_VARIANCE)
                 
+                # Add bias term 
+                ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
+                X_std_bias = torch.cat([ones, X_std], dim=1)
+                
+                # Apply weights
+                sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                X_weighted = X_std_bias * sqrt_weights
+                Y_weighted = Y * sqrt_weights
+                
+                # Compute weighted design matrix
+                A = X_weighted.T @ X_weighted
+                
+                # If using efficient implementation or comparing, precompute all pinvs
+                if self.use_efficient_pinv or compare_implementations:
+                    # Pre-compute all pseudoinverses in one go
+                    pinv_matrices, _ = compute_efficient_pinv_from_svd(A, rcond_sweep_list)
+                    efficient_pinvs = pinv_matrices
+                else:
+                    efficient_pinvs = None
+                
                 cached_svds["concat_all"] = {
                     'X': X,
                     'X_std': X_std,
@@ -441,16 +699,58 @@ class RegressionAnalyzer:
                     'mean': mean,
                     'std': std,
                     'singular_values': singular_values,
-                    'var_expl': var_expl_str
+                    'var_expl': var_expl_str,
+                    'X_weighted': X_weighted,
+                    'Y_weighted': Y_weighted,
+                    'efficient_pinvs': efficient_pinvs
                 }
             except Exception as e:
                 logger.warning(f"Error precomputing SVD for concat_all: {e}")
             
             # Sweep across regularization parameters
             for rcond_val in tqdm(rcond_sweep_list, desc=f"rcond sweep for target {target_name}", leave=False):
-                df, _, weights, best_layer, best_layers = self.process_activation_layers(
-                    acts, target, probs, rcond_val, cached_svds=cached_svds
-                )
+                # Create a copy of the cached_svds for this run
+                cached_svds_copy = {k: v.copy() for k, v in cached_svds.items()}
+                
+                # Use the original implementation
+                original_use_efficient = self.use_efficient_pinv
+                
+                # If we're comparing, first run with the original implementation
+                if compare_implementations:
+                    self.use_efficient_pinv = False
+                    
+                    # Run original implementation
+                    df_orig, _, weights_orig, best_layer_orig, best_layers_orig = self.process_activation_layers(
+                        acts, target, probs, rcond_val, cached_svds=cached_svds_copy
+                    )
+                    
+                    # Now run with efficient implementation
+                    self.use_efficient_pinv = True
+                    df_eff, _, weights_eff, best_layer_eff, best_layers_eff = self.process_activation_layers(
+                        acts, target, probs, rcond_val, cached_svds=cached_svds
+                    )
+                    
+                    # Compare the results
+                    for layer in best_layers_orig:
+                        if layer in best_layers_eff:
+                            diff = abs(best_layers_orig[layer] - best_layers_eff[layer])
+                            rel_diff = diff / best_layers_orig[layer] if best_layers_orig[layer] > 0 else 0
+                            logger.info(f"Layer {layer} - Original: {best_layers_orig[layer]:.6f}, "
+                                      f"Efficient: {best_layers_eff[layer]:.6f}, "
+                                      f"Diff: {diff:.6f}, Rel Diff: {rel_diff:.6f}")
+                    
+                    # Reset to original setting
+                    self.use_efficient_pinv = original_use_efficient
+                    
+                    # Use the efficient results for the rest of the processing
+                    df = df_eff
+                    weights = weights_eff
+                    best_layers = best_layers_eff
+                else:
+                    # Just use the current setting
+                    df, _, weights, _, best_layers = self.process_activation_layers(
+                        acts, target, probs, rcond_val, cached_svds=cached_svds
+                    )
                 
                 df['target'] = target_name
                 df['rcond'] = rcond_val

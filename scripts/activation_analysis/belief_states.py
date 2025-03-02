@@ -25,12 +25,31 @@ class BeliefStateGenerator:
         self.data_manager = data_manager
         self.device = device
     
+    def check_belief_dimensions(self, data_tuple, order, context=""):
+        """Check belief dimensions and log results. Return True if should stop."""
+        # Each data tuple has (nn_inputs, nn_beliefs, nn_indices, nn_probs, nn_unnormalized)
+        beliefs = data_tuple[1]  # nn_beliefs is at index 1
+        belief_dim = beliefs.shape[-1]
+        logger.info(f"{context} Markov order {order}: belief dimension = {belief_dim}")
+        
+        if belief_dim >= 64:
+            logger.info(f"{context} Belief dimension ({belief_dim}) at order {order} has reached or exceeded 64.")
+            logger.info(f"{context} Stopping at Markov order {order}.")
+            return True
+        return False
+    
     def markov_approx_msps(self, run_config, max_order=3):
         """Run Markov approximations with caching."""
         # Try to load cached data
         cached_data = self.data_manager.load_markov_data(run_config['process_config'], max_order)
         if cached_data is not None:
-            return cached_data
+            # Check for early stopping in cached data
+            stop_at_order = max_order
+            for order, data_tuple in enumerate(cached_data, 1):
+                if self.check_belief_dimensions(data_tuple, order, context="Cached"):
+                    stop_at_order = order
+                    break
+            return cached_data[:stop_at_order]
         
         logger.info("Computing Markov approximation data...")
         T = get_matrix_from_args(**run_config['process_config'])
@@ -45,8 +64,12 @@ class BeliefStateGenerator:
             msp = markov_approx.derive_mixed_state_tree(depth=n_ctx)
             data = self.prepare_data_from_msp(msp, n_ctx)
             markov_data.append(data)
+            
+            # Check if we should stop due to belief dimension
+            if self.check_belief_dimensions(data, order, context="Computed"):
+                break
         
-        # Save the computed data
+        # Save the computed data (only what we actually computed)
         self.data_manager.save_markov_data(markov_data, run_config['process_config'], max_order)
         
         return markov_data
@@ -100,13 +123,16 @@ class BeliefStateGenerator:
         classical_beliefs = {}
         
         try:
-            # Get Markov approximations data
+            # Get Markov approximations data - this now includes early stopping logic
             markov_data = self.markov_approx_msps(run_config, max_order=max_order)
+            
+            # Log summary of computed Markov orders
+            logger.info(f"Generated {len(markov_data)} Markov orders (may be less than max_order={max_order} due to dimension limit)")
             
             # Process each Markov order
             for order, data in enumerate(markov_data, 1):
                 try:
-                    # Unpack the data
+                    # Original unpacking code - keep as is to minimize changes
                     m_inputs, beliefs, _, m_probs, _ = data
                     
                     logger.info(f"Markov order {order}:")
@@ -126,6 +152,13 @@ class BeliefStateGenerator:
                     }
                     
                     logger.info(f"Markov order {order} beliefs shape: {beliefs.shape}")
+                    
+                    # We no longer need this check here since markov_approx_msps already implements early stopping
+                    # But we'll keep it for redundancy and clarity in the logs
+                    belief_dim = beliefs.shape[-1]
+                    if belief_dim >= 64:
+                        logger.info(f"Belief dimension ({belief_dim}) has reached or exceeded 64. Stopping at Markov order {order}.")
+                        break
                 except Exception as e:
                     logger.error(f"Error processing Markov order {order}: {e}")
                     logger.error(f"Full error: {traceback.format_exc()}")
@@ -135,6 +168,14 @@ class BeliefStateGenerator:
             # Check if we have any valid classical beliefs
             if not classical_beliefs:
                 raise ValueError("No valid Markov orders could be processed")
+            
+            # Print a summary of all belief dimensions
+            logger.info("=" * 50)
+            logger.info("SUMMARY OF BELIEF DIMENSIONS:")
+            for mk in sorted(classical_beliefs.keys()):
+                belief_dim = classical_beliefs[mk]['beliefs'].shape[-1]
+                logger.info(f"  {mk}: dimension = {belief_dim}")
+            logger.info("=" * 50)
                 
             return classical_beliefs
             

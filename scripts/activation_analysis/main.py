@@ -87,11 +87,20 @@ def process_run(sweep_id, run_id, model_type, device='cpu', output_dir=None):
         logger.info(f"Skipping run {run_id} (not a 4-layer network).")
         return f"Skipped run {run_id} (not a 4-layer network)."
 
-    logger.info(f"Processing run {run_id} (model type: {model_type}) on device {device}")
-
     # Setup output directory
     base_outdir = output_dir if output_dir is not None else os.path.join(OUTPUT_DIR, sweep_id)
     ensure_dir(base_outdir)
+
+    # Check if this run has already been processed
+    run_dir = os.path.join(base_outdir, run_id)
+    metadata_path = os.path.join(run_dir, f"{run_id}_metadata.json")
+    regression_results_path = os.path.join(run_dir, f"{run_id}_regression_results.csv")
+    
+    if os.path.exists(metadata_path) and os.path.exists(regression_results_path):
+        logger.info(f"Skipping run {run_id} as it has already been processed (output files exist).")
+        return f"Skipped run {run_id} (already processed)."
+
+    logger.info(f"Processing run {run_id} (model type: {model_type}) on device {device}")
 
     # Initialize components
     model_data_manager = ModelDataManager(device=device)
@@ -120,9 +129,23 @@ def process_run(sweep_id, run_id, model_type, device='cpu', output_dir=None):
     # Generate classical belief states
     classical_beliefs = None
     if RUN_CLASSICAL_BELIEFS:
+        logger.info("Generating classical belief states with max order %d...", MAX_MARKOV_ORDER)
         classical_beliefs = belief_generator.generate_classical_belief_states(
             run_config, max_order=MAX_MARKOV_ORDER
         )
+        
+        # Display a summary of the generated classical beliefs
+        if classical_beliefs:
+            logger.info("=" * 80)
+            logger.info("CLASSICAL BELIEF STATES SUMMARY:")
+            for key in sorted(classical_beliefs.keys()):
+                belief_shape = classical_beliefs[key]['beliefs'].shape
+                logger.info(f"  {key}: shape = {belief_shape}, dimension = {belief_shape[-1]}")
+                if belief_shape[-1] >= 64:
+                    logger.info(f"  NOTE: {key} has reached or exceeded the dimension limit of 64")
+            logger.info("=" * 80)
+        else:
+            logger.warning("No classical belief states were generated!")
     
     # MEMORY-EFFICIENT VERSION: Process random baselines one at a time
     random_data = None
