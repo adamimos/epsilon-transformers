@@ -51,18 +51,27 @@ def analyze_comparison_results(csv_file, output_dir=None):
     # Group by layer, rcond, and target
     layer_stats = results.groupby('layer_name').agg({
         'norm_dist_rel_diff': ['mean', 'max'],
-        'r_squared_diff': lambda x: np.abs(x).mean()
+        'r_squared_diff': 'mean'
     }).reset_index()
+    
+    # Flatten column MultiIndex for easier access
+    layer_stats.columns = ['_'.join(col).strip('_') if isinstance(col, tuple) else col for col in layer_stats.columns]
     
     rcond_stats = results.groupby('rcond').agg({
         'norm_dist_rel_diff': ['mean', 'max'],
-        'r_squared_diff': lambda x: np.abs(x).mean()
+        'r_squared_diff': 'mean'
     }).reset_index()
+    
+    # Flatten column MultiIndex for easier access
+    rcond_stats.columns = ['_'.join(col).strip('_') if isinstance(col, tuple) else col for col in rcond_stats.columns]
     
     target_stats = results.groupby('target').agg({
         'norm_dist_rel_diff': ['mean', 'max'],
-        'r_squared_diff': lambda x: np.abs(x).mean()
+        'r_squared_diff': 'mean'
     }).reset_index()
+    
+    # Flatten column MultiIndex for easier access
+    target_stats.columns = ['_'.join(col).strip('_') if isinstance(col, tuple) else col for col in target_stats.columns]
     
     # Generate PDF report with visualizations
     pdf_path = os.path.join(output_dir, 'pinv_comparison_analysis.pdf')
@@ -83,7 +92,7 @@ def analyze_comparison_results(csv_file, output_dir=None):
         
         # Plot layer statistics
         plt.figure(figsize=(10, 6))
-        plt.bar(layer_stats['layer_name'], layer_stats[('norm_dist_rel_diff', 'mean')])
+        plt.bar(layer_stats['layer_name'], layer_stats['norm_dist_rel_diff_mean'])
         plt.title('Mean Relative Difference by Layer')
         plt.xticks(rotation=45, ha='right')
         plt.tight_layout()
@@ -92,7 +101,7 @@ def analyze_comparison_results(csv_file, output_dir=None):
         
         # Plot rcond statistics
         plt.figure(figsize=(8, 6))
-        plt.plot(rcond_stats['rcond'], rcond_stats[('norm_dist_rel_diff', 'mean')], 'o-')
+        plt.plot(rcond_stats['rcond'], rcond_stats['norm_dist_rel_diff_mean'], 'o-')
         plt.title('Mean Relative Difference by rcond Value')
         plt.xlabel('rcond Value')
         plt.ylabel('Mean Relative Difference')
@@ -103,7 +112,7 @@ def analyze_comparison_results(csv_file, output_dir=None):
         
         # Plot r-squared differences
         plt.figure(figsize=(10, 6))
-        plt.bar(layer_stats['layer_name'], layer_stats[('r_squared_diff', 'lambda')])
+        plt.bar(layer_stats['layer_name'], layer_stats['r_squared_diff_mean'])
         plt.title('Mean Absolute R-squared Difference by Layer')
         plt.xticks(rotation=45, ha='right')
         plt.tight_layout()
