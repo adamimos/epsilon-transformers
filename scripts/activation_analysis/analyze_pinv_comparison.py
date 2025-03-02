@@ -48,6 +48,46 @@ def analyze_comparison_results(csv_file, output_dir=None):
     print(f"Max absolute relative difference: {results['norm_dist_rel_diff'].max():.8e}")
     print(f"Mean absolute r-squared difference: {results['r_squared_diff'].abs().mean():.8e}")
     
+    # Find where the maximum difference occurs
+    max_diff_idx = results['norm_dist_rel_diff'].idxmax()
+    max_diff_row = results.loc[max_diff_idx]
+    print(f"\n=== MAXIMUM DIFFERENCE DETAILS ===")
+    print(f"Layer: {max_diff_row['layer_name']}")
+    print(f"Target: {max_diff_row['target']}")
+    print(f"Rcond value: {max_diff_row['rcond']:.8e}")
+    print(f"Original norm distance: {max_diff_row['norm_dist_orig']:.8e}")
+    print(f"Optimized norm distance: {max_diff_row['norm_dist_opt']:.8e}")
+    print(f"Absolute difference: {abs(max_diff_row['norm_dist_diff']):.8e}")
+    print(f"Relative difference: {max_diff_row['norm_dist_rel_diff']:.8e}")
+    print(f"Original R²: {max_diff_row['r_squared_orig']:.8f}")
+    print(f"Optimized R²: {max_diff_row['r_squared_opt']:.8f}")
+    
+    # Find minimum distances across rcond values for each layer/target
+    print("\n=== MINIMUM DISTANCE ANALYSIS ===")
+    # Group by layer, target and find minimum norm_dist for each implementation
+    min_dist = results.groupby(['layer_name', 'target']).agg({
+        'norm_dist_orig': 'min',
+        'norm_dist_opt': 'min',
+        'rcond': 'count'  # Just to count how many rcond values were tested
+    }).reset_index()
+    
+    # Calculate relative difference in minimum distances
+    min_dist['min_dist_rel_diff'] = abs(min_dist['norm_dist_orig'] - min_dist['norm_dist_opt']) / min_dist['norm_dist_orig']
+    
+    # Print summary
+    print(f"Mean relative difference in minimum distances: {min_dist['min_dist_rel_diff'].mean():.8e}")
+    print(f"Max relative difference in minimum distances: {min_dist['min_dist_rel_diff'].max():.8e}")
+    
+    # Print the layer/target with the largest discrepancy in minimum distance
+    max_min_diff_idx = min_dist['min_dist_rel_diff'].idxmax()
+    max_min_diff_row = min_dist.loc[max_min_diff_idx]
+    print(f"\nLargest discrepancy in minimum distance:")
+    print(f"Layer: {max_min_diff_row['layer_name']}")
+    print(f"Target: {max_min_diff_row['target']}")
+    print(f"Original minimum: {max_min_diff_row['norm_dist_orig']:.8e}")
+    print(f"Optimized minimum: {max_min_diff_row['norm_dist_opt']:.8e}")
+    print(f"Relative difference: {max_min_diff_row['min_dist_rel_diff']:.8e}")
+    
     # Group by layer, rcond, and target
     layer_stats = results.groupby('layer_name').agg({
         'norm_dist_rel_diff': ['mean', 'max'],
@@ -115,6 +155,30 @@ def analyze_comparison_results(csv_file, output_dir=None):
         plt.bar(layer_stats['layer_name'], layer_stats['r_squared_diff_mean'])
         plt.title('Mean Absolute R-squared Difference by Layer')
         plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        pdf.savefig()
+        plt.close()
+        
+        # Generate a histogram of relative differences
+        plt.figure(figsize=(10, 6))
+        plt.hist(results['norm_dist_rel_diff'], bins=50)
+        plt.title('Distribution of Relative Differences in Norm Distance')
+        plt.xlabel('Relative Difference')
+        plt.ylabel('Count')
+        plt.yscale('log')  # Use log scale to better see the distribution
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        pdf.savefig()
+        plt.close()
+        
+        # Plot minimum distance analysis
+        plt.figure(figsize=(12, 6))
+        plt.scatter(min_dist['layer_name'], min_dist['min_dist_rel_diff'], c=min_dist.index, cmap='viridis', s=100)
+        plt.title('Relative Difference in Minimum Distances by Layer')
+        plt.xticks(rotation=45, ha='right')
+        plt.ylabel('Relative Difference')
+        plt.grid(True, alpha=0.3)
+        plt.colorbar(label='Index')
         plt.tight_layout()
         pdf.savefig()
         plt.close()
