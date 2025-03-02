@@ -544,3 +544,77 @@ class RegressionAnalyzer:
             combined_df = pd.DataFrame()
             
         return combined_df, best_singular_dict, best_weights_dict
+    
+    def run_random_baseline_streaming(self, random_act_generator, belief_targets, rcond_val, all_results=None, best_singular_dict=None, best_weights_dict=None):
+        """Process a single random baseline at a time.
+        
+        This is a memory-efficient version that processes one random model at a time
+        and appends results to the provided collections or creates new ones.
+        
+        Args:
+            random_act_generator: Generator yielding (random_idx, activations) tuples
+            belief_targets: Dictionary of belief targets
+            rcond_val: Regularization parameter
+            all_results: Optional list to accumulate DataFrames (created if None)
+            best_singular_dict: Optional dict for singular values (created if None)
+            best_weights_dict: Optional dict for weights (created if None)
+            
+        Returns:
+            tuple: (all_results, best_singular_dict, best_weights_dict)
+        """
+        if not DO_BASELINE:
+            return [], {}, {}
+            
+        # Initialize accumulators if not provided
+        all_results = all_results or []
+        best_singular_dict = best_singular_dict or {}
+        best_weights_dict = best_weights_dict or {}
+        
+        # Process the current random network
+        random_idx, acts = next(random_act_generator, (None, None))
+        if random_idx is None:
+            return all_results, best_singular_dict, best_weights_dict
+            
+        for target_name, target_data in belief_targets.items():
+            target = target_data['beliefs']
+            probs = target_data['probs']
+            
+            df, singular_values, weights, _, best_layers = self.process_activation_layers(
+                acts, target, probs, rcond_val
+            )
+            
+            df['checkpoint'] = f'RANDOM_{random_idx}'
+            df['target'] = target_name
+            df['rcond'] = rcond_val
+            all_results.append(df)
+            
+            # Store singular values for first few random models
+            if random_idx < 10:
+                if target_name not in best_singular_dict:
+                    best_singular_dict[target_name] = {}
+                
+                for layer, sv in singular_values.items():
+                    if layer not in best_singular_dict[target_name]:
+                        best_singular_dict[target_name][layer] = []
+                    
+                    best_singular_dict[target_name][layer].append({
+                        "random_idx": random_idx,
+                        "singular_values": sv
+                    })
+                
+                # Store best weights for this random model
+                if target_name not in best_weights_dict:
+                    best_weights_dict[target_name] = {}
+                
+                for layer, dist in best_layers.items():
+                    layer_key = f"{layer}_random_{random_idx}"
+                    
+                    if layer_key not in best_weights_dict[target_name]:
+                        best_weights_dict[target_name][layer_key] = {
+                            "weights": weights.get(layer, None),
+                            "rcond": rcond_val,
+                            "dist": dist,
+                            "random_idx": random_idx
+                        }
+        
+        return all_results, best_singular_dict, best_weights_dict

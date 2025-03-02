@@ -73,6 +73,84 @@ class ActivationExtractor:
                 random_acts.append(self.get_rnn_activations(random_model, nn_inputs))
                 
         return random_acts
+        
+    def get_random_activations_streaming(self, model, run_config, nn_inputs, model_type, relevant_activation_keys=None, num_baselines=None, seed=None):
+        """Generate activations from randomly initialized models one at a time.
+        
+        This is a memory-efficient version that yields one random model's activations at a time
+        instead of accumulating all activations in memory.
+        
+        Args:
+            model: Original model for reference
+            run_config: Configuration for the run
+            nn_inputs: Inputs to the model
+            model_type: Type of model ('transformer' or 'rnn')
+            relevant_activation_keys: Keys for relevant activations (for transformer models)
+            num_baselines: Number of random baselines to generate (defaults to NUM_RANDOM_BASELINES)
+            seed: Specific random seed to use (if None, will use seeds starting from 0)
+            
+        Yields:
+            tuple: (random_idx, activations) for each random network
+        """
+        num_baselines = num_baselines or NUM_RANDOM_BASELINES
+        
+        if model_type == 'transformer':
+            model_cfg = copy.deepcopy(model.cfg)
+            
+            # Use specific seed if provided, otherwise iterate through a range
+            if seed is not None:
+                # Just generate one network with the specified seed
+                rndm_seed = seed
+                model_cfg.seed = rndm_seed
+                random_model = HookedTransformer(model_cfg).to(self.device)
+                acts = self.get_transformer_activations(
+                    random_model, nn_inputs, relevant_activation_keys
+                )
+                yield rndm_seed, acts
+                # Free memory explicitly
+                del random_model, acts
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            else:
+                # Original behavior - iterate through multiple seeds
+                for rndm_seed in tqdm(range(num_baselines), desc="Generating random transformer networks"):
+                    model_cfg.seed = rndm_seed
+                    random_model = HookedTransformer(model_cfg).to(self.device)
+                    acts = self.get_transformer_activations(
+                        random_model, nn_inputs, relevant_activation_keys
+                    )
+                    yield rndm_seed, acts
+                    # Free memory explicitly
+                    del random_model, acts
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                
+        elif model_type == 'rnn':
+            # Use specific seed if provided, otherwise iterate through a range
+            if seed is not None:
+                # Just generate one network with the specified seed
+                rndm_seed = seed
+                # Set PyTorch random seed manually
+                torch.manual_seed(rndm_seed)
+                random_model = create_RNN(run_config, model.output_layer.out_features, device=self.device)
+                acts = self.get_rnn_activations(random_model, nn_inputs)
+                yield rndm_seed, acts
+                # Free memory explicitly
+                del random_model, acts
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            else:
+                # Original behavior - iterate through multiple seeds
+                for rndm_seed in tqdm(range(num_baselines), desc="Generating random RNN networks"):
+                    # Set PyTorch random seed for each iteration
+                    torch.manual_seed(rndm_seed)
+                    random_model = create_RNN(run_config, model.output_layer.out_features, device=self.device)
+                    acts = self.get_rnn_activations(random_model, nn_inputs)
+                    yield rndm_seed, acts
+                    # Free memory explicitly
+                    del random_model, acts
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
 
     def extract_activations(self, model, nn_inputs, model_type, relevant_activation_keys=None):
         """Extract activations based on model type."""
