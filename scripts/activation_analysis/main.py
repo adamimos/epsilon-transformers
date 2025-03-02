@@ -106,7 +106,8 @@ def process_run(sweep_id, run_id, model_type, device='cpu', output_dir=None):
     model_data_manager = ModelDataManager(device=device)
     act_extractor = ActivationExtractor(device=device)
     belief_generator = BeliefStateGenerator(model_data_manager, device=device)
-    regression_analyzer = RegressionAnalyzer(device=device)
+    regression_analyzer = RegressionAnalyzer(device=device,
+                                             use_efficient_pinv=True)
 
     # Load an initial checkpoint to get configuration
     all_checkpoints = model_data_manager.list_checkpoints(sweep_id, run_id)

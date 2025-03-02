@@ -45,8 +45,8 @@ class AnalysisConfig:
             return torch.device("cpu")
     
     # Default device - can be overridden if needed
-    DEFAULT_DEVICE = 'cpu'  # Uncomment to force CPU usage
-    # DEFAULT_DEVICE = get_default_device()
+    # DEFAULT_DEVICE = 'cpu'  # Uncomment to force CPU usage
+    DEFAULT_DEVICE = get_default_device()
     
     # Regression configuration
     RCOND_SWEEP_LIST = [1e-15, 1e-10, 1e-5] + list(torch.logspace(-8, -3, 50).tolist())
