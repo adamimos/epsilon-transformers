@@ -53,7 +53,7 @@ def compare_implementations(sweep_id, run_id, model_type, device='cpu'):
         logger.warning(f"No checkpoints found for run {run_id}")
         return None
         
-    init_checkpoint = all_checkpoints[0]
+    init_checkpoint = all_checkpoints[100]
     model, run_config = model_data_manager.load_checkpoint(sweep_id, run_id, init_checkpoint)
     model = model.to(device)
     
@@ -99,8 +99,8 @@ def compare_implementations(sweep_id, run_id, model_type, device='cpu'):
             mk_acts = act_extractor.extract_activations(model, mk_inputs, model_type, relevant_keys)
             target_activations[mk] = mk_acts
     
-    # Define a subset of rcond values to test (for faster testing)
-    rcond_values = RCOND_SWEEP_LIST  # Use just the first two rcond values for quicker testing
+    # Define the rcond values to test
+    rcond_values = RCOND_SWEEP_LIST  # Use all rcond values for full testing
     
     # --- METHOD 1: Run both implementations separately and compare afterwards ---
     logger.info("METHOD 1: Running implementations separately")
@@ -135,6 +135,9 @@ def compare_implementations(sweep_id, run_id, model_type, device='cpu'):
     results_merged['norm_dist_diff'] = results_merged['norm_dist_orig'] - results_merged['norm_dist_opt']
     results_merged['norm_dist_rel_diff'] = (results_merged['norm_dist_diff'] / results_merged['norm_dist_orig']).abs()
     results_merged['r_squared_diff'] = results_merged['r_squared_orig'] - results_merged['r_squared_opt']
+    
+    # Add speedup information to every row
+    results_merged['speedup_factor'] = original_time / optimized_time
     
     # Show summary of differences
     logger.info(f"Average absolute relative difference in norm_dist: {results_merged['norm_dist_rel_diff'].mean():.8f}")

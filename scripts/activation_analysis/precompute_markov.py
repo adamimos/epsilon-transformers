@@ -18,7 +18,7 @@ from tqdm.auto import tqdm
 import traceback
 
 from scripts.activation_analysis.config import *
-from scripts.activation_analysis.utils import setup_logging
+from scripts.activation_analysis.utils import setup_logging, get_markov_cache_key
 from scripts.activation_analysis.data_loading import ModelDataManager
 from scripts.activation_analysis.belief_states import BeliefStateGenerator
 
@@ -43,6 +43,40 @@ def precompute_for_process_config(process_config, max_order=4, device='cpu', sam
         model_data_manager = ModelDataManager(device=device)
         belief_generator = BeliefStateGenerator(model_data_manager, device=device)
         
+        # Check if process_config is valid
+        if not isinstance(process_config, dict):
+            logger.error(f"Invalid process configuration: {process_config}")
+            return False
+            
+        # Log the full process_config for debugging
+        logger.info(f"Processing configuration: {json.dumps(process_config, indent=2)}")
+        
+        # Create a more meaningful identifier based on available keys
+        config_keys = sorted(process_config.keys())
+        if config_keys:
+            config_id = "_".join(f"{k}:{process_config[k]}" for k in config_keys[:3])
+        else:
+            config_id = "unknown"
+        
+        # Check if the data is in the cache
+        cache_key = get_markov_cache_key(process_config, max_order)
+        logger.info(f"Cache key: {cache_key}")
+        
+        # Check if markov data is already cached
+        cached_data = model_data_manager.load_markov_data(process_config, max_order)
+        if cached_data is not None:
+            # Log the process config with the better identifier
+            logger.info(f"Markov data already cached for process config: {config_id}")
+            
+            # Check the belief dimensions for each order
+            for order, data in enumerate(cached_data, 1):
+                _, beliefs, _, _, _ = data
+                belief_dim = beliefs.shape[-1]
+                logger.info(f"  Order {order}: belief dim = {belief_dim}")
+                if belief_dim >= 64:
+                    logger.info(f"  Stopping at order {order} (dim >= 64)")
+            return True
+        
         # Create a dummy run_config if sample_model_config is not provided
         if sample_model_config is None:
             sample_model_config = {
@@ -56,40 +90,26 @@ def precompute_for_process_config(process_config, max_order=4, device='cpu', sam
             'model_config': sample_model_config
         }
         
-        # Check if markov data is already cached
-        cached_data = model_data_manager.load_markov_data(process_config, max_order)
-        if cached_data is not None:
-            logger.info(f"Markov data already cached for process config: {process_config['type']}")
-            
-            # Check the belief dimensions for each order
-            for order, data in enumerate(cached_data, 1):
-                _, beliefs, _, _, _ = data
-                belief_dim = beliefs.shape[-1]
-                logger.info(f"  Order {order}: belief dim = {belief_dim}")
-                if belief_dim >= 64:
-                    logger.info(f"  Stopping at order {order} (dim >= 64)")
-                    break
-            
+        logger.info(f"Computing Markov approximations for process config: {config_id}")
+        
+        # Generate classical belief states up to max_order
+        belief_states = belief_generator.generate_classical_belief_states(
+            run_config, max_order=max_order
+        )
+        
+        # Check if cache was successfully created
+        new_cached_data = model_data_manager.load_markov_data(process_config, max_order)
+        logger.info(f"Cache created after computation: {new_cached_data is not None}")
+        
+        if belief_states:
+            logger.info(f"Successfully computed and cached Markov data for process config: {config_id}")
             return True
+        else:
+            logger.warning(f"No belief states generated for process config: {config_id}")
+            return False
             
-        # Compute the Markov approximations
-        logger.info(f"Computing Markov approximations for process config: {process_config['type']}")
-        markov_data = belief_generator.markov_approx_msps(run_config, max_order=max_order)
-        
-        # Log details about the computed Markov approximations
-        for order, data in enumerate(markov_data, 1):
-            _, beliefs, _, _, _ = data
-            belief_dim = beliefs.shape[-1]
-            logger.info(f"  Order {order}: belief dim = {belief_dim}")
-            if belief_dim >= 64:
-                logger.info(f"  Stopping at order {order} (dim >= 64)")
-                break
-        
-        logger.info(f"Successfully computed and cached Markov data for process config: {process_config['type']}")
-        return True
-        
     except Exception as e:
-        logger.error(f"Error computing Markov approximations for process config {process_config['type']}: {e}")
+        logger.error(f"Error computing Markov approximations: {e}")
         logger.error(traceback.format_exc())
         return False
 
@@ -109,14 +129,14 @@ def precompute_from_config_file(config_file, max_order=4, device='cpu'):
         with open(config_file, 'r') as f:
             config_data = json.load(f)
         
-        if isinstance(config_data, list):
-            process_configs = config_data
-        elif isinstance(config_data, dict) and 'process_configs' in config_data:
+        if 'process_configs' in config_data:
             process_configs = config_data['process_configs']
+            # If config_data is a dict with process_configs, it might also have model_config
+            sample_model_config = config_data.get('model_config', None)
         else:
             process_configs = [config_data]
-            
-        sample_model_config = config_data.get('model_config', None)
+            # In this case, config_data is already a process config and wouldn't have model_config
+            sample_model_config = None
         
         logger.info(f"Found {len(process_configs)} process configurations to precompute")
         
@@ -156,40 +176,66 @@ def precompute_for_sweeps(sweeps=None, max_order=4, device='cpu'):
     for sweep_id, model_type in sweeps.items():
         logger.info(f"Processing sweep {sweep_id} ({model_type})")
         
-        # Get a sample run to extract process configuration
+        # Get all runs in the sweep
         runs = model_data_manager.list_runs_in_sweep(sweep_id)
         if not runs:
             logger.warning(f"No runs found for sweep {sweep_id}. Skipping.")
             continue
             
-        sample_run_id = runs[0]
-        logger.info(f"Using run {sample_run_id} to extract process configuration")
+        logger.info(f"Found {len(runs)} runs in sweep {sweep_id}")
+        processed_configs = set()  # Track unique process configurations already processed
         
-        try:
-            # Load a checkpoint to get configuration
-            checkpoints = model_data_manager.list_checkpoints(sweep_id, sample_run_id)
-            if not checkpoints:
-                logger.warning(f"No checkpoints found for run {sample_run_id}. Skipping.")
-                continue
+        for run_id in runs:
+            logger.info(f"Processing run {run_id}")
+            
+            try:
+                # Load a checkpoint to get configuration
+                checkpoints = model_data_manager.list_checkpoints(sweep_id, run_id)
+                if not checkpoints:
+                    logger.warning(f"No checkpoints found for run {run_id}. Skipping.")
+                    continue
+                    
+                _, run_config = model_data_manager.load_checkpoint(sweep_id, run_id, checkpoints[0])
                 
-            _, run_config = model_data_manager.load_checkpoint(sweep_id, sample_run_id, checkpoints[0])
-            
-            if 'process_config' not in run_config:
-                logger.warning(f"No process configuration found in run {sample_run_id}. Skipping.")
-                continue
+                if 'process_config' not in run_config:
+                    logger.warning(f"No process configuration found in run {run_id}. Skipping.")
+                    continue
+                    
+                process_config = run_config['process_config']
+                model_config = run_config.get('model_config', None)
                 
-            process_config = run_config['process_config']
-            model_config = run_config.get('model_config', None)
-            
-            logger.info(f"Extracted process configuration: {process_config['type']}")
-            
-            if precompute_for_process_config(process_config, max_order, device, model_config):
-                success_count += 1
-            
-        except Exception as e:
-            logger.error(f"Error processing sweep {sweep_id}: {e}")
-            logger.error(traceback.format_exc())
+                # Log the full process_config for debugging
+                logger.info(f"Process config contents: {json.dumps(process_config, indent=2)}")
+                
+                # Create a more meaningful identifier based on available keys
+                config_keys = sorted(process_config.keys())
+                if config_keys:
+                    config_id = "_".join(f"{k}:{process_config[k]}" for k in config_keys[:3])
+                else:
+                    config_id = "unknown"
+                
+                # Create a config identifier for deduplication
+                config_str = str(process_config)
+                
+                if config_str in processed_configs:
+                    logger.info(f"Process configuration for run {run_id} already processed. Skipping.")
+                    continue
+                
+                # Safely log process configuration
+                logger.info(f"Processing unique configuration from run {run_id}: {config_id}")
+                
+                if precompute_for_process_config(process_config, max_order, device, model_config):
+                    processed_configs.add(config_str)
+                
+            except Exception as e:
+                logger.error(f"Error processing run {run_id} in sweep {sweep_id}: {e}")
+                logger.error(traceback.format_exc())
+        
+        if processed_configs:
+            logger.info(f"Successfully processed {len(processed_configs)} unique configurations from sweep {sweep_id}")
+            success_count += 1
     
+    logger.info(f"Successfully processed {success_count} sweeps")
     return success_count
 
 def main():
@@ -215,7 +261,8 @@ def main():
     
     # Set up logging
     log_dir = os.path.join(OUTPUT_DIR, "logs")
-    log_file = setup_logging(log_dir=log_dir, logger_name="precompute_markov")
+    log_file = setup_logging(log_dir=log_dir)
+    logger = logging.getLogger("precompute_markov")
     logger.info(f"Starting Markov approximation precomputation. Log file: {log_file}")
     
     # Set device to use

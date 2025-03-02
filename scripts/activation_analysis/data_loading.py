@@ -162,9 +162,17 @@ class ActivationExtractor:
 class ModelDataManager:
     """Class for managing model data loading and caching."""
     
-    def __init__(self, loader=None, device='cpu'):
+    def __init__(self, loader=None, device='cpu', use_local_cache=True):
         self.loader = loader or S3ModelLoader()
         self.device = device
+        self.use_local_cache = use_local_cache
+        
+        # Create local cache directory
+        if self.use_local_cache:
+            import os
+            self.local_cache_dir = os.path.join("analysis", "local_cache", "markov_data")
+            os.makedirs(self.local_cache_dir, exist_ok=True)
+            logger.info(f"Using local cache directory: {self.local_cache_dir}")
         
     def load_checkpoint(self, sweep_id, run_id, checkpoint, device=None):
         """Load model checkpoint."""
@@ -196,27 +204,55 @@ class ModelDataManager:
         )
         return nn_inputs, nn_beliefs, nn_indices, nn_word_probs, nn_unnormalized
 
+    def get_local_cache_path(self, cache_key, order):
+        """Get the local file path for a cached Markov order."""
+        import os
+        cache_dir = os.path.join(self.local_cache_dir, cache_key)
+        os.makedirs(cache_dir, exist_ok=True)
+        return os.path.join(cache_dir, f"order_{order}.npz")
+
     def save_markov_data(self, markov_data, process_config, max_order):
-        """Save Markov approximation data to S3."""
+        """Save Markov approximation data to cache (local or S3)."""
         from scripts.activation_analysis.utils import get_markov_cache_key
         
         cache_key = get_markov_cache_key(process_config, max_order)
+        
+        # First save to local cache if enabled
+        if self.use_local_cache:
+            import os
+            
+            for order, data in enumerate(markov_data, 1):
+                nn_inputs, nn_beliefs, nn_indices, nn_probs, nn_unnormalized = data
+                
+                # Convert tensors to numpy arrays for serialization
+                serializable_data = {
+                    'nn_inputs': nn_inputs.cpu().numpy(),
+                    'nn_beliefs': nn_beliefs.cpu().numpy(),
+                    'nn_indices': nn_indices.cpu().numpy(),
+                    'nn_probs': nn_probs.cpu().numpy(),
+                    'nn_unnormalized': nn_unnormalized.cpu().numpy()
+                }
+                
+                # Save to local file
+                cache_path = self.get_local_cache_path(cache_key, order)
+                np.savez_compressed(cache_path, **serializable_data)
+                
+            logger.info(f"Saved Markov data for orders 1-{max_order} to local cache")
+            return
+        
+        # If local cache is disabled, fall back to S3
         path = f"analysis/markov_data/{cache_key}"
         
-        # Process and save each Markov order separately
         for order, data in enumerate(markov_data, 1):
             nn_inputs, nn_beliefs, nn_indices, nn_probs, nn_unnormalized = data
             
-            # Convert tensors to numpy arrays
+            # Convert tensors to numpy arrays for serialization
             serializable_data = {
                 'nn_inputs': nn_inputs.cpu().numpy(),
                 'nn_beliefs': nn_beliefs.cpu().numpy(),
                 'nn_indices': nn_indices.cpu().numpy(),
                 'nn_probs': nn_probs.cpu().numpy(),
-                'nn_unnormalized': nn_unnormalized.cpu().numpy(),
-                'process_config': process_config,
-                'order': order,
-                'max_order': max_order
+                'nn_unnormalized': nn_unnormalized.cpu().numpy()
             }
             
             # Save with numpy's compressed format
@@ -233,37 +269,101 @@ class ModelDataManager:
         logger.info(f"Saved Markov data for orders 1-{max_order} to S3 cache")
 
     def load_markov_data(self, process_config, max_order):
-        """Load Markov approximation data from S3 if it exists."""
+        """Load Markov approximation data from cache (local or S3)."""
         from scripts.activation_analysis.utils import get_markov_cache_key
         
         cache_key = get_markov_cache_key(process_config, max_order)
+        
+        # Try local cache first if enabled
+        if self.use_local_cache:
+            try:
+                import os
+                
+                # Check if data exists for all orders
+                markov_data = []
+                all_orders_present = True
+                
+                for order in range(1, max_order + 1):
+                    cache_path = self.get_local_cache_path(cache_key, order)
+                    
+                    if not os.path.exists(cache_path):
+                        logger.debug(f"Local cache miss for order {order}")
+                        all_orders_present = False
+                        continue  # Skip this order but continue checking others
+                    
+                    try:
+                        # Load the compressed numpy data
+                        data = np.load(cache_path, allow_pickle=True)
+                        
+                        # Convert back to tensors
+                        nn_inputs = torch.from_numpy(data['nn_inputs']).to(self.device)
+                        nn_beliefs = torch.from_numpy(data['nn_beliefs']).to(self.device)
+                        nn_indices = torch.from_numpy(data['nn_indices']).to(self.device)
+                        nn_probs = torch.from_numpy(data['nn_probs']).to(self.device)
+                        nn_unnormalized = torch.from_numpy(data['nn_unnormalized']).to(self.device)
+                        
+                        markov_data.append((nn_inputs, nn_beliefs, nn_indices, nn_probs, nn_unnormalized))
+                    except Exception as e:
+                        logger.warning(f"Error loading data for order {order} from local cache: {e}")
+                        all_orders_present = False
+                
+                if markov_data:  # Return whatever data we successfully loaded
+                    logger_msg = "all orders" if all_orders_present else "available orders"
+                    logger.info(f"Loaded Markov data for {logger_msg} from local cache")
+                    return markov_data
+                else:
+                    logger.debug("No valid data found in local cache")
+                    # Fall through to S3 if local cache has no valid data
+                
+            except Exception as e:
+                logger.warning(f"Error loading from local cache: {e}")
+                # Fall through to S3 if local cache fails
+        
+        # If local cache is disabled or failed, try S3
         path = f"analysis/markov_data/{cache_key}"
         
         try:
             # Check if data exists for all orders
             markov_data = []
-            for order in range(1, max_order + 1):
-                response = self.loader.s3_client.get_object(
-                    Bucket=self.loader.bucket_name,
-                    Key=f"{path}/order_{order}.npz"
-                )
-                
-                # Load the compressed numpy data
-                with io.BytesIO(response['Body'].read()) as buf:
-                    data = np.load(buf, allow_pickle=True)
-                    
-                    # Convert back to tensors
-                    nn_inputs = torch.from_numpy(data['nn_inputs'])
-                    nn_beliefs = torch.from_numpy(data['nn_beliefs'])
-                    nn_indices = torch.from_numpy(data['nn_indices'])
-                    nn_probs = torch.from_numpy(data['nn_probs'])
-                    nn_unnormalized = torch.from_numpy(data['nn_unnormalized'])
-                    
-                    markov_data.append((nn_inputs, nn_beliefs, nn_indices, nn_probs, nn_unnormalized))
+            all_orders_present = True
             
-            logger.info("Loaded cached Markov approximation data")
-            return markov_data
-                
+            for order in range(1, max_order + 1):
+                try:
+                    response = self.loader.s3_client.get_object(
+                        Bucket=self.loader.bucket_name,
+                        Key=f"{path}/order_{order}.npz"
+                    )
+                    
+                    # Load the compressed numpy data
+                    with io.BytesIO(response['Body'].read()) as buf:
+                        data = np.load(buf, allow_pickle=True)
+                        
+                        # Convert back to tensors
+                        nn_inputs = torch.from_numpy(data['nn_inputs']).to(self.device)
+                        nn_beliefs = torch.from_numpy(data['nn_beliefs']).to(self.device)
+                        nn_indices = torch.from_numpy(data['nn_indices']).to(self.device)
+                        nn_probs = torch.from_numpy(data['nn_probs']).to(self.device)
+                        nn_unnormalized = torch.from_numpy(data['nn_unnormalized']).to(self.device)
+                        
+                        markov_data.append((nn_inputs, nn_beliefs, nn_indices, nn_probs, nn_unnormalized))
+                except Exception as e:
+                    logger.debug(f"S3 cache miss for order {order}: {e}")
+                    all_orders_present = False
+            
+            # If we loaded any data, consider it a success
+            if markov_data:
+                # If we got here, we successfully loaded from S3
+                # Let's save to local cache for next time if enabled
+                if self.use_local_cache:
+                    self.save_markov_data(markov_data, process_config, max_order)
+                    
+                logger_msg = "all orders" if all_orders_present else "available orders"
+                logger.info(f"Loaded Markov data for {logger_msg} from S3 cache")
+                return markov_data
+            else:
+                logger.warning("No valid data found in S3 cache")
+                return None
+            
         except Exception as e:
             logger.warning(f"Error loading cached Markov data: {e}")
             return None
