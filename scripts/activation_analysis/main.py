@@ -173,101 +173,147 @@ def process_run(sweep_id, run_id, model_type, device='cpu', output_dir=None):
         all_baseline_singular_values = {}
         all_baseline_weights = {}
         
-        # Restructured to match trained network processing:
-        # network -> target -> rcond
-        for random_idx in range(NUM_RANDOM_BASELINES):
-            logger.info(f"Processing random network {random_idx}")
-            random_activations = {}
-            
-            # First, extract activations for all targets
+        # Optimize: Process each random network once and run all rcond values against it
+        # First process neural network beliefs
+        logger.info(f"Processing random baselines for neural network beliefs")
+        
+        for random_idx in range(10):  # Process 10 random networks for efficiency
             try:
-                # Extract nn_beliefs activations
+                # Generate random network activations only once, using random_idx as seed
                 nn_generator = act_extractor.get_random_activations_streaming(
                     model, run_config, nn_inputs, model_type, relevant_keys,
-                    num_baselines=1,
-                    seed=random_idx
+                    num_baselines=1,  # Just get one random network
+                    seed=random_idx   # Use random_idx as the seed
                 )
+                
                 random_seed, nn_acts = next(nn_generator, (None, None))
                 if random_seed is None:
                     logger.warning(f"Failed to generate random network at index {random_idx}")
-                    continue
+                    break
                     
-                random_activations['nn_beliefs'] = nn_acts
+                logger.info(f"Processing random network {random_idx} (seed {random_seed}) for all rcond values")
                 
-                # Extract classical belief activations if available
-                if classical_beliefs is not None:
-                    for mk in classical_beliefs:
-                        mk_inputs = classical_beliefs[mk]['inputs']
+                # Process this random network's activations for each rcond value
+                for rcond_val in tqdm(RCOND_SWEEP_LIST, desc=f"Processing rcond values for network {random_idx}"):
+                    # Process nn_beliefs target with current rcond
+                    df, singular_values, weights, _, best_layers = regression_analyzer.process_activation_layers(
+                        nn_acts, nn_beliefs, nn_word_probs, rcond_val
+                    )
+                    
+                    # Add metadata
+                    df['checkpoint'] = f'RANDOM_{random_idx}'
+                    df['target'] = 'nn_beliefs'
+                    df['rcond'] = rcond_val
+                    all_baseline_results.append(df)
+                    
+                    # Store singular values 
+                    if 'nn_beliefs' not in all_baseline_singular_values:
+                        all_baseline_singular_values['nn_beliefs'] = {}
+                    
+                    for layer, sv in singular_values.items():
+                        if layer not in all_baseline_singular_values['nn_beliefs']:
+                            all_baseline_singular_values['nn_beliefs'][layer] = []
+                        
+                        all_baseline_singular_values['nn_beliefs'][layer].append({
+                            "random_idx": random_idx,
+                            "singular_values": sv
+                        })
+                    
+                    # Store weights - only for lowest rcond
+                    if rcond_val == min(RCOND_SWEEP_LIST):
+                        if 'nn_beliefs' not in all_baseline_weights:
+                            all_baseline_weights['nn_beliefs'] = {}
+                        
+                        for layer, dist in best_layers.items():
+                            layer_key = f"{layer}_random_{random_idx}"
+                            
+                            all_baseline_weights['nn_beliefs'][layer_key] = {
+                                "weights": weights.get(layer, None),
+                                "rcond": rcond_val,
+                                "dist": dist,
+                                "random_idx": random_idx
+                            }
+                
+                # Free memory explicitly
+                del nn_acts
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                
+            except Exception as e:
+                logger.error(f"Error processing random network {random_idx} for nn_beliefs: {e}")
+                logger.error(traceback.format_exc())
+        
+        # Process classical beliefs if available
+        if classical_beliefs is not None:
+            for mk in classical_beliefs:
+                logger.info(f"Processing random baselines for classical belief {mk}")
+                mk_inputs = classical_beliefs[mk]['inputs']
+                
+                for random_idx in range(10):  # Process 10 random networks
+                    try:
+                        # Generate random network activations only once, using random_idx as seed
                         mk_generator = act_extractor.get_random_activations_streaming(
                             model, run_config, mk_inputs, model_type, relevant_keys,
-                            num_baselines=1,
-                            seed=random_idx
+                            num_baselines=1,  # Just get one random network
+                            seed=random_idx   # Use random_idx as the seed
                         )
-                        _, mk_acts = next(mk_generator, (None, None))
-                        random_activations[mk] = mk_acts
-                
-                # Now process all targets for this random network
-                for target_name, target_activations in random_activations.items():
-                    target_beliefs = None
-                    target_probs = None
-                    
-                    if target_name == 'nn_beliefs':
-                        target_beliefs = nn_beliefs
-                        target_probs = nn_word_probs
-                    elif classical_beliefs is not None and target_name in classical_beliefs:
-                        target_beliefs = classical_beliefs[target_name]['beliefs']
-                        target_probs = classical_beliefs[target_name]['probs']
-                    
-                    if target_beliefs is not None:
-                        # Process this target with all rcond values
-                        for rcond_val in tqdm(RCOND_SWEEP_LIST, 
-                                             desc=f"Processing rcond values for network {random_idx}, target {target_name}"):
+                        
+                        random_seed, mk_acts = next(mk_generator, (None, None))
+                        if random_seed is None:
+                            logger.warning(f"Failed to generate random network at index {random_idx} for {mk}")
+                            break
+                        
+                        logger.info(f"Processing random network {random_idx} (seed {random_seed}) for {mk} for all rcond values")
+                        
+                        # Process this random network's activations for each rcond value
+                        for rcond_val in tqdm(RCOND_SWEEP_LIST, desc=f"Processing rcond values for {mk} network {random_idx}"):
+                            # Process this classical belief target with current rcond
                             df, singular_values, weights, _, best_layers = regression_analyzer.process_activation_layers(
-                                target_activations, target_beliefs, target_probs, rcond_val
+                                mk_acts, classical_beliefs[mk]['beliefs'], classical_beliefs[mk]['probs'], rcond_val
                             )
                             
                             # Add metadata
                             df['checkpoint'] = f'RANDOM_{random_idx}'
-                            df['target'] = target_name
+                            df['target'] = mk
                             df['rcond'] = rcond_val
                             all_baseline_results.append(df)
                             
                             # Store singular values
-                            if target_name not in all_baseline_singular_values:
-                                all_baseline_singular_values[target_name] = {}
+                            if mk not in all_baseline_singular_values:
+                                all_baseline_singular_values[mk] = {}
                             
                             for layer, sv in singular_values.items():
-                                if layer not in all_baseline_singular_values[target_name]:
-                                    all_baseline_singular_values[target_name][layer] = []
+                                if layer not in all_baseline_singular_values[mk]:
+                                    all_baseline_singular_values[mk][layer] = []
                                 
-                                all_baseline_singular_values[target_name][layer].append({
+                                all_baseline_singular_values[mk][layer].append({
                                     "random_idx": random_idx,
                                     "singular_values": sv
                                 })
                             
                             # Store weights - only for lowest rcond
                             if rcond_val == min(RCOND_SWEEP_LIST):
-                                if target_name not in all_baseline_weights:
-                                    all_baseline_weights[target_name] = {}
+                                if mk not in all_baseline_weights:
+                                    all_baseline_weights[mk] = {}
                                 
                                 for layer, dist in best_layers.items():
                                     layer_key = f"{layer}_random_{random_idx}"
                                     
-                                    all_baseline_weights[target_name][layer_key] = {
+                                    all_baseline_weights[mk][layer_key] = {
                                         "weights": weights.get(layer, None),
                                         "rcond": rcond_val,
                                         "dist": dist,
                                         "random_idx": random_idx
                                     }
-                
-                # Free memory explicitly
-                del random_activations
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                
-            except Exception as e:
-                logger.error(f"Error processing random network {random_idx}: {e}")
-                logger.error(traceback.format_exc())
+                        
+                        # Free memory explicitly
+                        del mk_acts
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                        
+                    except Exception as e:
+                        logger.error(f"Error processing random network {random_idx} for {mk}: {e}")
+                        logger.error(traceback.format_exc())
         
         # Combine results into final dataframe
         if all_baseline_results:
