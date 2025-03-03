@@ -96,7 +96,8 @@ def process_run(sweep_id, run_id, model_type, device='cpu', output_dir=None):
     metadata_path = os.path.join(run_dir, f"{run_id}_metadata.json")
     regression_results_path = os.path.join(run_dir, f"{run_id}_regression_results.csv")
     
-    if os.path.exists(metadata_path) and os.path.exists(regression_results_path):
+    # Only check for regression_results_path, not weights or singular values
+    if os.path.exists(regression_results_path):
         logger.info(f"Skipping run {run_id} as it has already been processed (output files exist).")
         return f"Skipped run {run_id} (already processed)."
 
@@ -366,33 +367,34 @@ def process_run(sweep_id, run_id, model_type, device='cpu', output_dir=None):
                     df['rcond'] = rcond_val
                     all_baseline_results.append(df)
                     
+                    # Comment out storing singular values and weights
                     # Store singular values 
-                    if 'nn_beliefs' not in all_baseline_singular_values:
-                        all_baseline_singular_values['nn_beliefs'] = {}
-                    
-                    for layer, sv in singular_values.items():
-                        if layer not in all_baseline_singular_values['nn_beliefs']:
-                            all_baseline_singular_values['nn_beliefs'][layer] = []
-                        
-                        all_baseline_singular_values['nn_beliefs'][layer].append({
-                            "random_idx": random_idx,
-                            "singular_values": sv
-                        })
+                    #if 'nn_beliefs' not in all_baseline_singular_values:
+                    #    all_baseline_singular_values['nn_beliefs'] = {}
+                    #
+                    #for layer, sv in singular_values.items():
+                    #    if layer not in all_baseline_singular_values['nn_beliefs']:
+                    #        all_baseline_singular_values['nn_beliefs'][layer] = []
+                    #    
+                    #    all_baseline_singular_values['nn_beliefs'][layer].append({
+                    #        "random_idx": random_idx,
+                    #        "singular_values": sv
+                    #    })
                     
                     # Store weights - only for lowest rcond
-                    if rcond_val == min(RCOND_SWEEP_LIST):
-                        if 'nn_beliefs' not in all_baseline_weights:
-                            all_baseline_weights['nn_beliefs'] = {}
-                        
-                        for layer, dist in best_layers.items():
-                            layer_key = f"{layer}_random_{random_idx}"
-                            
-                            all_baseline_weights['nn_beliefs'][layer_key] = {
-                                "weights": weights.get(layer, None),
-                                "rcond": rcond_val,
-                                "dist": dist,
-                                "random_idx": random_idx
-                            }
+                    #if rcond_val == min(RCOND_SWEEP_LIST):
+                    #    if 'nn_beliefs' not in all_baseline_weights:
+                    #        all_baseline_weights['nn_beliefs'] = {}
+                    #    
+                    #    for layer, dist in best_layers.items():
+                    #        layer_key = f"{layer}_random_{random_idx}"
+                    #        
+                    #        all_baseline_weights['nn_beliefs'][layer_key] = {
+                    #            "weights": weights.get(layer, None),
+                    #            "rcond": rcond_val,
+                    #            "dist": dist,
+                    #            "random_idx": random_idx
+                    #        }
                 
                 # Free memory explicitly
                 del nn_acts
@@ -599,33 +601,34 @@ def process_run(sweep_id, run_id, model_type, device='cpu', output_dir=None):
                             df['rcond'] = rcond_val
                             all_baseline_results.append(df)
                             
+                            # Comment out storing singular values and weights
                             # Store singular values
-                            if mk not in all_baseline_singular_values:
-                                all_baseline_singular_values[mk] = {}
-                            
-                            for layer, sv in singular_values.items():
-                                if layer not in all_baseline_singular_values[mk]:
-                                    all_baseline_singular_values[mk][layer] = []
-                                
-                                all_baseline_singular_values[mk][layer].append({
-                                    "random_idx": random_idx,
-                                    "singular_values": sv
-                                })
+                            #if mk not in all_baseline_singular_values:
+                            #    all_baseline_singular_values[mk] = {}
+                            #
+                            #for layer, sv in singular_values.items():
+                            #    if layer not in all_baseline_singular_values[mk]:
+                            #        all_baseline_singular_values[mk][layer] = []
+                            #    
+                            #    all_baseline_singular_values[mk][layer].append({
+                            #        "random_idx": random_idx,
+                            #        "singular_values": sv
+                            #    })
                             
                             # Store weights - only for lowest rcond
-                            if rcond_val == min(RCOND_SWEEP_LIST):
-                                if mk not in all_baseline_weights:
-                                    all_baseline_weights[mk] = {}
-                                
-                                for layer, dist in best_layers.items():
-                                    layer_key = f"{layer}_random_{random_idx}"
-                                    
-                                    all_baseline_weights[mk][layer_key] = {
-                                        "weights": weights.get(layer, None),
-                                        "rcond": rcond_val,
-                                        "dist": dist,
-                                        "random_idx": random_idx
-                                    }
+                            #if rcond_val == min(RCOND_SWEEP_LIST):
+                            #    if mk not in all_baseline_weights:
+                            #        all_baseline_weights[mk] = {}
+                            #    
+                            #    for layer, dist in best_layers.items():
+                            #        layer_key = f"{layer}_random_{random_idx}"
+                            #        
+                            #        all_baseline_weights[mk][layer_key] = {
+                            #            "weights": weights.get(layer, None),
+                            #            "rcond": rcond_val,
+                            #            "dist": dist,
+                            #            "random_idx": random_idx
+                            #        }
                         
                         # Free memory explicitly
                         del mk_acts
@@ -641,8 +644,9 @@ def process_run(sweep_id, run_id, model_type, device='cpu', output_dir=None):
             all_df = pd.concat(all_baseline_results, ignore_index=True)
             random_data = {
                 'df': all_df,
-                'weights': all_baseline_weights,
-                'singular': all_baseline_singular_values
+                # Comment out storing singular values and weights
+                #'weights': all_baseline_weights,
+                #'singular': all_baseline_singular_values
             }
             logger.info(f"Random baseline analysis complete: {len(all_baseline_results)} results")
         else:
@@ -683,58 +687,63 @@ def process_run(sweep_id, run_id, model_type, device='cpu', output_dir=None):
         all_dfs = [r['results_df'] for r in all_checkpoint_results]
         combined_df = pd.concat(all_dfs, ignore_index=True)
         
-        # Store best weights per-checkpoint
+        # Comment out code that processes weights and singular values
+        # Combine weights per-checkpoint
         # Organize as target -> layer -> checkpoint -> weight data
-        combined_weights = {}
+        #combined_weights = {}
+        #
+        ## Find the best rcond value for each checkpoint-target-layer combination
+        #for result in all_checkpoint_results:
+        #    checkpoint = result['checkpoint']
+        #    
+        #    # For each target in this checkpoint's results
+        #    for target, target_weights in result['best_weights'].items():
+        #        if target not in combined_weights:
+        #            combined_weights[target] = {}
+        #        
+        #        # For each layer in this target
+        #        for layer, layer_data in target_weights.items():
+        #            if layer not in combined_weights[target]:
+        #                combined_weights[target][layer] = {}
+        #            
+        #            # Store checkpoint's best weights
+        #            layer_data['checkpoint'] = checkpoint
+        #            combined_weights[target][layer][checkpoint] = layer_data
+        #
+        ## Combine singular values
+        #combined_singular = {}
+        #for result in all_checkpoint_results:
+        #    checkpoint = result['checkpoint']
+        #    
+        #    # Process singular values
+        #    for target, target_sv in result['best_singular'].items():
+        #        if target not in combined_singular:
+        #            combined_singular[target] = {}
+        #        
+        #        for layer, layer_sv_list in target_sv.items():
+        #            if layer not in combined_singular[target]:
+        #                combined_singular[target][layer] = []
+        #            
+        #            for sv_data in layer_sv_list:
+        #                sv_data['checkpoint'] = checkpoint
+        #                combined_singular[target][layer].append(sv_data)
+        #
+        ## Flatten weights structure for saving
+        ## We need to convert from target -> layer -> checkpoint -> data
+        ## to target -> layer -> data with checkpoint included
+        #flat_weights = {}
+        #for target, layers in combined_weights.items():
+        #    flat_weights[target] = {}
+        #    for layer, checkpoints in layers.items():
+        #        for checkpoint, weight_data in checkpoints.items():
+        #            # Don't append checkpoint to layer name, keep layer identifiers clean
+        #            if layer not in flat_weights[target]:
+        #                flat_weights[target][layer] = {}
+        #            flat_weights[target][layer][checkpoint] = weight_data
         
-        # Find the best rcond value for each checkpoint-target-layer combination
-        for result in all_checkpoint_results:
-            checkpoint = result['checkpoint']
-            
-            # For each target in this checkpoint's results
-            for target, target_weights in result['best_weights'].items():
-                if target not in combined_weights:
-                    combined_weights[target] = {}
-                
-                # For each layer in this target
-                for layer, layer_data in target_weights.items():
-                    if layer not in combined_weights[target]:
-                        combined_weights[target][layer] = {}
-                    
-                    # Store checkpoint's best weights
-                    layer_data['checkpoint'] = checkpoint
-                    combined_weights[target][layer][checkpoint] = layer_data
-        
-        # Combine singular values
-        combined_singular = {}
-        for result in all_checkpoint_results:
-            checkpoint = result['checkpoint']
-            
-            # Process singular values
-            for target, target_sv in result['best_singular'].items():
-                if target not in combined_singular:
-                    combined_singular[target] = {}
-                
-                for layer, layer_sv_list in target_sv.items():
-                    if layer not in combined_singular[target]:
-                        combined_singular[target][layer] = []
-                    
-                    for sv_data in layer_sv_list:
-                        sv_data['checkpoint'] = checkpoint
-                        combined_singular[target][layer].append(sv_data)
-        
-        # Flatten weights structure for saving
-        # We need to convert from target -> layer -> checkpoint -> data
-        # to target -> layer -> data with checkpoint included
+        # Use empty dictionaries instead
         flat_weights = {}
-        for target, layers in combined_weights.items():
-            flat_weights[target] = {}
-            for layer, checkpoints in layers.items():
-                for checkpoint, weight_data in checkpoints.items():
-                    # Don't append checkpoint to layer name, keep layer identifiers clean
-                    if layer not in flat_weights[target]:
-                        flat_weights[target][layer] = {}
-                    flat_weights[target][layer][checkpoint] = weight_data
+        combined_singular = {}
         
         # Save results in CSV+NPY format
         saved_files = save_results_in_csv_format(
@@ -742,6 +751,7 @@ def process_run(sweep_id, run_id, model_type, device='cpu', output_dir=None):
             run_id=run_id,
             checkpoint_data={
                 'df': combined_df.drop(['run_id', 'sweep_id', 'variance_explained'], axis=1, errors='ignore'),
+                # Comment out weights and singular values
                 'weights': flat_weights,
                 'singular': combined_singular,
                 'attrs': {
@@ -753,8 +763,9 @@ def process_run(sweep_id, run_id, model_type, device='cpu', output_dir=None):
             },
             random_data=random_data if random_data is None else {
                 'df': random_data['df'].drop(['run_id', 'sweep_id', 'variance_explained'], axis=1, errors='ignore'),
-                'weights': random_data.get('weights', {}),
-                'singular': random_data.get('singular', {})
+                # Comment out weights and singular values
+                #'weights': random_data.get('weights', {}),
+                #'singular': random_data.get('singular', {})
             }
         )
         logger.info(f"Saved results to {base_outdir} (metadata: {saved_files['metadata']})")
