@@ -13,10 +13,10 @@ import argparse
 import numpy as np
 
 from scripts.activation_analysis.config import *
-from scripts.activation_analysis.utils import setup_logging, save_results_in_csv_format, is_s3_path, extract_checkpoint_number, ensure_dir
+from scripts.activation_analysis.utils import setup_logging, save_results_in_csv_format, is_s3_path, extract_checkpoint_number, ensure_dir, standardize, report_variance_explained
 from scripts.activation_analysis.data_loading import ModelDataManager, ActivationExtractor
 from scripts.activation_analysis.belief_states import BeliefStateGenerator
-from scripts.activation_analysis.regression import RegressionAnalyzer
+from scripts.activation_analysis.regression import RegressionAnalyzer, compute_efficient_pinv_from_svd
 
 # Set up module logger
 logger = logging.getLogger("main")
@@ -193,11 +193,171 @@ def process_run(sweep_id, run_id, model_type, device='cpu', output_dir=None):
                     
                 logger.info(f"Processing random network {random_idx} (seed {random_seed}) for all rcond values")
                 
-                # Process this random network's activations for each rcond value
+                # Precompute SVD for the random network - do this once for all rcond values
+                logger.info(f"Precomputing SVD for random network {random_idx}")
+                cached_svds = {}
+                
+                # Ensure nn_acts is not None before processing
+                if nn_acts is None:
+                    logger.warning(f"Random network activations are None for index {random_idx}")
+                    continue
+                
+                # Process all layers in the random network
+                for layer_name, act_tensor in nn_acts.items():
+                    try:
+                        # Reshape tensors for regression (same code as in analyze_checkpoint_with_activations)
+                        X = act_tensor.view(-1, act_tensor.shape[-1]).to(device)
+                        Y = nn_beliefs.view(-1, nn_beliefs.shape[-1]).to(device)
+                        weights_tensor = nn_word_probs.view(-1).to(device)
+                        weights_tensor = weights_tensor / weights_tensor.sum()
+                        
+                        # Standardize features
+                        X_std, mean, std = standardize(X)
+                        
+                        # SVD for variance analysis
+                        var_expl_str, singular_values = report_variance_explained(X_std, REPORT_VARIANCE)
+                        
+                        # Add bias term 
+                        ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
+                        X_std_bias = torch.cat([ones, X_std], dim=1)
+                        
+                        # Apply weights
+                        sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                        X_weighted = X_std_bias * sqrt_weights
+                        Y_weighted = Y * sqrt_weights
+                        
+                        # Compute weighted design matrix
+                        A = X_weighted.T @ X_weighted
+                        
+                        # Pre-compute all pseudoinverses in one go using optimized method
+                        pinv_matrices, _ = compute_efficient_pinv_from_svd(A, RCOND_SWEEP_LIST)
+                        
+                        # Store for use in regression
+                        efficient_pinvs = pinv_matrices
+                        
+                        # Cache computations
+                        cached_svds[layer_name] = {
+                            'X': X,
+                            'X_std': X_std,
+                            'Y': Y,
+                            'weights': weights_tensor,
+                            'mean': mean,
+                            'std': std,
+                            'singular_values': singular_values,
+                            'var_expl': var_expl_str,
+                            'X_weighted': X_weighted,
+                            'Y_weighted': Y_weighted,
+                            'efficient_pinvs': efficient_pinvs
+                        }
+                    except Exception as e:
+                        logger.warning(f"Error precomputing SVD for layer {layer_name}: {e}")
+                
+                # Also precompute for concatenated layers if they exist
+                # Process concatenated activations - without input/embeddings
+                non_input_layers = {}
+                if nn_acts is not None:
+                    for k, v in nn_acts.items():
+                        if not any(x in k.lower() for x in ['pre', 'embedding', 'input']):
+                            non_input_layers[k] = v
+                        
+                if non_input_layers:
+                    try:
+                        concat_acts = torch.cat([non_input_layers[k] for k in non_input_layers], dim=-1)
+                        # Precompute SVD for concat_no_input
+                        X = concat_acts.view(-1, concat_acts.shape[-1]).to(device)
+                        Y = nn_beliefs.view(-1, nn_beliefs.shape[-1]).to(device)
+                        weights_tensor = nn_word_probs.view(-1).to(device)
+                        weights_tensor = weights_tensor / weights_tensor.sum()
+                        
+                        X_std, mean, std = standardize(X)
+                        var_expl_str, singular_values = report_variance_explained(X_std, REPORT_VARIANCE)
+                        
+                        # Add bias term 
+                        ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
+                        X_std_bias = torch.cat([ones, X_std], dim=1)
+                        
+                        # Apply weights
+                        sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                        X_weighted = X_std_bias * sqrt_weights
+                        Y_weighted = Y * sqrt_weights
+                        
+                        # Compute weighted design matrix
+                        A = X_weighted.T @ X_weighted
+                        
+                        # Pre-compute all pseudoinverses in one go
+                        pinv_matrices, _ = compute_efficient_pinv_from_svd(A, RCOND_SWEEP_LIST)
+                        
+                        cached_svds["concat_no_input"] = {
+                            'X': X,
+                            'X_std': X_std,
+                            'Y': Y,
+                            'weights': weights_tensor,
+                            'mean': mean,
+                            'std': std,
+                            'singular_values': singular_values,
+                            'var_expl': var_expl_str,
+                            'X_weighted': X_weighted,
+                            'Y_weighted': Y_weighted,
+                            'efficient_pinvs': pinv_matrices
+                        }
+                    except Exception as e:
+                        logger.warning(f"Error precomputing SVD for concat_no_input: {e}")
+                
+                # Similarly for concat_all
+                try:
+                    if nn_acts is not None:
+                        concat_acts = torch.cat([nn_acts[k] for k in nn_acts], dim=-1)
+                    else:
+                        logger.warning("Cannot create concat_all: nn_acts is None")
+                        continue
+                    # Precompute SVD for concat_all
+                    X = concat_acts.view(-1, concat_acts.shape[-1]).to(device)
+                    Y = nn_beliefs.view(-1, nn_beliefs.shape[-1]).to(device)
+                    weights_tensor = nn_word_probs.view(-1).to(device)
+                    weights_tensor = weights_tensor / weights_tensor.sum()
+                    
+                    X_std, mean, std = standardize(X)
+                    var_expl_str, singular_values = report_variance_explained(X_std, REPORT_VARIANCE)
+                    
+                    # Add bias term 
+                    ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
+                    X_std_bias = torch.cat([ones, X_std], dim=1)
+                    
+                    # Apply weights
+                    sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                    X_weighted = X_std_bias * sqrt_weights
+                    Y_weighted = Y * sqrt_weights
+                    
+                    # Compute weighted design matrix
+                    A = X_weighted.T @ X_weighted
+                    
+                    # Pre-compute all pseudoinverses in one go
+                    pinv_matrices, _ = compute_efficient_pinv_from_svd(A, RCOND_SWEEP_LIST)
+                    
+                    cached_svds["concat_all"] = {
+                        'X': X,
+                        'X_std': X_std,
+                        'Y': Y,
+                        'weights': weights_tensor,
+                        'mean': mean,
+                        'std': std,
+                        'singular_values': singular_values,
+                        'var_expl': var_expl_str,
+                        'X_weighted': X_weighted,
+                        'Y_weighted': Y_weighted,
+                        'efficient_pinvs': pinv_matrices
+                    }
+                except Exception as e:
+                    logger.warning(f"Error precomputing SVD for concat_all: {e}")
+                
+                # Now process each rcond value using the cached SVDs
                 for rcond_val in tqdm(RCOND_SWEEP_LIST, desc=f"Processing rcond values for network {random_idx}"):
-                    # Process nn_beliefs target with current rcond
+                    # Create a copy of the cached_svds for this run to avoid modifying the original
+                    cached_svds_copy = {k: v.copy() for k, v in cached_svds.items()}
+                    
+                    # Process nn_beliefs target with current rcond using cached SVD results
                     df, singular_values, weights, _, best_layers = regression_analyzer.process_activation_layers(
-                        nn_acts, nn_beliefs, nn_word_probs, rcond_val
+                        nn_acts, nn_beliefs, nn_word_probs, rcond_val, cached_svds=cached_svds_copy
                     )
                     
                     # Add metadata
@@ -265,11 +425,172 @@ def process_run(sweep_id, run_id, model_type, device='cpu', output_dir=None):
                         
                         logger.info(f"Processing random network {random_idx} (seed {random_seed}) for {mk} for all rcond values")
                         
-                        # Process this random network's activations for each rcond value
+                        # Precompute SVD for the random network - do this once for all rcond values
+                        logger.info(f"Precomputing SVD for random network {random_idx}")
+                        cached_svds = {}
+                        
+                        # Ensure mk_acts is not None before processing
+                        if mk_acts is None:
+                            logger.warning(f"Random network activations are None for {mk} index {random_idx}")
+                            continue
+                        
+                        # Process all layers in the random network
+                        for layer_name, act_tensor in mk_acts.items():
+                            try:
+                                # Reshape tensors for regression (same code as in analyze_checkpoint_with_activations)
+                                X = act_tensor.view(-1, act_tensor.shape[-1]).to(device)
+                                Y = classical_beliefs[mk]['beliefs'].view(-1, classical_beliefs[mk]['beliefs'].shape[-1]).to(device)
+                                weights_tensor = classical_beliefs[mk]['probs'].view(-1).to(device)
+                                weights_tensor = weights_tensor / weights_tensor.sum()
+                                
+                                # Standardize features
+                                X_std, mean, std = standardize(X)
+                                
+                                # SVD for variance analysis
+                                var_expl_str, singular_values = report_variance_explained(X_std, REPORT_VARIANCE)
+                                
+                                # Add bias term 
+                                ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
+                                X_std_bias = torch.cat([ones, X_std], dim=1)
+                                
+                                # Apply weights
+                                sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                                X_weighted = X_std_bias * sqrt_weights
+                                Y_weighted = Y * sqrt_weights
+                                
+                                # Compute weighted design matrix
+                                A = X_weighted.T @ X_weighted
+                                
+                                # Pre-compute all pseudoinverses in one go using optimized method
+                                pinv_matrices, _ = compute_efficient_pinv_from_svd(A, RCOND_SWEEP_LIST)
+                                
+                                # Store for use in regression
+                                efficient_pinvs = pinv_matrices
+                                
+                                # Cache computations
+                                cached_svds[layer_name] = {
+                                    'X': X,
+                                    'X_std': X_std,
+                                    'Y': Y,
+                                    'weights': weights_tensor,
+                                    'mean': mean,
+                                    'std': std,
+                                    'singular_values': singular_values,
+                                    'var_expl': var_expl_str,
+                                    'X_weighted': X_weighted,
+                                    'Y_weighted': Y_weighted,
+                                    'efficient_pinvs': efficient_pinvs
+                                }
+                            except Exception as e:
+                                logger.warning(f"Error precomputing SVD for layer {layer_name}: {e}")
+                        
+                        # Also precompute for concatenated layers if they exist
+                        # Process concatenated activations - without input/embeddings
+                        non_input_layers = {}
+                        if mk_acts is not None:
+                            for k, v in mk_acts.items():
+                                if not any(x in k.lower() for x in ['pre', 'embedding', 'input']):
+                                    non_input_layers[k] = v
+                                    
+                        if non_input_layers:
+                            try:
+                                concat_acts = torch.cat([non_input_layers[k] for k in non_input_layers], dim=-1)
+                                # Precompute SVD for concat_no_input
+                                X = concat_acts.view(-1, concat_acts.shape[-1]).to(device)
+                                Y = classical_beliefs[mk]['beliefs'].view(-1, classical_beliefs[mk]['beliefs'].shape[-1]).to(device)
+                                weights_tensor = classical_beliefs[mk]['probs'].view(-1).to(device)
+                                weights_tensor = weights_tensor / weights_tensor.sum()
+                                
+                                X_std, mean, std = standardize(X)
+                                var_expl_str, singular_values = report_variance_explained(X_std, REPORT_VARIANCE)
+                                
+                                # Add bias term 
+                                ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
+                                X_std_bias = torch.cat([ones, X_std], dim=1)
+                                
+                                # Apply weights
+                                sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                                X_weighted = X_std_bias * sqrt_weights
+                                Y_weighted = Y * sqrt_weights
+                                
+                                # Compute weighted design matrix
+                                A = X_weighted.T @ X_weighted
+                                
+                                # Pre-compute all pseudoinverses in one go
+                                pinv_matrices, _ = compute_efficient_pinv_from_svd(A, RCOND_SWEEP_LIST)
+                                
+                                cached_svds["concat_no_input"] = {
+                                    'X': X,
+                                    'X_std': X_std,
+                                    'Y': Y,
+                                    'weights': weights_tensor,
+                                    'mean': mean,
+                                    'std': std,
+                                    'singular_values': singular_values,
+                                    'var_expl': var_expl_str,
+                                    'X_weighted': X_weighted,
+                                    'Y_weighted': Y_weighted,
+                                    'efficient_pinvs': pinv_matrices
+                                }
+                            except Exception as e:
+                                logger.warning(f"Error precomputing SVD for concat_no_input: {e}")
+                        
+                        # Similarly for concat_all
+                        try:
+                            if mk_acts is not None:
+                                concat_acts = torch.cat([mk_acts[k] for k in mk_acts], dim=-1)
+                            else:
+                                logger.warning(f"Cannot create concat_all for {mk}: mk_acts is None")
+                                continue
+                                
+                            # Precompute SVD for concat_all
+                            X = concat_acts.view(-1, concat_acts.shape[-1]).to(device)
+                            Y = classical_beliefs[mk]['beliefs'].view(-1, classical_beliefs[mk]['beliefs'].shape[-1]).to(device)
+                            weights_tensor = classical_beliefs[mk]['probs'].view(-1).to(device)
+                            weights_tensor = weights_tensor / weights_tensor.sum()
+                            
+                            X_std, mean, std = standardize(X)
+                            var_expl_str, singular_values = report_variance_explained(X_std, REPORT_VARIANCE)
+                            
+                            # Add bias term 
+                            ones = torch.ones(X_std.shape[0], 1, device=X_std.device)
+                            X_std_bias = torch.cat([ones, X_std], dim=1)
+                            
+                            # Apply weights
+                            sqrt_weights = torch.sqrt(weights_tensor).unsqueeze(1)
+                            X_weighted = X_std_bias * sqrt_weights
+                            Y_weighted = Y * sqrt_weights
+                            
+                            # Compute weighted design matrix
+                            A = X_weighted.T @ X_weighted
+                            
+                            # Pre-compute all pseudoinverses in one go
+                            pinv_matrices, _ = compute_efficient_pinv_from_svd(A, RCOND_SWEEP_LIST)
+                            
+                            cached_svds["concat_all"] = {
+                                'X': X,
+                                'X_std': X_std,
+                                'Y': Y,
+                                'weights': weights_tensor,
+                                'mean': mean,
+                                'std': std,
+                                'singular_values': singular_values,
+                                'var_expl': var_expl_str,
+                                'X_weighted': X_weighted,
+                                'Y_weighted': Y_weighted,
+                                'efficient_pinvs': pinv_matrices
+                            }
+                        except Exception as e:
+                            logger.warning(f"Error precomputing SVD for concat_all: {e}")
+                        
+                        # Now process each rcond value using the cached SVDs
                         for rcond_val in tqdm(RCOND_SWEEP_LIST, desc=f"Processing rcond values for {mk} network {random_idx}"):
-                            # Process this classical belief target with current rcond
+                            # Create a copy of the cached_svds for this run to avoid modifying the original
+                            cached_svds_copy = {k: v.copy() for k, v in cached_svds.items()}
+                            
+                            # Process this classical belief target with current rcond using cached SVD results
                             df, singular_values, weights, _, best_layers = regression_analyzer.process_activation_layers(
-                                mk_acts, classical_beliefs[mk]['beliefs'], classical_beliefs[mk]['probs'], rcond_val
+                                mk_acts, classical_beliefs[mk]['beliefs'], classical_beliefs[mk]['probs'], rcond_val, cached_svds=cached_svds_copy
                             )
                             
                             # Add metadata
