@@ -91,7 +91,7 @@ def main():
             run_cfg['global_config']['sweep_id'] = sweep_id
             run_cfg['config_path'] = config_path
             run_cfg['experiment_dir'] = experiment_dir
-            run_cfg['global_config']['device'] = f'cuda:{gpu_id}'
+            run_cfg['global_config']['device'] = 'cuda:0'
 
             with open(config_path, 'w') as f:
                 yaml.dump(run_cfg, f)
