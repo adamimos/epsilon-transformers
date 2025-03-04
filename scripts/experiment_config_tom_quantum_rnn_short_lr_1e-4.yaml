@@ -1,0 +1,63 @@
+global_config:
+  output_dir: "./results"
+  device: cuda
+  parallel: true
+  wandb: true
+  wandb_project: "quantum_rnn_experiments"
+  process_dir: "./process_data"
+  val_every: 1 # after n epochs, ~ is None
+  scheduler: true
+  save_every: 1
+
+train_config:
+  batches_per_epoch: 50
+  bos: false
+  n_epochs: 150
+  batch_size: 64
+  learning_rate: 1.0e-4
+
+model_config:
+  n_ctx: 8
+  dropout: 0.0
+  bidirectional: false
+  dtype: float32
+  seed: 42
+
+sweep_config:
+  model_config:
+    hidden_size:
+      - 64
+    num_layers:
+      - 4
+    rnn_type:
+      - "LSTM"
+      - "GRU"
+      - "RNN"
+  train_config:
+    learning_rate:
+      - 1.0e-4
+  process_config:
+    - name: "post_quantum"
+      alpha: 2.718281828459045
+      beta: 0.5
+    - name: "tom_quantum"
+      alpha: 1.0
+      beta: 7.14142842854285
+    - name: "tom_quantum"
+      alpha: 1.0
+      beta: 3.5 #7.14142842854285
+    - name: "tom_quantum"
+      alpha: 1.0
+      beta: 2.25 #7.14142842854285
+    - name: "tom_quantum"
+      alpha: 1.0
+      beta: 4.3 #7.14142842854285
+    - name: "fanizza"
+      alpha: 2000.
+      lamb: 0.49
+    - name: "rrxor"
+      pR1: 0.5
+      pR2: 0.5
+    - name: "mess3"
+      x: 0.05
+      a: 0.85 

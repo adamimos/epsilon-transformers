@@ -9,7 +9,6 @@ poetry.lock
 .pytest_cache
 **.env
 **.csv
-**.yaml
 wandb/
 .DS_Store
 *.pt
@@ -32,3 +31,4 @@ notebooks/
 **.mp4
 **.mp4
 **.zip
+temp/

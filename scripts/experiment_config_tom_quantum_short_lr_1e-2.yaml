@@ -1,0 +1,66 @@
+global_config:
+  output_dir: "./results"
+  device: cuda
+  parallel: true
+  wandb: true
+  wandb_project: "quantum_transformer"
+  process_dir: "./process_data"
+  val_every: 1 # validate after each epoch (keeping this the same)
+  scheduler: true
+  save_every: 1 # save every epoch to match old configuration
+
+train_config:
+  batches_per_epoch: 50 # match old n_iters value
+  bos: false
+  n_epochs: 150 # match old num_epochs
+
+model_config:
+  n_ctx: 8
+  act_fn: "relu"
+  normalization_type: "LN"
+  attn_only: false
+  seed: 42
+  dtype: float32
+  #d_model: 64, set automatically based on d_head and n_layers = d_head * n_heads
+  #d_mlp: 256, set automatically to 4 * d_model
+  #d_vocab: 3, set automatically based on process
+  #device: "mps", set automatically based on global_config
+
+sweep_config:
+  train_config:
+    learning_rate:
+      - 1.0e-2
+    batch_size:
+      - 64
+  model_config:
+    d_head:
+      - 8
+    n_layers:
+      - 4
+    n_heads:
+      - 8
+  process_config:
+    - name: "post_quantum"
+      alpha: 2.718281828459045
+      beta: 0.5
+    - name: "tom_quantum"
+      alpha: 1.0
+      beta: 7.14142842854285
+    - name: "tom_quantum"
+      alpha: 1.0
+      beta: 3.5 #7.14142842854285
+    - name: "tom_quantum"
+      alpha: 1.0
+      beta: 2.25 #7.14142842854285
+    - name: "tom_quantum"
+      alpha: 1.0
+      beta: 4.3 #7.14142842854285
+    - name: "fanizza"
+      alpha: 2000.
+      lamb: 0.49
+    - name: "rrxor"
+      pR1: 0.5
+      pR2: 0.5
+    - name: "mess3"
+      x: 0.05
+      a: 0.85 
