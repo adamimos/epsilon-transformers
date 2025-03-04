@@ -104,6 +104,7 @@ def main():
             ]
 
             env = os.environ.copy()
+            env['CUDA_VISIBLE_DEVICES'] = f'{gpu_id}'  # Restrict process to see only one GPU
             run_counter += 1
 
             stdout_log = open(f"{experiment_dir}/stdout.txt", "w")
