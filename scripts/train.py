@@ -78,7 +78,6 @@ def validate_epoch_all(model, dataset, scheduler=None):
 
     with torch.no_grad():
         X, Y, probs = dataset.validation_data()
-        X = X.to(next(model.parameters()).device)
         logits = model(X)
         batch_size, seq_length, vocab_size = logits.shape
         logits_flat = logits.reshape(-1, vocab_size)

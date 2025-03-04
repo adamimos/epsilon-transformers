@@ -29,16 +29,16 @@ model_config:
 sweep_config:
   train_config:
     learning_rate:
-      - 1.0e-2
+      - 1.0e-3
     batch_size:
-      - 128
+      - 64
   model_config:
     d_head:
-      - 16
+      - 8
     n_layers:
       - 4
     n_heads:
-      - 4
+      - 8
   process_config:
     - name: "post_quantum"
       alpha: 2.718281828459045

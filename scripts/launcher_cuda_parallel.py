@@ -91,7 +91,7 @@ def main():
             run_cfg['global_config']['sweep_id'] = sweep_id
             run_cfg['config_path'] = config_path
             run_cfg['experiment_dir'] = experiment_dir
-            run_cfg['global_config']['device'] = 'cuda:0'
+            run_cfg['global_config']['device'] = f'cuda:{gpu_id}'
 
             with open(config_path, 'w') as f:
                 yaml.dump(run_cfg, f)
@@ -104,7 +104,6 @@ def main():
             ]
 
             env = os.environ.copy()
-            env['CUDA_VISIBLE_DEVICES'] = f'{gpu_id}'  # Restrict process to see only one GPU
             run_counter += 1
 
             stdout_log = open(f"{experiment_dir}/stdout.txt", "w")
