@@ -84,6 +84,16 @@ if loader is not None:
                         if key != 'run_id':
                             st.sidebar.markdown(f"**{key}:** {value}")
                     
+                    # Try to load loss data to get learning rate
+                    try:
+                        loss_df = loader.load_loss_data(selected_sweep, selected_run)
+                        if 'learning_rate' in loss_df.columns and not loss_df.empty:
+                            learning_rate = loss_df['learning_rate'].iloc[0]
+                            st.sidebar.markdown(f"**learning_rate:** {learning_rate}")
+                    except FileNotFoundError:
+                        # If loss file not found, continue without showing learning rate
+                        pass
+                    
                     # Visualization options
                     st.sidebar.markdown("#### Visualization Options")
                     use_normalized = st.sidebar.checkbox(
@@ -210,8 +220,8 @@ if loader is not None:
                             if has_loss:
                                 st.header("Loss vs. Normalized Distance")
                                 
-                                # Filter out non-numeric checkpoints like "RANDOM_0"
-                                numeric_data = target_data[target_data['checkpoint'].astype(str).str.isdigit()]
+                                # Filter out non-numeric checkpoints
+                                numeric_data = target_data[pd.to_numeric(target_data['checkpoint'], errors='coerce').notna()].copy()
                                 
                                 if not numeric_data.empty and 'num_tokens_seen' in loss_df.columns:
                                     # Convert checkpoint to int
@@ -221,86 +231,134 @@ if loader is not None:
                                     checkpoint_values = sorted(numeric_data['checkpoint'].unique())
                                     tokens_seen_values = sorted(loss_df['num_tokens_seen'].unique())
                                     
-                                    # Identify mapping between checkpoints and tokens_seen
-                                    if len(checkpoint_values) == len(tokens_seen_values):
-                                        # Direct 1:1 mapping
-                                        checkpoint_to_tokens = dict(zip(checkpoint_values, tokens_seen_values))
-                                        numeric_data['tokens_seen'] = numeric_data['checkpoint'].map(checkpoint_to_tokens)
-                                    else:
-                                        # Try to find a scaling factor
-                                        best_factor = None
-                                        possible_factors = []
-                                        
-                                        for c in checkpoint_values:
-                                            for t in tokens_seen_values:
-                                                if c > 0:  # Avoid division by zero
-                                                    factor = t / c
-                                                    if abs(factor - round(factor)) < 0.01:
-                                                        possible_factors.append((round(factor), c, t))
-                                        
-                                        if possible_factors:
-                                            # Count occurrences of each factor
-                                            factor_counts = {}
-                                            for f, _, _ in possible_factors:
-                                                if f not in factor_counts:
-                                                    factor_counts[f] = 0
-                                                factor_counts[f] += 1
-                                            
-                                            # Find the most common factor
-                                            best_factor = max(factor_counts.items(), key=lambda x: x[1])[0]
-                                            numeric_data['tokens_seen'] = numeric_data['checkpoint'] * best_factor
+                                    # SIMPLIFIED DIRECT MAPPING:
+                                    # For this data, we can see that checkpoint values directly match num_tokens_seen values
+                                    # So we can directly create the mapping without complex logic
                                     
-                                    # If we successfully mapped checkpoints to tokens
-                                    if 'tokens_seen' in numeric_data.columns:
-                                        # Merge with loss data for each layer
-                                        merged_data = pd.merge(
-                                            numeric_data,
-                                            loss_df[['num_tokens_seen', 'val_loss_mean']],
-                                            left_on='tokens_seen',
-                                            right_on='num_tokens_seen',
-                                            how='inner'
+                                    # Create a mapping DataFrame relating checkpoints to loss data
+                                    # Skip the -1 epoch which is pre-training evaluation
+                                    checkpoint_loss_map = loss_df[loss_df['epoch'] >= 0][['num_tokens_seen', 'val_loss_mean']].drop_duplicates()
+                                    checkpoint_loss_map = checkpoint_loss_map.rename(columns={'num_tokens_seen': 'checkpoint'})
+                                    
+                                    # Now merge target data with the loss data directly on checkpoint
+                                    merged_data = pd.merge(
+                                        numeric_data,
+                                        checkpoint_loss_map,
+                                        on='checkpoint',
+                                        how='inner'
+                                    )
+                                    
+                                    # Add tokens_seen for display purposes
+                                    merged_data['tokens_seen'] = merged_data['checkpoint']
+                                    
+                                    if not merged_data.empty and len(merged_data) > 1:
+                                        # Use the same custom layer ordering as the previous plot
+                                        merged_data['sort_key'] = merged_data.apply(
+                                            lambda row: get_layer_order(row['layer_name'], row['layer_idx']), 
+                                            axis=1
                                         )
                                         
-                                        if not merged_data.empty and len(merged_data) > 1:
-                                            # Use the same custom layer ordering as the previous plot
-                                            merged_data['sort_key'] = merged_data.apply(
-                                                lambda row: get_layer_order(row['layer_name'], row['layer_idx']), 
-                                                axis=1
-                                            )
-                                            
-                                            # Add a column for nice display names
-                                            merged_data['display_name'] = merged_data.apply(
-                                                lambda row: f"Input: {row['layer_name']} (Layer {row['layer_idx']})" 
-                                                        if any(keyword in row['layer_name'].lower() for keyword in ['input', 'embed', 'hook_resid_pre'])
-                                                        else f"{row['layer_name']} (Layer {row['layer_idx']})",
-                                                axis=1
-                                            )
-                                            
-                                            # Sort by our custom order
-                                            merged_data = merged_data.sort_values('sort_key')
-                                            
-                                            # Create the scatter plot with all layers and coloring
+                                        # Add a column for nice display names
+                                        merged_data['display_name'] = merged_data.apply(
+                                            lambda row: f"Input: {row['layer_name']} (Layer {row['layer_idx']})" 
+                                                    if any(keyword in row['layer_name'].lower() for keyword in ['input', 'embed', 'hook_resid_pre'])
+                                                    else f"{row['layer_name']} (Layer {row['layer_idx']})",
+                                            axis=1
+                                        )
+                                        
+                                        merged_data = merged_data.sort_values('sort_key')
+                                        
+                                        # Add toggles for plot elements
+                                        st.markdown("#### Plot Controls")
+                                        col1, col2 = st.columns(2)
+                                        with col1:
+                                            show_points = st.checkbox("Show Data Points", value=True, key="show_points")
+                                        with col2:
+                                            show_splines = st.checkbox("Show Splines", value=True, key="show_splines")
+                                        
+                                        # Create base scatter plot
+                                        if show_points and show_splines:
+                                            # Both points and splines
                                             fig2 = px.scatter(
                                                 merged_data,
-                                                x=norm_dist_col,
-                                                y='val_loss_mean',
-                                                color='display_name',
-                                                hover_data=['checkpoint', 'num_tokens_seen', 'layer_name'],
-                                                title=f"Validation Loss vs. {'Normalized ' if use_normalized and has_normalized else ''}Distance ({selected_target})",
+                                                x="val_loss_mean",
+                                                y=norm_dist_col,
+                                                color="display_name",
+                                                hover_data=["layer_name", "tokens_seen", "r_squared"],
+                                                title="Loss vs. Normalized Distance",
                                                 labels={
-                                                    norm_dist_col: 'Normalized Distance' if use_normalized and has_normalized else 'Normalized Distance', 
-                                                    'val_loss_mean': 'Validation Loss',
-                                                    'display_name': 'Layer'
+                                                    "val_loss_mean": "Validation Loss",
+                                                    norm_dist_col: "Normalized Distance",
+                                                    "display_name": "Layer"
                                                 },
-                                                color_discrete_sequence=px.colors.sequential.Viridis,
+                                                trendline="lowess"  # Add smoothed splines using LOWESS method
                                             )
-                                            
-                                            # Update the legend title
-                                            fig2.update_layout(legend_title_text="Layer")
-                                            
-                                            st.plotly_chart(fig2, use_container_width=True)
+                                        elif show_points:
+                                            # Only points, no splines
+                                            fig2 = px.scatter(
+                                                merged_data,
+                                                x="val_loss_mean",
+                                                y=norm_dist_col,
+                                                color="display_name",
+                                                hover_data=["layer_name", "tokens_seen", "r_squared"],
+                                                title="Loss vs. Normalized Distance",
+                                                labels={
+                                                    "val_loss_mean": "Validation Loss",
+                                                    norm_dist_col: "Normalized Distance",
+                                                    "display_name": "Layer"
+                                                }
+                                            )
+                                        elif show_splines:
+                                            # Only splines, no points
+                                            fig2 = px.scatter(
+                                                merged_data,
+                                                x="val_loss_mean",
+                                                y=norm_dist_col,
+                                                color="display_name",
+                                                hover_data=["layer_name", "tokens_seen", "r_squared"],
+                                                title="Loss vs. Normalized Distance",
+                                                labels={
+                                                    "val_loss_mean": "Validation Loss",
+                                                    norm_dist_col: "Normalized Distance",
+                                                    "display_name": "Layer"
+                                                },
+                                                trendline="lowess"  # Add smoothed splines using LOWESS method
+                                            )
+                                            # Hide the actual points
+                                            for trace in fig2.data:
+                                                if not trace.name.endswith('lowess'):
+                                                    trace.marker.opacity = 0
                                         else:
-                                            st.info("Not enough data points to create the Loss vs. Distance plot.")
+                                            # Neither points nor splines - create empty plot with same structure
+                                            fig2 = px.scatter(
+                                                merged_data,
+                                                x="val_loss_mean",
+                                                y=norm_dist_col,
+                                                color="display_name",
+                                                hover_data=["layer_name", "tokens_seen", "r_squared"],
+                                                title="Loss vs. Normalized Distance",
+                                                labels={
+                                                    "val_loss_mean": "Validation Loss",
+                                                    norm_dist_col: "Normalized Distance",
+                                                    "display_name": "Layer"
+                                                }
+                                            )
+                                            # Hide all points
+                                            for trace in fig2.data:
+                                                trace.marker.opacity = 0
+                                        
+                                        # Improve the layout
+                                        fig2.update_layout(
+                                            legend=dict(
+                                                orientation="h",
+                                                yanchor="bottom",
+                                                y=1.02,
+                                                xanchor="right",
+                                                x=1
+                                            )
+                                        )
+                                        
+                                        st.plotly_chart(fig2, use_container_width=True)
                                     else:
                                         st.info("Could not establish a mapping between checkpoints and tokens seen.")
                                 else:
