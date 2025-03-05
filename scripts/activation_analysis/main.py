@@ -80,7 +80,7 @@ def process_checkpoint(checkpoint, sweep_id, run_id, model_type,
         'best_singular': best_singular
     }
 
-def process_run(sweep_id, run_id, model_type, device='cpu', output_dir=None):
+def process_run(sweep_id, run_id, model_type, device='cpu', output_dir=None, use_company_s3=False):
     """Process a single run."""
     # Only process runs with 'L4' in run_id (4-layer networks)
     if 'L4' not in run_id:
@@ -104,7 +104,7 @@ def process_run(sweep_id, run_id, model_type, device='cpu', output_dir=None):
     logger.info(f"Processing run {run_id} (model type: {model_type}) on device {device}")
 
     # Initialize components
-    model_data_manager = ModelDataManager(device=device)
+    model_data_manager = ModelDataManager(device=device, use_company_s3=use_company_s3)
     act_extractor = ActivationExtractor(device=device)
     belief_generator = BeliefStateGenerator(model_data_manager, device=device)
     regression_analyzer = RegressionAnalyzer(device=device,
@@ -815,7 +815,12 @@ def main():
                       help='Process only this specific run')
     parser.add_argument('--device', type=str, default=None,
                       help=f'Device to use (default: {DEFAULT_DEVICE})')
+    parser.add_argument('--use-company-s3', action='store_true',
+                      help='Use company S3 credentials instead of default')
     args = parser.parse_args()
+    
+    # Override config if command-line flag is provided
+    use_company_s3 = args.use_company_s3 or USE_COMPANY_S3
     
     # Determine output directory (local or S3)
     output_dir = None
@@ -852,7 +857,7 @@ def main():
         logger.info(f"Processing sweep {sweep_id} ({model_type})")
         
         # Initialize data manager
-        model_data_manager = ModelDataManager(device=device)
+        model_data_manager = ModelDataManager(device=device, use_company_s3=use_company_s3)
         
         # Get runs to process
         if args.run_id:
@@ -877,7 +882,7 @@ def main():
                     # Add sweep ID to the path to maintain the same structure as local directories
                     sweep_output_dir = os.path.join(sweep_output_dir, sweep_id)
                     
-                result = process_run(sweep_id, run_id, model_type, device=device, output_dir=sweep_output_dir)
+                result = process_run(sweep_id, run_id, model_type, device=device, output_dir=sweep_output_dir, use_company_s3=use_company_s3)
                 logger.info(result)
             except Exception as e:
                 logger.error(f"Error processing run {run_id} in sweep {sweep_id}:")

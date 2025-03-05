@@ -162,8 +162,12 @@ class ActivationExtractor:
 class ModelDataManager:
     """Class for managing model data loading and caching."""
     
-    def __init__(self, loader=None, device='cpu', use_local_cache=True):
-        self.loader = loader or S3ModelLoader()
+    def __init__(self, loader=None, device='cpu', use_local_cache=True, use_company_s3=False):
+        if loader is None:
+            from epsilon_transformers.analysis.load_data import S3ModelLoader
+            self.loader = S3ModelLoader(use_company_credentials=use_company_s3)
+        else:
+            self.loader = loader
         self.device = device
         self.use_local_cache = use_local_cache
         

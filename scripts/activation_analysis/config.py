@@ -28,6 +28,9 @@ class AnalysisConfig:
     TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
     LOG_FILE = os.path.join(LOG_DIR, f"analysis_{TIMESTAMP}.log")
     
+    # S3 storage configuration
+    USE_COMPANY_S3 = True  # Whether to use the company S3 bucket instead of the default one
+    
     # Analysis features
     REPORT_VARIANCE = True
     DO_BASELINE = True
@@ -53,8 +56,14 @@ class AnalysisConfig:
     
     # Sweeps to process
     SWEEPS = {
-        '20241205175736': 'transformer',
-        '20241121152808': 'rnn'
+        #'20241205175736': 'transformer',
+        #'20241121152808': 'rnn',
+        '20250304052839': 'transformer',
+        '20250304060315': 'rnn',
+        '20250304063704': 'transformer',
+        '20250304070751': 'transformer',
+        '20250304073843': 'rnn',
+        '20250304075926': 'rnn',
     }
     
     # Markov analysis settings
@@ -95,6 +104,7 @@ MAX_MARKOV_ORDER = CONFIG.MAX_MARKOV_ORDER
 PROCESS_ALL_CHECKPOINTS = CONFIG.PROCESS_ALL_CHECKPOINTS
 MAX_CHECKPOINTS = CONFIG.MAX_CHECKPOINTS
 TRANSFORMER_ACTIVATION_KEYS = CONFIG.TRANSFORMER_ACTIVATION_KEYS
+USE_COMPANY_S3 = CONFIG.USE_COMPANY_S3
 
 # Import convenience - allows importing directly from config
 from scripts.activation_analysis.utils import setup_logging

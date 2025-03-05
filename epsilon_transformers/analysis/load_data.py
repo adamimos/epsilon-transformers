@@ -13,26 +13,51 @@ from typing import Optional
 from io import BytesIO
 
 class S3ModelLoader:
-    def __init__(self):
+    def __init__(self, use_company_credentials=False):
         load_dotenv()
+        
+        # Path prefix for all S3 operations
+        self.path_prefix = ""
+        
+        if use_company_credentials:
+            # Use the company-specific credentials
+            aws_access_key_id = os.getenv('COMPANY_AWS_ACCESS_KEY_ID')
+            aws_secret_access_key = os.getenv('COMPANY_AWS_SECRET_ACCESS_KEY')
+            region_name = os.getenv('COMPANY_AWS_DEFAULT_REGION')
+            self.bucket_name = os.getenv('COMPANY_S3_BUCKET_NAME')
+            # For company bucket, data is in the "quantum_runs" subfolder (with underscore)
+            self.path_prefix = "quantum_runs/"
+        else:
+            # Use the default credentials
+            aws_access_key_id = os.getenv('AWS_ACCESS_KEY_ID')
+            aws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+            region_name = os.getenv('AWS_DEFAULT_REGION')
+            self.bucket_name = os.getenv('S3_BUCKET_NAME')
+        
         self.s3_client = boto3.client(
             's3',
-            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-            region_name=os.getenv('AWS_DEFAULT_REGION')
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            region_name=region_name
         )
-        self.bucket_name = "quantum-runs"
 
+    def _get_full_key(self, key):
+        """Prepend the path prefix to the key if necessary"""
+        return f"{self.path_prefix}{key}"
 
     def list_sweeps(self):
         """List all sweep directories in the bucket"""
         paginator = self.s3_client.get_paginator('list_objects_v2')
         sweeps = set()
         
-        for page in paginator.paginate(Bucket=self.bucket_name, Delimiter='/'):
+        prefix = self.path_prefix
+        for page in paginator.paginate(Bucket=self.bucket_name, Prefix=prefix, Delimiter='/'):
             for prefix_dict in page.get('CommonPrefixes', []):
-                sweep_name = prefix_dict.get('Prefix', '').rstrip('/')
-                sweeps.add(sweep_name)
+                full_prefix = prefix_dict.get('Prefix', '')
+                # Remove the path_prefix to get the actual sweep name
+                sweep_name = full_prefix[len(self.path_prefix):].rstrip('/')
+                if sweep_name:  # Skip empty string
+                    sweeps.add(sweep_name)
                 
         return sorted(list(sweeps))
     
@@ -53,6 +78,7 @@ class S3ModelLoader:
             FileNotFoundError: If sweep_config.yaml doesn't exist for this sweep
         """
         key = f"{sweep_id}/sweep_config.yaml"
+        key = self._get_full_key(key)
         try:
             response = self.s3_client.get_object(Bucket=self.bucket_name, Key=key)
             yaml_content = response['Body'].read().decode('utf-8')
@@ -64,6 +90,7 @@ class S3ModelLoader:
     def list_sweep_files(self, sweep_id):
         """List all files (not directories) directly within a sweep directory"""
         prefix = f"{sweep_id}/"
+        prefix = self._get_full_key(prefix)
         paginator = self.s3_client.get_paginator('list_objects_v2')
         files = set()
         
@@ -73,13 +100,16 @@ class S3ModelLoader:
                 # Only include files directly in the sweep directory
                 # (those that don't have additional '/' after the sweep prefix)
                 if key.count('/') == prefix.count('/'):
-                    files.add(key)
+                    # Remove the path_prefix to get the relative key
+                    relative_key = key[len(self.path_prefix):] if key.startswith(self.path_prefix) else key
+                    files.add(relative_key)
                 
         return sorted(list(files))
     
     def list_runs_in_sweep(self, sweep_id):
         """List all run directories within a sweep"""
         prefix = f"{sweep_id}/"
+        prefix = self._get_full_key(prefix)
         paginator = self.s3_client.get_paginator('list_objects_v2')
         runs = set()
         
@@ -94,13 +124,16 @@ class S3ModelLoader:
     def list_checkpoints(self, sweep_id, run_id):
         """List all checkpoint files for a specific run within a sweep"""
         prefix = f"{sweep_id}/{run_id}/"
+        prefix = self._get_full_key(prefix)
         checkpoints = []
         
         paginator = self.s3_client.get_paginator('list_objects_v2')
         for page in paginator.paginate(Bucket=self.bucket_name, Prefix=prefix):
             for obj in page.get('Contents', []):
                 if obj['Key'].endswith('.pt'):
-                    checkpoints.append(obj['Key'])
+                    # Remove path prefix to get relative key
+                    relative_key = obj['Key'][len(self.path_prefix):] if obj['Key'].startswith(self.path_prefix) else obj['Key']
+                    checkpoints.append(relative_key)
         
         # Sort checkpoints numerically based on the number before .pt
         return sorted(checkpoints, 
@@ -109,13 +142,16 @@ class S3ModelLoader:
     def list_config_files(self, sweep_id, run_id):
         """List all non-checkpoint files in a run directory"""
         prefix = f"{sweep_id}/{run_id}/"
+        prefix = self._get_full_key(prefix)
         files = []
         
         paginator = self.s3_client.get_paginator('list_objects_v2')
         for page in paginator.paginate(Bucket=self.bucket_name, Prefix=prefix):
             for obj in page.get('Contents', []):
                 if not obj['Key'].endswith('.pt'):
-                    files.append(obj['Key'])
+                    # Remove path prefix to get relative key
+                    relative_key = obj['Key'][len(self.path_prefix):] if obj['Key'].startswith(self.path_prefix) else obj['Key']
+                    files.append(relative_key)
                     
         return sorted(files)
     
@@ -161,9 +197,11 @@ class S3ModelLoader:
                 
         # Download checkpoint file
         checkpoint_path = temp_dir / "model.pt"
+        # Apply path prefix before downloading
+        full_checkpoint_key = self._get_full_key(checkpoint_key)
         self.s3_client.download_file(
             self.bucket_name,
-            checkpoint_key,
+            full_checkpoint_key,
             str(checkpoint_path)
         )
         
@@ -192,18 +230,20 @@ class S3ModelLoader:
 
         # Download checkpoint file
         checkpoint_path = temp_dir / "model.pt"
+        full_checkpoint_key = self._get_full_key(checkpoint_key)
         self.s3_client.download_file(
             self.bucket_name,
-            checkpoint_key,
+            full_checkpoint_key,
             str(checkpoint_path)
         )
 
         # Download and load run config
         config_key = f"{sweep_id}/{run_id}/run_config.yaml"
+        full_config_key = self._get_full_key(config_key)
         config_path = temp_dir / "run_config.yaml"
         self.s3_client.download_file(
             self.bucket_name,
-            config_key,
+            full_config_key,
             str(config_path)
         )
 
@@ -229,6 +269,7 @@ class S3ModelLoader:
     def check_if_process_data_exists(self,process_folder_name):
         """Check if a process data folder exists in S3"""
         key = f"analysis/{process_folder_name}/"
+        key = self._get_full_key(key)
         response = self.s3_client.list_objects_v2(Bucket=self.bucket_name, Prefix=key)
         return 'Contents' in response
 
@@ -247,7 +288,8 @@ class S3ModelLoader:
         
         # Helper function to download and read file content
         def read_s3_file(key):
-            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=key)
+            full_key = self._get_full_key(key)
+            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=full_key)
             return response['Body'].read().decode('utf-8')
 
         base_path = f"{sweep_id}/{run_id}"
@@ -312,15 +354,16 @@ class S3ModelLoader:
         
         # Define the S3 key for this file
         key = f"analysis/{sweep_id}/{run_id}/mse_data.csv"
+        full_key = self._get_full_key(key)
         
         # Upload to S3
         try:
             self.s3_client.put_object(
                 Bucket=self.bucket_name,
-                Key=key,
+                Key=full_key,
                 Body=csv_buffer.getvalue()
             )
-            print(f"Successfully saved MSE data to s3://{self.bucket_name}/{key}")
+            print(f"Successfully saved MSE data to s3://{self.bucket_name}/{full_key}")
         except Exception as e:
             print(f"Error saving MSE data: {str(e)}")
 
@@ -339,17 +382,18 @@ class S3ModelLoader:
             FileNotFoundError: If the MSE data file doesn't exist
         """
         key = f"analysis/{sweep_id}/{run_id}/mse_data.csv"
+        full_key = self._get_full_key(key)
         
         try:
             # Get the object from S3
             response = self.s3_client.get_object(
                 Bucket=self.bucket_name,
-                Key=key
+                Key=full_key
             )
             
             # Read CSV directly from the response
             df = pd.read_csv(BytesIO(response['Body'].read()))
-            print(f"Successfully loaded MSE data from s3://{self.bucket_name}/{key}")
+            print(f"Successfully loaded MSE data from s3://{self.bucket_name}/{full_key}")
             return df
         
         except self.s3_client.exceptions.NoSuchKey:
@@ -369,10 +413,11 @@ class S3ModelLoader:
             bool: True if MSE data exists, False otherwise
         """
         key = f"analysis/{sweep_id}/{run_id}/mse_data.csv"
+        full_key = self._get_full_key(key)
         try:
             self.s3_client.head_object(
                 Bucket=self.bucket_name,
-                Key=key
+                Key=full_key
             )
             return True
         except self.s3_client.exceptions.ClientError:
