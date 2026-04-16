@@ -10,7 +10,7 @@ global_config:
   save_every: 100
 
 train_config:
-  batches_per_epoch: 20
+  batches_per_epoch: 200
   bos: false
   n_epochs: 20000
 
@@ -27,7 +27,7 @@ sweep_config:
     learning_rate:
       - 1.0e-4
     batch_size:
-      - 16
+      - 128
   model_config:
     d_head:
       - 16

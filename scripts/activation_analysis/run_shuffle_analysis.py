@@ -95,18 +95,27 @@ def load_random_model(run_dir: str, device: str, seed: int = 999) -> HookedTrans
 
 
 def extract_activations(model, inputs, device):
-    """Extract residual stream activations from all layers at last token position."""
+    """Extract activations from all layers at last token position.
+
+    Includes: resid_pre (each layer), resid_post (last layer),
+    post-layernorm (ln_final), and logits.
+    """
     inputs = inputs.to(device)
     n_layers = model.cfg.n_layers
+
     hook_names = [f"blocks.{i}.hook_resid_pre" for i in range(n_layers)]
     hook_names.append(f"blocks.{n_layers - 1}.hook_resid_post")
+    hook_names.append("ln_final.hook_normalized")
 
     with torch.no_grad():
-        _, cache = model.run_with_cache(inputs, names_filter=hook_names)
+        logits, cache = model.run_with_cache(inputs, names_filter=hook_names)
 
     acts = {}
     for name in hook_names:
         acts[name] = cache[name][:, -1, :].cpu().numpy()
+
+    # Logits at last position: (batch, vocab_size)
+    acts["logits"] = logits[:, -1, :].cpu().numpy()
 
     return acts
 
@@ -115,8 +124,10 @@ def get_layer_order(acts_keys):
     """Return layer keys in a sensible plotting order."""
     layers = [k for k in acts_keys if k.startswith("blocks.") and "resid_pre" in k]
     layers.sort(key=lambda k: int(k.split(".")[1]))
-    post = [k for k in acts_keys if "resid_post" in k]
-    return layers + post
+    post = [k for k in acts_keys if "resid_post" in k and k.startswith("blocks.")]
+    ln = [k for k in acts_keys if "ln_final" in k]
+    logit = [k for k in acts_keys if k == "logits"]
+    return layers + post + ln + logit
 
 
 # ---------------------------------------------------------------------------

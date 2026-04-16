@@ -53,6 +53,18 @@ def get_run_label(config: dict) -> str:
             f"$\\varepsilon$={pc.get('epsilon',0):.2f}")
 
 
+def _sort_key(k):
+    if "resid_pre" in k:
+        return (0, int(k.split(".")[1]))
+    elif "resid_post" in k and k.startswith("blocks."):
+        return (1, int(k.split(".")[1]))
+    elif "ln_final" in k:
+        return (2, 0)
+    elif k == "logits":
+        return (3, 0)
+    return (4, 0)
+
+
 def nice_layer_labels(layer_keys):
     """Convert hook names to readable labels."""
     labels = []
@@ -60,11 +72,13 @@ def nice_layer_labels(layer_keys):
         if "resid_pre" in k:
             idx = k.split(".")[1]
             labels.append(f"L{idx} pre")
-        elif "resid_post" in k:
+        elif "resid_post" in k and k.startswith("blocks."):
             idx = k.split(".")[1]
             labels.append(f"L{idx} post")
-        elif k == "combined":
-            labels.append("Combined")
+        elif "ln_final" in k:
+            labels.append("LN final")
+        elif k == "logits":
+            labels.append("Logits")
         else:
             labels.append(k)
     return labels
@@ -83,10 +97,7 @@ def fig_layer_curves(data: dict, outdir: Path, run_name: str):
     # Get layer order (exclude 'combined' for now, add at end)
     all_layers = list(curves.keys())
     layer_order = [k for k in all_layers if k != "combined"]
-    layer_order.sort(key=lambda k: (
-        0 if "resid_pre" in k else 1,
-        int(k.split(".")[1]) if "." in k else 99,
-    ))
+    layer_order.sort(key=_sort_key)
     x = np.arange(len(layer_order))
     labels = nice_layer_labels(layer_order)
 
@@ -130,10 +141,7 @@ def fig_layer_curves_grid(all_results: dict, outdir: Path):
 
         all_layers = list(curves.keys())
         layer_order = [k for k in all_layers if k != "combined"]
-        layer_order.sort(key=lambda k: (
-            0 if "resid_pre" in k else 1,
-            int(k.split(".")[1]) if "." in k else 99,
-        ))
+        layer_order.sort(key=_sort_key)
         x = np.arange(len(layer_order))
         labels = nice_layer_labels(layer_order)
 
@@ -170,7 +178,7 @@ def fig_layer_curves_grid(all_results: dict, outdir: Path):
 # ---------------------------------------------------------------------------
 
 def fig_training_dynamics(data: dict, outdir: Path, run_name: str):
-    """5 curves + random baseline across training checkpoints (combined layer)."""
+    """5 curves + random baseline across training checkpoints (last resid layer)."""
     ckpts = data["checkpoint_results"]
     if len(ckpts) < 3:
         print(f"  Skipping training dynamics (only {len(ckpts)} checkpoints)")
@@ -178,10 +186,15 @@ def fig_training_dynamics(data: dict, outdir: Path, run_name: str):
 
     tokens = [c["tokens_seen"] for c in ckpts]
 
+    # Find the last resid_post layer
+    sample_curves = ckpts[0]["curves"]
+    last_layer = [k for k in sample_curves if "resid_post" in k and k.startswith("blocks.")]
+    last_layer = last_layer[-1] if last_layer else list(sample_curves.keys())[-1]
+
     fig, ax = plt.subplots(figsize=(10, 6))
 
     for curve_name, style in CURVE_STYLES.items():
-        vals = [c["curves"]["combined"][curve_name] for c in ckpts]
+        vals = [c["curves"][last_layer][curve_name] for c in ckpts]
         ax.plot(tokens, vals, color=style["color"], ls=style["ls"],
                 lw=style["lw"], marker=style["marker"], markersize=4,
                 label=style["label"])
