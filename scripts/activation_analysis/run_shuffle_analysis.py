@@ -146,10 +146,13 @@ def prepare_process_data(config, n_shuffles=1, seed=42):
     seqs, probs, _ = generate_all_seqs(ghmm, n_ctx + 1, bos=False)
     tree = ghmm.derive_mixed_state_tree(depth=n_ctx + 2)
 
-    # Belief states at last position for each sequence
+    # Belief states at the last position the MODEL sees.
+    # seqs have n_ctx+1 tokens; the model input is seqs[:, :-1] (n_ctx tokens).
+    # The belief after seeing n_ctx tokens is bs[-2] on the full path,
+    # or equivalently bs[-1] on the truncated path.
     beliefs_list = []
     for path in [list(s.numpy()) for s in seqs]:
-        bs = tree.path_to_beliefs(path)
+        bs = tree.path_to_beliefs(path[:-1])  # beliefs for the model's input
         beliefs_list.append(bs[-1].squeeze())
     beliefs = np.array(beliefs_list)
     weights = probs.numpy()

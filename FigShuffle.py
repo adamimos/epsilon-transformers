@@ -22,18 +22,18 @@ from pathlib import Path
 
 
 CURVE_STYLES = {
-    "acts_to_beliefs":     {"color": "#2196F3", "ls": "-",  "lw": 2.5, "marker": "o",
-                            "label": "Activations → beliefs"},
-    "acts_to_shuffled":    {"color": "#F44336", "ls": "-",  "lw": 2.5, "marker": "s",
-                            "label": "Activations → shuffled"},
-    "ntp_to_beliefs":      {"color": "#9C27B0", "ls": "--", "lw": 1.5, "marker": "^",
-                            "label": "Next-token → beliefs"},
-    "beliefs_to_shuffled": {"color": "#FF9800", "ls": "--", "lw": 1.5, "marker": "d",
-                            "label": "Beliefs → shuffled"},
-    "ntp_to_shuffled":     {"color": "#4CAF50", "ls": "--", "lw": 1.5, "marker": "v",
-                            "label": "Next-token → shuffled"},
-    "random_to_beliefs":   {"color": "#9E9E9E", "ls": ":",  "lw": 1.5, "marker": "x",
-                            "label": "Random → beliefs"},
+    "acts_to_beliefs":     {"color": "#1565C0", "ls": "-",  "lw": 2.8, "marker": "o",
+                            "label": "Activations $\\to$ beliefs", "zorder": 10, "ms": 7},
+    "acts_to_shuffled":    {"color": "#C62828", "ls": "-",  "lw": 2.8, "marker": "s",
+                            "label": "Activations $\\to$ shuffled", "zorder": 9, "ms": 7},
+    "ntp_to_beliefs":      {"color": "#7B1FA2", "ls": "--", "lw": 1.8, "marker": "^",
+                            "label": "Next-token $\\to$ beliefs", "zorder": 5, "ms": 6},
+    "beliefs_to_shuffled": {"color": "#E65100", "ls": "--", "lw": 1.8, "marker": "d",
+                            "label": "Beliefs $\\to$ shuffled", "zorder": 5, "ms": 6},
+    "ntp_to_shuffled":     {"color": "#2E7D32", "ls": "--", "lw": 1.8, "marker": "v",
+                            "label": "Next-token $\\to$ shuffled", "zorder": 5, "ms": 6},
+    "random_to_beliefs":   {"color": "#757575", "ls": ":",  "lw": 1.8, "marker": "x",
+                            "label": "Random $\\to$ beliefs", "zorder": 4, "ms": 7},
 }
 
 
@@ -89,35 +89,52 @@ def nice_layer_labels(layer_keys):
 # ---------------------------------------------------------------------------
 
 def fig_layer_curves(data: dict, outdir: Path, run_name: str):
-    """The primary figure: RMSE vs layer for all 6 regression curves."""
-    # Use the final checkpoint
+    """The primary figure: R² vs layer for all 6 regression curves."""
     ckpt = data["checkpoint_results"][-1]
     curves = ckpt["curves"]
 
-    # Get layer order (exclude 'combined' for now, add at end)
     all_layers = list(curves.keys())
     layer_order = [k for k in all_layers if k != "combined"]
     layer_order.sort(key=_sort_key)
     x = np.arange(len(layer_order))
     labels = nice_layer_labels(layer_order)
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(8, 5.5))
+
+    # Shade the gap between acts→beliefs and acts→shuffled
+    vals_bel = [curves[l]["acts_to_beliefs"] for l in layer_order]
+    vals_shuf = [curves[l]["acts_to_shuffled"] for l in layer_order]
+    ax.fill_between(x, vals_shuf, vals_bel, alpha=0.12, color="#1565C0",
+                    label="_nolegend_")
 
     for curve_name, style in CURVE_STYLES.items():
         vals = [curves[layer][curve_name] for layer in layer_order]
         ax.plot(x, vals, color=style["color"], ls=style["ls"], lw=style["lw"],
-                marker=style["marker"], markersize=6, label=style["label"])
+                marker=style["marker"], markersize=style["ms"],
+                label=style["label"], zorder=style["zorder"])
 
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, fontsize=9)
-    ax.set_xlabel("Layer", fontsize=11)
-    ax.set_ylabel("$R^2$", fontsize=11)
-    ax.set_title(get_run_label(data["config"]), fontsize=11)
-    ax.legend(fontsize=9, loc="best")
-    ax.grid(alpha=0.3)
+    ax.set_xticklabels(labels, fontsize=10, fontweight="medium")
+    ax.set_xlabel("Layer", fontsize=12, fontweight="medium")
+    ax.set_ylabel("$R^2$ (variance explained)", fontsize=12, fontweight="medium")
+    ax.tick_params(axis="y", labelsize=10)
+
+    # Title with process params
+    pc = data["config"]["process_config"]
+    title = (f"Quantum RRXOR: $\\varphi$={pc.get('phi',0):.1f}, "
+             f"$\\theta$={pc.get('theta',0):.2f}, "
+             f"$\\varepsilon$={pc.get('epsilon',0):.2f}")
+    ax.set_title(title, fontsize=12, pad=12)
+
+    ax.legend(fontsize=9, loc="upper left", framealpha=0.92,
+              edgecolor="0.8", fancybox=False)
+    ax.set_ylim(bottom=0)
+    ax.grid(alpha=0.15, linewidth=0.5)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
 
     plt.tight_layout()
-    fig.savefig(outdir / f"layer_curves_{run_name}.png", dpi=150,
+    fig.savefig(outdir / f"layer_curves_{run_name}.png", dpi=200,
                 bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved layer_curves_{run_name}.png")

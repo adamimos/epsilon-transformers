@@ -6,7 +6,7 @@ global_config:
   wandb_project: "quantum_transformer"
   process_dir: "./process_data"
   val_every: 1
-  scheduler: false
+  scheduler: true
   save_every: 100
 
 train_config:
