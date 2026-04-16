@@ -1,18 +1,28 @@
 """
 Shuffle Control Analysis for Quantum RRXOR Experiments.
 
-Loads trained transformer checkpoints, extracts activations, computes
-ground-truth belief states, and runs the geometric shuffle control to test
-whether the network encodes belief structure beyond next-token prediction.
+For each trained model, computes 6 regression curves across layers:
+  1. Activations → beliefs           (main result)
+  2. Activations → shuffled beliefs   (shuffle control)
+  3. Next-token probs → beliefs       (NTP baseline)
+  4. Beliefs → shuffled beliefs       (theoretical control)
+  5. Next-token probs → shuffled      (shuffle indifference check)
+  6. Random activations → beliefs     (random baseline)
 
-Analogous to run_regression_analysis.py but for the shuffle control experiment.
+Also supports running across multiple checkpoints for training dynamics.
 
 Usage:
     uv run python scripts/activation_analysis/run_shuffle_analysis.py \
         --results_dir results/SWEEP_ID \
         --outdir shuffle_results
+
+    # Single run, all checkpoints for training dynamics:
+    uv run python scripts/activation_analysis/run_shuffle_analysis.py \
+        --results_dir results/SWEEP_ID \
+        --run_index 0 --all_checkpoints
 """
 import argparse
+import json
 import os
 import yaml
 import joblib
@@ -27,68 +37,67 @@ from epsilon_transformers.process.transition_matrices import get_matrix_from_arg
 from epsilon_transformers.process.GHMM import TransitionMatrixGHMM
 from epsilon_transformers.training.dataloader import generate_all_seqs
 from scripts.activation_analysis.shuffle_control import (
-    run_shuffle_control,
-    run_perpendicular_regression,
+    compute_emission_matrix,
+    compute_projections,
+    geometric_shuffle,
+    _weighted_r2,
 )
 
 
 DEVICE = "cuda:0"
 N_SHUFFLES = 200
+N_FOLDS = 5
 
+
+# ---------------------------------------------------------------------------
+# Model / data loading
+# ---------------------------------------------------------------------------
 
 def load_run_config(run_dir: str) -> dict:
-    """Load the run config from a training run directory."""
-    config_path = os.path.join(run_dir, "run_config.yaml")
-    with open(config_path) as f:
+    with open(os.path.join(run_dir, "run_config.yaml")) as f:
         return yaml.safe_load(f)
 
 
-def get_final_checkpoint(run_dir: str) -> str:
-    """Find the final (highest token count) checkpoint file."""
-    checkpoints = [f for f in os.listdir(run_dir) if f.endswith(".pt") and f != "0.pt"]
-    if not checkpoints:
-        raise FileNotFoundError(f"No checkpoint files found in {run_dir}")
-    # Sort by token count (filename is the token count)
-    checkpoints.sort(key=lambda f: int(f.replace(".pt", "")))
-    return checkpoints[-1]
+def list_checkpoints(run_dir: str) -> list:
+    """List all checkpoint files sorted by token count."""
+    pts = [f for f in os.listdir(run_dir) if f.endswith(".pt")]
+    pts.sort(key=lambda f: int(f.replace(".pt", "")))
+    return pts
 
 
 def load_model(run_dir: str, checkpoint: str, device: str) -> HookedTransformer:
-    """Load a trained HookedTransformer from a checkpoint."""
-    # Load model config
-    config_path = os.path.join(run_dir, "hooked_model_config.json")
-    import json
-    with open(config_path) as f:
+    with open(os.path.join(run_dir, "hooked_model_config.json")) as f:
         model_cfg = json.load(f)
-
-    # Fix dtype
     model_cfg["dtype"] = getattr(torch, model_cfg["dtype"].split(".")[-1])
     model_cfg["device"] = device
-
     hooked_config = HookedTransformerConfig(**model_cfg)
     model = HookedTransformer(hooked_config)
     model = model.to(device)
-
-    # Load weights
-    state_dict = torch.load(os.path.join(run_dir, checkpoint), map_location=device)
+    state_dict = torch.load(os.path.join(run_dir, checkpoint),
+                            map_location=device, weights_only=True)
     model.load_state_dict(state_dict)
     model.eval()
     return model
 
 
-def extract_activations(
-    model: HookedTransformer,
-    inputs: torch.Tensor,
-    device: str,
-) -> dict:
-    """Extract residual stream activations from all layers at the last token position.
+def load_random_model(run_dir: str, device: str, seed: int = 999) -> HookedTransformer:
+    """Load model architecture with random weights (no checkpoint)."""
+    with open(os.path.join(run_dir, "hooked_model_config.json")) as f:
+        model_cfg = json.load(f)
+    model_cfg["dtype"] = getattr(torch, model_cfg["dtype"].split(".")[-1])
+    model_cfg["device"] = device
+    model_cfg["seed"] = seed
+    hooked_config = HookedTransformerConfig(**model_cfg)
+    model = HookedTransformer(hooked_config)
+    model = model.to(device)
+    model.eval()
+    return model
 
-    Returns dict mapping layer name -> activations array (N, d_model).
-    """
+
+def extract_activations(model, inputs, device):
+    """Extract residual stream activations from all layers at last token position."""
     inputs = inputs.to(device)
     n_layers = model.cfg.n_layers
-
-    # Hook names for residual stream pre-attention at each layer + final
     hook_names = [f"blocks.{i}.hook_resid_pre" for i in range(n_layers)]
     hook_names.append(f"blocks.{n_layers - 1}.hook_resid_post")
 
@@ -97,123 +106,269 @@ def extract_activations(
 
     acts = {}
     for name in hook_names:
-        # Take last token position: (batch, seq_len, d_model) -> (batch, d_model)
-        a = cache[name][:, -1, :].cpu().numpy()
-        acts[name] = a
-
-    # Combined: concatenation of all layers
-    combined = np.concatenate([acts[name] for name in hook_names], axis=1)
-    acts["combined"] = combined
+        acts[name] = cache[name][:, -1, :].cpu().numpy()
 
     return acts
 
 
-def analyze_single_run(
-    run_dir: str,
-    outdir: str,
-    device: str = DEVICE,
-    n_shuffles: int = N_SHUFFLES,
-):
-    """Run shuffle control analysis on a single training run."""
-    config = load_run_config(run_dir)
-    run_name = os.path.basename(run_dir)
-    print(f"\n{'='*60}")
-    print(f"Analyzing: {run_name}")
-    print(f"{'='*60}")
+def get_layer_order(acts_keys):
+    """Return layer keys in a sensible plotting order."""
+    layers = [k for k in acts_keys if k.startswith("blocks.") and "resid_pre" in k]
+    layers.sort(key=lambda k: int(k.split(".")[1]))
+    post = [k for k in acts_keys if "resid_post" in k]
+    return layers + post
 
-    # Load process
+
+# ---------------------------------------------------------------------------
+# Prepare process data (beliefs, next-token probs, shuffled targets)
+# ---------------------------------------------------------------------------
+
+def prepare_process_data(config, n_shuffles=1, seed=42):
+    """Generate beliefs, next-token probs, and shuffled beliefs from the process."""
     process_params = config["process_config"]
     T = get_matrix_from_args(**process_params)
     ghmm = TransitionMatrixGHMM(T)
     ghmm.name = process_params["name"]
     rev = ghmm.right_eigenvector.squeeze()
 
-    print(f"  Process: {process_params['name']}")
-    print(f"  T shape: {T.shape}, rev shape: {rev.shape}")
-
-    # Generate all sequences and belief states
     n_ctx = config["model_config"]["n_ctx"]
     seqs, probs, _ = generate_all_seqs(ghmm, n_ctx + 1, bos=False)
     tree = ghmm.derive_mixed_state_tree(depth=n_ctx + 2)
 
-    # Get belief states for each sequence at the last position
+    # Belief states at last position for each sequence
     beliefs_list = []
     for path in [list(s.numpy()) for s in seqs]:
         bs = tree.path_to_beliefs(path)
-        beliefs_list.append(bs[-1].squeeze())  # last position belief
+        beliefs_list.append(bs[-1].squeeze())
     beliefs = np.array(beliefs_list)
     weights = probs.numpy()
 
-    print(f"  Sequences: {seqs.shape[0]}, Beliefs: {beliefs.shape}")
+    # Next-token probabilities: p(x=0 | belief)
+    # p(0|eta) = eta @ T[0] @ rev / (eta @ rev)
+    p0 = (beliefs @ T[0] @ rev) / (beliefs @ rev)
+    ntp = p0.reshape(-1, 1)  # (N, 1) — single feature for binary tokens
 
-    # Load model
-    checkpoint = get_final_checkpoint(run_dir)
-    print(f"  Loading checkpoint: {checkpoint}")
-    model = load_model(run_dir, checkpoint, device)
+    # Emission matrix and projections
+    E = compute_emission_matrix(T, rev)
+    P_E, P_E_perp = compute_projections(E)
 
-    # Extract activations
-    print("  Extracting activations...")
-    acts = extract_activations(model, seqs[:, :-1].long(), device)
+    # Generate shuffled beliefs
+    rng = np.random.default_rng(seed)
+    shuffled = geometric_shuffle(beliefs, P_E, P_E_perp, rng)
 
-    # Run shuffle control on each layer + combined
-    results = {}
-    for layer_name, act_array in acts.items():
-        print(f"  Shuffle control on {layer_name}...")
-        sc = run_shuffle_control(
-            act_array, beliefs, T, rev,
-            weights=weights, n_shuffles=n_shuffles, seed=42,
-            show_progress=True,
-        )
-        results[layer_name] = sc
-        print(f"    RMSE orig={sc['mse_original']:.6f}, "
-              f"shuffled={sc['mse_shuffle_mean']:.6f} "
-              f"(effect={sc['effect_size']:.1%}, p={sc['p_value']:.4f})")
-
-    # Also run perpendicular regression on combined
-    print("  Perpendicular regression on combined...")
-    perp = run_perpendicular_regression(
-        acts["combined"], beliefs, T, rev,
-        weights=weights, n_shuffles=n_shuffles, seed=42,
-    )
-    results["perp_combined"] = perp
-    print(f"    RMSE perp orig={perp['mse_perp_original']:.6f}, "
-          f"shuffled={np.mean(perp['mse_perp_shuffled']):.6f} "
-          f"(effect={perp['effect_size']:.1%}, p={perp['p_value']:.4f})")
-
-    # Save results
-    os.makedirs(outdir, exist_ok=True)
-    out_path = os.path.join(outdir, f"{run_name}_shuffle.joblib")
-    save_data = {
-        "results": results,
-        "config": config,
-        "process_params": process_params,
-        "beliefs_shape": beliefs.shape,
-        "n_shuffles": n_shuffles,
-        "checkpoint": checkpoint,
+    return {
+        "seqs": seqs,
+        "beliefs": beliefs,
+        "weights": weights,
+        "ntp": ntp,
+        "shuffled": shuffled,
+        "T": T,
+        "rev": rev,
+        "E": E,
+        "P_E": P_E,
+        "P_E_perp": P_E_perp,
     }
-    joblib.dump(save_data, out_path)
-    print(f"  Saved to {out_path}")
 
-    # Clean up GPU memory
-    del model
-    torch.cuda.empty_cache()
+
+# ---------------------------------------------------------------------------
+# Compute all 6 curves for one checkpoint
+# ---------------------------------------------------------------------------
+
+def compute_curves(acts, random_acts, proc_data):
+    """Compute R² for all 6 regression curves across layers.
+
+    Returns dict: layer_name -> {curve_name: r2}
+    """
+    beliefs = proc_data["beliefs"]
+    shuffled = proc_data["shuffled"]
+    ntp = proc_data["ntp"]
+    weights = proc_data["weights"]
+
+    layer_order = get_layer_order(acts.keys())
+    results = {}
+
+    for layer in layer_order:
+        act = acts[layer]
+        rand_act = random_acts[layer]
+
+        r = {}
+        # 1. Activations → beliefs
+        r["acts_to_beliefs"] = _weighted_r2(act, beliefs, weights)
+        # 2. Activations → shuffled
+        r["acts_to_shuffled"] = _weighted_r2(act, shuffled, weights)
+        # 3. Next-token probs → beliefs
+        r["ntp_to_beliefs"] = _weighted_r2(ntp, beliefs, weights)
+        # 4. Beliefs → shuffled (use beliefs as features, shuffled as targets)
+        r["beliefs_to_shuffled"] = _weighted_r2(beliefs, shuffled, weights)
+        # 5. Next-token probs → shuffled
+        r["ntp_to_shuffled"] = _weighted_r2(ntp, shuffled, weights)
+        # 6. Random activations → beliefs
+        r["random_to_beliefs"] = _weighted_r2(rand_act, beliefs, weights)
+
+        results[layer] = r
 
     return results
 
 
+# ---------------------------------------------------------------------------
+# Shuffle distribution (for p-values)
+# ---------------------------------------------------------------------------
+
+def compute_shuffle_distribution(acts, proc_data, n_shuffles=N_SHUFFLES,
+                                  seed=42):
+    """Run multiple shuffles on the final layer to get distribution of R²."""
+    rng = np.random.default_rng(seed)
+    beliefs = proc_data["beliefs"]
+    weights = proc_data["weights"]
+    P_E = proc_data["P_E"]
+    P_E_perp = proc_data["P_E_perp"]
+
+    # Use the last resid_post layer
+    layer_keys = get_layer_order(acts.keys())
+    last_layer = [k for k in layer_keys if "resid_post" in k][-1]
+    act = acts[last_layer]
+
+    # Original
+    r2_orig = _weighted_r2(act, beliefs, weights)
+
+    # Shuffled distribution
+    r2_shuffled = []
+    for _ in tqdm(range(n_shuffles), desc="Shuffle distribution", leave=False):
+        shuf = geometric_shuffle(beliefs, P_E, P_E_perp, rng)
+        r2 = _weighted_r2(act, shuf, weights)
+        r2_shuffled.append(r2)
+
+    return {
+        "r2_original": r2_orig,
+        "r2_shuffled": r2_shuffled,
+        "layer": last_layer,
+        "p_value": float(np.mean(np.array(r2_shuffled) >= r2_orig)),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Main analysis
+# ---------------------------------------------------------------------------
+
+def analyze_checkpoint(run_dir, checkpoint, proc_data, random_acts,
+                       device, n_shuffles):
+    """Full analysis for a single checkpoint."""
+    model = load_model(run_dir, checkpoint, device)
+    acts = extract_activations(model, proc_data["seqs"][:, :-1].long(), device)
+    del model
+    torch.cuda.empty_cache()
+
+    curves = compute_curves(acts, random_acts, proc_data)
+    shuffle_dist = compute_shuffle_distribution(
+        acts, proc_data, n_shuffles=n_shuffles
+    )
+
+    tokens_seen = int(checkpoint.replace(".pt", ""))
+    return {
+        "checkpoint": checkpoint,
+        "tokens_seen": tokens_seen,
+        "curves": curves,
+        "shuffle_dist": shuffle_dist,
+    }
+
+
+def analyze_single_run(run_dir, outdir, device=DEVICE, n_shuffles=N_SHUFFLES,
+                       all_checkpoints=False):
+    """Run full analysis on a single training run."""
+    config = load_run_config(run_dir)
+    run_name = os.path.basename(run_dir)
+    print(f"\n{'='*60}")
+    print(f"Analyzing: {run_name}")
+    print(f"{'='*60}")
+
+    # Prepare process data (independent of checkpoint)
+    proc_data = prepare_process_data(config)
+    print(f"  Process: {config['process_config']['name']}")
+    print(f"  Sequences: {proc_data['seqs'].shape[0]}, "
+          f"Beliefs: {proc_data['beliefs'].shape}")
+
+    # Random baseline activations (computed once)
+    print("  Computing random baseline...")
+    random_model = load_random_model(run_dir, device)
+    random_acts = extract_activations(
+        random_model, proc_data["seqs"][:, :-1].long(), device
+    )
+    del random_model
+    torch.cuda.empty_cache()
+
+    # Select checkpoints
+    all_ckpts = list_checkpoints(run_dir)
+    if all_checkpoints:
+        # Sample ~20 checkpoints evenly spaced + initial + final
+        n_total = len(all_ckpts)
+        if n_total <= 20:
+            selected = all_ckpts
+        else:
+            indices = np.linspace(0, n_total - 1, 20, dtype=int)
+            selected = [all_ckpts[i] for i in indices]
+            # Ensure initial and final are included
+            if all_ckpts[0] not in selected:
+                selected = [all_ckpts[0]] + selected
+            if all_ckpts[-1] not in selected:
+                selected.append(all_ckpts[-1])
+    else:
+        # Just initial and final
+        selected = [all_ckpts[0], all_ckpts[-1]]
+
+    print(f"  Analyzing {len(selected)} checkpoints: "
+          f"{selected[0]} ... {selected[-1]}")
+
+    # Analyze each checkpoint
+    checkpoint_results = []
+    for ckpt in tqdm(selected, desc="Checkpoints"):
+        print(f"\n  Checkpoint: {ckpt}")
+        result = analyze_checkpoint(
+            run_dir, ckpt, proc_data, random_acts, device, n_shuffles
+        )
+        checkpoint_results.append(result)
+
+        # Print summary for this checkpoint (use last resid_post layer)
+        layer_keys = list(result["curves"].keys())
+        last_layer = [k for k in layer_keys if "resid_post" in k][-1]
+        c = result["curves"][last_layer]
+        sd = result["shuffle_dist"]
+        print(f"    [{last_layer}] R² acts→beliefs: {c['acts_to_beliefs']:.4f}")
+        print(f"    [{last_layer}] R² acts→shuffled: {c['acts_to_shuffled']:.4f}")
+        print(f"    [{last_layer}] R² ntp→beliefs:   {c['ntp_to_beliefs']:.4f}")
+        print(f"    [{last_layer}] R² random→beliefs:{c['random_to_beliefs']:.4f}")
+        print(f"    shuffle p-val: {sd['p_value']:.4f}")
+
+    # Save
+    os.makedirs(outdir, exist_ok=True)
+    out_path = os.path.join(outdir, f"{run_name}_shuffle.joblib")
+    save_data = {
+        "config": config,
+        "process_params": config["process_config"],
+        "checkpoint_results": checkpoint_results,
+        "beliefs_shape": proc_data["beliefs"].shape,
+        "n_shuffles": n_shuffles,
+    }
+    joblib.dump(save_data, out_path)
+    print(f"\n  Saved to {out_path}")
+
+    del random_acts
+    torch.cuda.empty_cache()
+    return save_data
+
+
 def main():
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--results_dir", type=str, required=True,
-                        help="Path to sweep results directory (e.g., results/20260416001120)")
-    parser.add_argument("--outdir", type=str, default="shuffle_results",
-                        help="Output directory for shuffle analysis results")
-    parser.add_argument("--device", type=str, default=DEVICE,
-                        help="CUDA device to use")
-    parser.add_argument("--n_shuffles", type=int, default=N_SHUFFLES,
-                        help="Number of shuffle permutations")
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--results_dir", type=str, required=True)
+    parser.add_argument("--outdir", type=str, default="shuffle_results")
+    parser.add_argument("--device", type=str, default=DEVICE)
+    parser.add_argument("--n_shuffles", type=int, default=N_SHUFFLES)
     parser.add_argument("--run_index", type=int, default=None,
-                        help="Only analyze this run index (0-7). Default: all runs.")
+                        help="Only analyze this run index (0-7)")
+    parser.add_argument("--all_checkpoints", action="store_true",
+                        help="Analyze ~20 checkpoints for training dynamics")
     args = parser.parse_args()
 
     results_dir = Path(args.results_dir)
@@ -225,36 +380,21 @@ def main():
     if args.run_index is not None:
         run_dirs = [run_dirs[args.run_index]]
 
-    print(f"Found {len(run_dirs)} run directories")
-    print(f"Output: {args.outdir}")
-    print(f"Device: {args.device}")
-    print(f"Shuffles: {args.n_shuffles}")
+    print(f"Found {len(run_dirs)} runs | device={args.device} | "
+          f"shuffles={args.n_shuffles} | all_ckpts={args.all_checkpoints}")
 
-    all_results = {}
     for run_dir in run_dirs:
         try:
-            r = analyze_single_run(
+            analyze_single_run(
                 str(run_dir), args.outdir,
-                device=args.device, n_shuffles=args.n_shuffles,
+                device=args.device,
+                n_shuffles=args.n_shuffles,
+                all_checkpoints=args.all_checkpoints,
             )
-            all_results[run_dir.name] = r
         except Exception as e:
             print(f"  ERROR: {e}")
             import traceback
             traceback.print_exc()
-
-    # Print summary
-    print(f"\n{'='*60}")
-    print("SUMMARY")
-    print(f"{'='*60}")
-    print(f"{'Run':>45s}  {'RMSE orig':>10s}  {'RMSE shuf':>10s}  {'Effect':>8s}  {'p':>6s}")
-    print("-" * 85)
-    for name, results in all_results.items():
-        if "combined" in results:
-            sc = results["combined"]
-            print(f"{name:>45s}  {sc['mse_original']:10.6f}  "
-                  f"{sc['mse_shuffle_mean']:10.6f}  "
-                  f"{sc['effect_size']:7.1%}  {sc['p_value']:6.4f}")
 
 
 if __name__ == "__main__":

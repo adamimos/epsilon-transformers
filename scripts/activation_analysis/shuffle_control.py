@@ -129,65 +129,20 @@ def geometric_shuffle(
 # Regression (weighted least squares, matching the paper's procedure)
 # ---------------------------------------------------------------------------
 
-def weighted_regression_mse(
-    X: np.ndarray,
-    Y: np.ndarray,
-    weights: np.ndarray,
-) -> float:
-    """Weighted least-squares regression, returns weighted RMSE.
-
-    Matches the procedure in scripts/activation_analysis/regression.py:
-    standardize features, add bias, apply sqrt(weights), solve via pinv.
+def _weighted_r2(X, Y, weights, rcond=1e-10):
+    """Weighted least-squares regression, returns R².
 
     Parameters
     ----------
-    X : ndarray, shape (N, d_features)  — activations
-    Y : ndarray, shape (N, d_targets)   — belief states
-    weights : ndarray, shape (N,)       — probability weights (sum to 1)
+    X : ndarray, shape (N, d_features)
+    Y : ndarray, shape (N, d_targets)
+    weights : ndarray, shape (N,)
+    rcond : float — regularization for lstsq
 
     Returns
     -------
-    rmse : float — weighted root mean squared error
+    r2 : float — weighted R² (coefficient of determination)
     """
-    N, d = X.shape
-    w = weights / weights.sum()
-
-    # Standardize features
-    mean = X.mean(axis=0)
-    std = X.std(axis=0)
-    std[std < 1e-12] = 1.0
-    X_std = (X - mean) / std
-
-    # Add bias column
-    X_bias = np.hstack([np.ones((N, 1)), X_std])
-
-    # Apply sqrt weights
-    sqrt_w = np.sqrt(w)[:, None]
-    X_w = X_bias * sqrt_w
-    Y_w = Y * sqrt_w
-
-    # Solve weighted least squares
-    beta, _, _, _ = np.linalg.lstsq(X_w, Y_w, rcond=1e-10)
-
-    # Predictions in original space
-    X_orig_bias = np.hstack([np.ones((N, 1)), X])
-    # Unstandardize coefficients: beta[0] stays (bias absorbed), beta[1:] /= std
-    beta_orig = beta.copy()
-    beta_orig[1:] = beta[1:] / std[:, None]
-    beta_orig[0] = beta[0] - (mean / std) @ beta[1:]
-
-    # Wait, let me use the simpler approach — just predict and evaluate
-    Y_pred = X_w @ beta  # predictions in weighted space
-    Y_pred_orig = X_orig_bias @ beta_orig  # predictions in original space
-
-    # Weighted RMSE
-    dists = np.sqrt(np.sum((Y_pred_orig - Y) ** 2, axis=1))
-    rmse = np.sum(dists * w)
-    return rmse
-
-
-def _simple_weighted_rmse(X, Y, weights):
-    """Simpler weighted regression RMSE using numpy lstsq directly."""
     N = X.shape[0]
     w = weights / weights.sum()
     sqrt_w = np.sqrt(w)[:, None]
@@ -195,17 +150,22 @@ def _simple_weighted_rmse(X, Y, weights):
     # Add bias
     X_bias = np.hstack([np.ones((N, 1)), X])
 
-    # Weight
+    # Weighted regression
     X_w = X_bias * sqrt_w
     Y_w = Y * sqrt_w
 
     # Solve
-    beta, _, _, _ = np.linalg.lstsq(X_w, Y_w, rcond=1e-10)
+    beta, _, _, _ = np.linalg.lstsq(X_w, Y_w, rcond=rcond)
 
     # Predict (unweighted)
     Y_pred = X_bias @ beta
-    dists = np.sqrt(np.sum((Y_pred - Y) ** 2, axis=1))
-    return np.sum(dists * w)
+
+    # Weighted R²
+    Y_mean = (Y * w[:, None]).sum(axis=0)  # weighted mean
+    ss_res = (w[:, None] * (Y - Y_pred) ** 2).sum()
+    ss_tot = (w[:, None] * (Y - Y_mean) ** 2).sum()
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+    return float(r2)
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +239,7 @@ def run_shuffle_control(
     var_total = var_par + var_perp
 
     # Original regression
-    mse_original = _simple_weighted_rmse(activations, beliefs, weights)
+    mse_original = _weighted_r2(activations, beliefs, weights)
 
     # Shuffled regressions
     mse_shuffled = []
@@ -289,7 +249,7 @@ def run_shuffle_control(
 
     for _ in iterator:
         shuffled = geometric_shuffle(beliefs, P_E, P_E_perp, rng)
-        mse = _simple_weighted_rmse(activations, shuffled, weights)
+        mse = _weighted_r2(activations, shuffled, weights)
         mse_shuffled.append(mse)
 
     mse_shuffled = np.array(mse_shuffled)
@@ -352,13 +312,13 @@ def run_perpendicular_regression(
     _, _, delta_perp = decompose_beliefs(beliefs, P_E, P_E_perp)
 
     # Regress activations onto perpendicular component
-    mse_orig = _simple_weighted_rmse(activations, delta_perp, weights)
+    mse_orig = _weighted_r2(activations, delta_perp, weights)
 
     # Shuffled baseline
     mse_shuffled = []
     for _ in range(n_shuffles):
         perm = rng.permutation(len(delta_perp))
-        mse = _simple_weighted_rmse(activations, delta_perp[perm], weights)
+        mse = _weighted_r2(activations, delta_perp[perm], weights)
         mse_shuffled.append(mse)
 
     mse_shuffled = np.array(mse_shuffled)
