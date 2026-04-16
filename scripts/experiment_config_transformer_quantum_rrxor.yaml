@@ -1,0 +1,78 @@
+global_config:
+  output_dir: "./results"
+  device: cuda
+  parallel: true
+  wandb: true
+  wandb_project: "quantum_transformer"
+  process_dir: "./process_data"
+  val_every: 1
+  scheduler: false
+  save_every: 100
+
+train_config:
+  batches_per_epoch: 20
+  bos: false
+  n_epochs: 20000
+
+model_config:
+  n_ctx: 8
+  act_fn: "relu"
+  normalization_type: "LN"
+  attn_only: false
+  seed: 42
+  dtype: float32
+
+sweep_config:
+  train_config:
+    learning_rate:
+      - 1.0e-4
+    batch_size:
+      - 16
+  model_config:
+    d_head:
+      - 16
+    n_layers:
+      - 4
+    n_heads:
+      - 4
+  process_config:
+    # GPU 0: Primary — phi=1.0, theta=pi/3, eps=0.05
+    - name: "quantum_rrxor"
+      phi: 1.0
+      theta: 1.0471975511965976   # pi/3
+      epsilon: 0.05
+    # GPU 1: Different rotation — phi=2.0, theta=pi/3, eps=0.05
+    - name: "quantum_rrxor"
+      phi: 2.0
+      theta: 1.0471975511965976   # pi/3
+      epsilon: 0.05
+    # GPU 2: Slower rotation — phi=0.5, theta=pi/3, eps=0.05
+    - name: "quantum_rrxor"
+      phi: 0.5
+      theta: 1.0471975511965976   # pi/3
+      epsilon: 0.05
+    # GPU 3: Stronger readout — phi=1.0, theta=2pi/3, eps=0.05
+    - name: "quantum_rrxor"
+      phi: 1.0
+      theta: 2.0943951023931953   # 2*pi/3
+      epsilon: 0.05
+    # GPU 4: Low beyond-NTP control — phi=3.0, theta=pi/4, eps=0.05
+    - name: "quantum_rrxor"
+      phi: 3.0
+      theta: 0.7853981633974483   # pi/4
+      epsilon: 0.05
+    # GPU 5: No leakage — phi=1.0, theta=pi/3, eps=0.0
+    - name: "quantum_rrxor"
+      phi: 1.0
+      theta: 1.0471975511965976   # pi/3
+      epsilon: 0.0
+    # GPU 6: Higher leakage — phi=1.0, theta=pi/3, eps=0.10
+    - name: "quantum_rrxor"
+      phi: 1.0
+      theta: 1.0471975511965976   # pi/3
+      epsilon: 0.1
+    # GPU 7: High leakage (whitespace test) — phi=1.0, theta=pi/3, eps=0.20
+    - name: "quantum_rrxor"
+      phi: 1.0
+      theta: 1.0471975511965976   # pi/3
+      epsilon: 0.2

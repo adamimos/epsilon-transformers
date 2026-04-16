@@ -185,12 +185,13 @@ def main():
 
     np.savetxt('loss_lower_bound.txt', loss_lower_bound.cpu().numpy(), fmt='%f', delimiter=',', header='loss_lower_bound')
 
-    config['model_config']['device'] = config['global_config']['device']
+    config['model_config']['device'] = device
     config['model_config']['d_vocab'] = d_vocab
     config['model_config']['dtype'] = getattr(torch, config['model_config']['dtype'])
 
     hooked_model_config = HookedTransformerConfig(**config['model_config'])
     model = HookedTransformer(hooked_model_config)
+    model = model.to(device)
     #model = torch.compile(model)
     logger.log({"status": "model loaded"})
     save_model_config(logger, model)

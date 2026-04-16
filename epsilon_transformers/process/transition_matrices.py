@@ -9,6 +9,7 @@ def get_matrix_from_args(name: str, **kwargs):
         "tom_quantum": tom_quantum,
         "fanizza": fanizza,
         "rrxor": rrxor,
+        "quantum_rrxor": quantum_rrxor,
         "mess3": mess3,
         "days_of_week": days_of_week,
         "zero_one_random": zero_one_random
@@ -202,6 +203,116 @@ def rrxor(pR1=0.5, pR2=0.5):
     T[0, s["F"], s["S"]] = 1.0
 
     return T
+
+def quantum_rrxor(phi: float, theta: float, epsilon: float = 0.0):
+    """
+    Creates transition matrices for the Quantum RRXOR process.
+
+    A quantum generalization of the RRXOR process defined by a repeating
+    quantum circuit with a persistent memory qubit and a measured ancilla:
+
+        |ψ⟩_mem ──R_y(φ)──●─────────── |ψ'⟩_mem   (persistent)
+                           │
+        |0⟩_anc ──────────⊕──R_x(θ)──M── x_t      (measured)
+
+    The Kraus operators are K_x = D_x · R_y(φ) where
+        D_0 = diag(cos(θ/2), -i·sin(θ/2))
+        D_1 = diag(-i·sin(θ/2), cos(θ/2))
+
+    The GHMM lives in the 4-dimensional generalized Bloch representation
+    {I/2, σ_x/2, σ_y/2, σ_z/2}. Belief states are 4-vectors (1, b_x, b_y, b_z)
+    where (b_x, b_y, b_z) is the Bloch vector of the memory qubit's density
+    matrix. The belief geometry is generically a 3-dimensional fractal in the
+    Bloch ball.
+
+    Parameters
+    ----------
+    phi : float
+        Memory rotation angle (radians). R_y(φ) rotates the memory qubit
+        before entangling with the ancilla. When φ/π is irrational, the
+        process has no finite HMM.
+    theta : float
+        Readout angle (radians). R_x(θ) rotates the ancilla before
+        measurement. θ → 0 is uninformative, θ → π is the classical limit.
+    epsilon : float, optional
+        Leakage parameter in [0, 1]. Mixes each transition with a reset to
+        the stationary (fully mixed) state. Default 0.0 (no leakage).
+
+    Returns
+    -------
+    T : ndarray, shape (2, 4, 4)
+        GHMM transition matrices T[x] for tokens x ∈ {0, 1}.
+
+    References
+    ----------
+    Riechers & Crutchfield (2021), Phys. Rev. Research 3, 013170.
+    Riechers, Elliott & Shai (2025), arXiv:2507.07432.
+    """
+    if not (0 <= epsilon <= 1):
+        raise ValueError(f"epsilon must be in [0, 1], got {epsilon}")
+
+    # --- Kraus operators: K_x = D_x @ R_y(phi) ---
+    c_t, s_t = np.cos(theta / 2), np.sin(theta / 2)
+    c_p, s_p = np.cos(phi / 2), np.sin(phi / 2)
+
+    R_y = np.array([[c_p, -s_p],
+                    [s_p,  c_p]], dtype=complex)
+
+    D = [np.diag([c_t, -1j * s_t]),        # D_0
+         np.diag([-1j * s_t, c_t])]        # D_1
+
+    K = [D[x] @ R_y for x in range(2)]
+
+    # Verify Kraus completeness: Σ_x K_x†K_x = I
+    completeness = sum(k.conj().T @ k for k in K)
+    assert np.allclose(completeness, np.eye(2)), \
+        f"Kraus completeness violated: {completeness}"
+
+    # --- Pauli basis: {I/2, σ_x/2, σ_y/2, σ_z/2} ---
+    sigma_x = np.array([[0, 1], [1, 0]], dtype=complex)
+    sigma_y = np.array([[0, -1j], [1j, 0]], dtype=complex)
+    sigma_z = np.array([[1, 0], [0, -1]], dtype=complex)
+    B = [np.eye(2, dtype=complex) / 2, sigma_x / 2, sigma_y / 2, sigma_z / 2]
+
+    # --- GHMM transition matrices via Bloch representation ---
+    # G^(x)_{mn} = 2 tr(B_m K_x B_n K_x†)  maps column Bloch vectors
+    # T^(x) = G^(x)^T                        maps row predictive vectors
+    # So T^(x)_{ij} = 2 tr(B_j K_x B_i K_x†)
+    T = np.zeros((2, 4, 4))
+    for x in range(2):
+        for i in range(4):
+            for j in range(4):
+                T[x, i, j] = 2 * np.trace(
+                    B[j] @ K[x] @ B[i] @ K[x].conj().T
+                ).real
+
+    # --- Verify GHMM properties ---
+    T_sum = T[0] + T[1]
+    e0 = np.array([1, 0, 0, 0])
+
+    # Right eigenvector: T_sum @ e_0 = e_0  (trace preservation)
+    assert np.allclose(T_sum @ e0, e0), \
+        f"Right eigenvector check failed: T_sum @ e0 = {T_sum @ e0}"
+
+    # Left eigenvector: e_0 @ T_sum = e_0  (unitality → fully mixed is stationary)
+    assert np.allclose(e0 @ T_sum, e0), \
+        f"Left eigenvector check failed: e0 @ T_sum = {e0 @ T_sum}"
+
+    # Non-trivial eigenvalues should have magnitude < 1 (ergodicity)
+    eigvals = np.linalg.eigvals(T_sum[1:, 1:])
+    assert all(np.abs(eigvals) < 1 + 1e-10), \
+        f"Non-trivial eigenvalues not contractive: {eigvals}"
+
+    # --- Apply leakage ---
+    if epsilon > 0:
+        # T^(x)_ε = (1 - ε) T^(x) + (ε / |X|) |1⟩⟩⟨⟨π|
+        # where |1⟩⟩ = e_0 (col) and ⟨⟨π| = e_0 (row)
+        reset = np.outer(e0, e0)
+        for x in range(2):
+            T[x] = (1 - epsilon) * T[x] + (epsilon / 2) * reset
+
+    return T
+
 
 def mess3(x=0.15, a=0.6):
     """
