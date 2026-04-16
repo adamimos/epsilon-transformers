@@ -128,7 +128,7 @@ def fig_layer_curves(data: dict, outdir: Path, run_name: str):
 
     ax.legend(fontsize=9, loc="upper left", framealpha=0.92,
               edgecolor="0.8", fancybox=False)
-    ax.set_ylim(bottom=0)
+    ax.set_ylim(-0.05, 1.05)
     ax.grid(alpha=0.15, linewidth=0.5)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -271,6 +271,65 @@ def fig_shuffle_distributions(all_results: dict, outdir: Path):
                 bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved shuffle_distributions.png")
+
+
+# ---------------------------------------------------------------------------
+# Appendix: full-dimensional (no PCA) version
+# ---------------------------------------------------------------------------
+
+def fig_layer_curves_full(data: dict, outdir: Path, run_name: str):
+    """Appendix figure: same as main but without PCA reduction."""
+    ckpt = data["checkpoint_results"][-1]
+    curves = ckpt.get("curves_full")
+    if curves is None:
+        print(f"  Skipping full-dim figure (no curves_full data)")
+        return
+
+    all_layers = list(curves.keys())
+    layer_order = [k for k in all_layers if k != "combined"]
+    layer_order.sort(key=_sort_key)
+    x = np.arange(len(layer_order))
+    labels = nice_layer_labels(layer_order)
+
+    fig, ax = plt.subplots(figsize=(8, 5.5))
+
+    vals_bel = [curves[l]["acts_to_beliefs"] for l in layer_order]
+    vals_shuf = [curves[l]["acts_to_shuffled"] for l in layer_order]
+    ax.fill_between(x, vals_shuf, vals_bel, alpha=0.12, color="#1565C0")
+
+    for curve_name, style in CURVE_STYLES.items():
+        if curve_name not in list(curves.values())[0]:
+            continue
+        vals = [curves[layer][curve_name] for layer in layer_order]
+        ax.plot(x, vals, color=style["color"], ls=style["ls"], lw=style["lw"],
+                marker=style["marker"], markersize=style["ms"],
+                label=style["label"], zorder=style["zorder"])
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, fontsize=10, fontweight="medium")
+    ax.set_xlabel("Layer", fontsize=12, fontweight="medium")
+    ax.set_ylabel("$R^2$ (variance explained)", fontsize=12, fontweight="medium")
+    ax.tick_params(axis="y", labelsize=10)
+
+    pc = data["config"]["process_config"]
+    title = (f"Appendix: Full-dimensional (no PCA)\n"
+             f"$\\varphi$={pc.get('phi',0):.1f}, "
+             f"$\\theta$={pc.get('theta',0):.2f}, "
+             f"$\\varepsilon$={pc.get('epsilon',0):.2f}")
+    ax.set_title(title, fontsize=11, pad=12)
+
+    ax.legend(fontsize=9, loc="upper left", framealpha=0.92,
+              edgecolor="0.8", fancybox=False)
+    ax.set_ylim(bottom=0)
+    ax.grid(alpha=0.15, linewidth=0.5)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    plt.tight_layout()
+    fig.savefig(outdir / f"appendix_full_dim_{run_name}.png", dpi=200,
+                bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved appendix_full_dim_{run_name}.png")
 
 
 # ---------------------------------------------------------------------------

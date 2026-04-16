@@ -40,7 +40,7 @@ from scripts.activation_analysis.shuffle_control import (
     compute_emission_matrix,
     compute_projections,
     geometric_shuffle,
-    _weighted_r2,
+    _paper_regression_r2,
 )
 
 
@@ -188,8 +188,11 @@ def prepare_process_data(config, n_shuffles=1, seed=42):
 # Compute all 6 curves for one checkpoint
 # ---------------------------------------------------------------------------
 
-def compute_curves(acts, random_acts, proc_data):
-    """Compute R² for all 6 regression curves across layers.
+def compute_curves(acts, random_acts, proc_data, device="cpu"):
+    """Compute R² for all regression curves across layers.
+
+    Uses the paper's regression procedure (SVD pseudoinverse with
+    cross-validated rcond selection) for consistency.
 
     Returns dict: layer_name -> {curve_name: r2}
     """
@@ -206,18 +209,12 @@ def compute_curves(acts, random_acts, proc_data):
         rand_act = random_acts[layer]
 
         r = {}
-        # 1. Activations → beliefs
-        r["acts_to_beliefs"] = _weighted_r2(act, beliefs, weights)
-        # 2. Activations → shuffled
-        r["acts_to_shuffled"] = _weighted_r2(act, shuffled, weights)
-        # 3. Next-token probs → beliefs
-        r["ntp_to_beliefs"] = _weighted_r2(ntp, beliefs, weights)
-        # 4. Beliefs → shuffled (use beliefs as features, shuffled as targets)
-        r["beliefs_to_shuffled"] = _weighted_r2(beliefs, shuffled, weights)
-        # 5. Next-token probs → shuffled
-        r["ntp_to_shuffled"] = _weighted_r2(ntp, shuffled, weights)
-        # 6. Random activations → beliefs
-        r["random_to_beliefs"] = _weighted_r2(rand_act, beliefs, weights)
+        r["acts_to_beliefs"] = _paper_regression_r2(act, beliefs, weights, device=device)
+        r["acts_to_shuffled"] = _paper_regression_r2(act, shuffled, weights, device=device)
+        r["ntp_to_beliefs"] = _paper_regression_r2(ntp, beliefs, weights, device=device)
+        r["beliefs_to_shuffled"] = _paper_regression_r2(beliefs, shuffled, weights, device=device)
+        r["ntp_to_shuffled"] = _paper_regression_r2(ntp, shuffled, weights, device=device)
+        r["random_to_beliefs"] = _paper_regression_r2(rand_act, beliefs, weights, device=device)
 
         results[layer] = r
 
@@ -229,7 +226,7 @@ def compute_curves(acts, random_acts, proc_data):
 # ---------------------------------------------------------------------------
 
 def compute_shuffle_distribution(acts, proc_data, n_shuffles=N_SHUFFLES,
-                                  seed=42):
+                                  seed=42, device="cpu"):
     """Run multiple shuffles on the final layer to get distribution of R²."""
     rng = np.random.default_rng(seed)
     beliefs = proc_data["beliefs"]
@@ -243,13 +240,13 @@ def compute_shuffle_distribution(acts, proc_data, n_shuffles=N_SHUFFLES,
     act = acts[last_layer]
 
     # Original
-    r2_orig = _weighted_r2(act, beliefs, weights)
+    r2_orig = _paper_regression_r2(act, beliefs, weights, device=device)
 
     # Shuffled distribution
     r2_shuffled = []
     for _ in tqdm(range(n_shuffles), desc="Shuffle distribution", leave=False):
         shuf = geometric_shuffle(beliefs, P_E, P_E_perp, rng)
-        r2 = _weighted_r2(act, shuf, weights)
+        r2 = _paper_regression_r2(act, shuf, weights, device=device)
         r2_shuffled.append(r2)
 
     return {
@@ -272,9 +269,10 @@ def analyze_checkpoint(run_dir, checkpoint, proc_data, random_acts,
     del model
     torch.cuda.empty_cache()
 
-    curves = compute_curves(acts, random_acts, proc_data)
+    reg_device = device if "cuda" in device else "cpu"
+    curves = compute_curves(acts, random_acts, proc_data, device=reg_device)
     shuffle_dist = compute_shuffle_distribution(
-        acts, proc_data, n_shuffles=n_shuffles
+        acts, proc_data, n_shuffles=n_shuffles, device=reg_device
     )
 
     tokens_seen = int(checkpoint.replace(".pt", ""))

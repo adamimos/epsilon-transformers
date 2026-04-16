@@ -5,6 +5,9 @@ Tests whether neural networks encode belief structure *beyond* local next-token
 prediction, by decomposing beliefs into a next-token-relevant component and an
 orthogonal component, shuffling the orthogonal part, and comparing regression quality.
 
+Uses the same regression procedure as the paper (SVD-based pseudoinverse with
+cross-validated rcond selection) for consistency.
+
 Works for both classical HMMs and GHMMs (quantum / post-quantum processes).
 
 Reference: context/shufflecontrol.md
@@ -13,6 +16,9 @@ import numpy as np
 import torch
 from typing import Dict, Optional, Tuple
 from tqdm.auto import tqdm
+
+from scripts.activation_analysis.regression import run_activation_to_beliefs_regression_kf
+from scripts.activation_analysis.config import RCOND_SWEEP_LIST
 
 
 # ---------------------------------------------------------------------------
@@ -26,17 +32,6 @@ def compute_emission_matrix(T: np.ndarray, rev: np.ndarray) -> np.ndarray:
     belief states (eta @ rev = 1).
 
     For classical HMMs (rev = ones), this reduces to E[s, x] = sum_j T[x, s, j].
-
-    Parameters
-    ----------
-    T : ndarray, shape (vocab_len, latent_dim, latent_dim)
-        GHMM transition matrices.
-    rev : ndarray, shape (latent_dim,) or (latent_dim, 1)
-        Right eigenvector of T.sum(axis=0) with eigenvalue 1.
-
-    Returns
-    -------
-    E : ndarray, shape (latent_dim, vocab_len)
     """
     rev = rev.squeeze()
     vocab_len, latent_dim = T.shape[0], T.shape[1]
@@ -51,15 +46,6 @@ def compute_projections(E: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
 
     P_E projects onto col(E):      the subspace relevant for next-token prediction.
     P_E_perp projects onto ker(E^T): the orthogonal subspace (beyond next-token).
-
-    Parameters
-    ----------
-    E : ndarray, shape (latent_dim, vocab_len)
-
-    Returns
-    -------
-    P_E : ndarray, shape (latent_dim, latent_dim)
-    P_E_perp : ndarray, shape (latent_dim, latent_dim)
     """
     latent_dim = E.shape[0]
     ETE = E.T @ E
@@ -73,283 +59,110 @@ def compute_projections(E: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
 # Belief decomposition and shuffling
 # ---------------------------------------------------------------------------
 
-def decompose_beliefs(
-    beliefs: np.ndarray,
-    P_E: np.ndarray,
-    P_E_perp: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Decompose beliefs into next-token-relevant and orthogonal components.
-
-    Parameters
-    ----------
-    beliefs : ndarray, shape (N, latent_dim)
-    P_E, P_E_perp : ndarray, shape (latent_dim, latent_dim)
-
-    Returns
-    -------
-    b_mean : ndarray, shape (latent_dim,)
-    delta_parallel : ndarray, shape (N, latent_dim)  — in col(E)
-    delta_perp : ndarray, shape (N, latent_dim)      — in ker(E^T)
-    """
+def decompose_beliefs(beliefs, P_E, P_E_perp):
+    """Decompose beliefs into next-token-relevant and orthogonal components."""
     b_mean = beliefs.mean(axis=0)
     delta = beliefs - b_mean
-    # P_E and P_E_perp are symmetric, so left- and right-multiply are equivalent
     delta_parallel = delta @ P_E
     delta_perp = delta @ P_E_perp
     return b_mean, delta_parallel, delta_perp
 
 
-def geometric_shuffle(
-    beliefs: np.ndarray,
-    P_E: np.ndarray,
-    P_E_perp: np.ndarray,
-    rng: np.random.Generator,
-) -> np.ndarray:
-    """Construct shuffled belief targets.
-
-    Preserves the next-token component (delta_parallel) and randomizes the
-    beyond-next-token component (delta_perp) via a random permutation.
-
-    Parameters
-    ----------
-    beliefs : ndarray, shape (N, latent_dim)
-    P_E, P_E_perp : ndarray, shape (latent_dim, latent_dim)
-    rng : numpy random Generator
-
-    Returns
-    -------
-    shuffled : ndarray, shape (N, latent_dim)
-    """
+def geometric_shuffle(beliefs, P_E, P_E_perp, rng):
+    """Shuffle beyond-next-token component while preserving next-token component."""
     b_mean, delta_parallel, delta_perp = decompose_beliefs(beliefs, P_E, P_E_perp)
     perm = rng.permutation(len(beliefs))
     return b_mean + delta_parallel + delta_perp[perm]
 
 
 # ---------------------------------------------------------------------------
-# Regression (weighted least squares, matching the paper's procedure)
+# Regression using the paper's procedure
 # ---------------------------------------------------------------------------
 
-def _weighted_r2(X, Y, weights, n_folds=5, rcond=1e-10):
-    """Cross-validated weighted R².
+def _paper_regression_r2(
+    activations_np: np.ndarray,
+    beliefs_np: np.ndarray,
+    weights_np: np.ndarray,
+    n_splits: int = 10,
+    device: str = "cpu",
+) -> float:
+    """Run the paper's regression procedure and return R².
 
-    Fit on train folds, evaluate on held-out test fold, average across folds.
+    Uses run_activation_to_beliefs_regression_kf with SVD-based pseudoinverse
+    and cross-validated rcond selection, matching the paper exactly.
 
-    Parameters
-    ----------
-    X : ndarray, shape (N, d_features)
-    Y : ndarray, shape (N, d_targets)
-    weights : ndarray, shape (N,)
-    n_folds : int
-    rcond : float — regularization for lstsq
-
-    Returns
-    -------
-    r2 : float — average held-out weighted R²
+    Returns R² (computed from the final model's predictions).
     """
-    N = X.shape[0]
-    w = weights / weights.sum()
+    # Convert to torch tensors
+    acts_t = torch.tensor(activations_np, dtype=torch.float32, device=device)
+    bel_t = torch.tensor(beliefs_np, dtype=torch.float32, device=device)
+    w_t = torch.tensor(weights_np, dtype=torch.float32, device=device)
 
+    # Create k-fold splits
+    N = len(activations_np)
     indices = np.arange(N)
-    fold_size = N // n_folds
-    fold_r2s = []
-
-    for fold in range(n_folds):
-        test_start = fold * fold_size
-        test_end = test_start + fold_size if fold < n_folds - 1 else N
+    fold_size = N // n_splits
+    kf = []
+    for i in range(n_splits):
+        test_start = i * fold_size
+        test_end = test_start + fold_size if i < n_splits - 1 else N
         test_idx = indices[test_start:test_end]
         train_idx = np.concatenate([indices[:test_start], indices[test_end:]])
+        kf.append((train_idx, test_idx))
 
-        X_train, Y_train = X[train_idx], Y[train_idx]
-        X_test, Y_test = X[test_idx], Y[test_idx]
-        w_train = w[train_idx]
-        w_test = w[test_idx]
+    # Run the paper's regression
+    result = run_activation_to_beliefs_regression_kf(
+        regression_analyzer=None,
+        activations=acts_t,
+        beliefs=bel_t,
+        probs=w_t,
+        kf=kf,
+        rcond_values=RCOND_SWEEP_LIST,
+    )
 
-        # Standardize using train statistics
-        mean = X_train.mean(axis=0)
-        std = X_train.std(axis=0)
-        std[std < 1e-12] = 1.0
+    # Compute R² from predictions
+    predictions = result.get("predictions")
+    if predictions is None:
+        return 0.0
 
-        X_train_bias = np.hstack([np.ones((len(train_idx), 1)),
-                                   (X_train - mean) / std])
-        X_test_bias = np.hstack([np.ones((len(test_idx), 1)),
-                                  (X_test - mean) / std])
-
-        # Weighted train
-        sqrt_w_train = np.sqrt(w_train / w_train.sum())[:, None]
-        beta, _, _, _ = np.linalg.lstsq(
-            X_train_bias * sqrt_w_train, Y_train * sqrt_w_train, rcond=rcond
-        )
-
-        # Evaluate on test fold
-        Y_pred = X_test_bias @ beta
-        w_test_norm = w_test / w_test.sum()
-        Y_mean = (Y_test * w_test_norm[:, None]).sum(axis=0)
-        ss_res = (w_test_norm[:, None] * (Y_test - Y_pred) ** 2).sum()
-        ss_tot = (w_test_norm[:, None] * (Y_test - Y_mean) ** 2).sum()
-        fold_r2s.append(1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0)
-
-    return float(np.mean(fold_r2s))
+    predictions = np.asarray(predictions)
+    w = weights_np / weights_np.sum()
+    Y_mean = (beliefs_np * w[:, None]).sum(axis=0)
+    ss_res = (w[:, None] * (beliefs_np - predictions) ** 2).sum()
+    ss_tot = (w[:, None] * (beliefs_np - Y_mean) ** 2).sum()
+    return float(1.0 - ss_res / ss_tot) if ss_tot > 0 else 0.0
 
 
-# ---------------------------------------------------------------------------
-# Full shuffle control experiment
-# ---------------------------------------------------------------------------
+def _paper_regression_rmse(
+    activations_np: np.ndarray,
+    beliefs_np: np.ndarray,
+    weights_np: np.ndarray,
+    n_splits: int = 10,
+    device: str = "cpu",
+) -> float:
+    """Run the paper's regression and return weighted RMSE (norm_dist)."""
+    acts_t = torch.tensor(activations_np, dtype=torch.float32, device=device)
+    bel_t = torch.tensor(beliefs_np, dtype=torch.float32, device=device)
+    w_t = torch.tensor(weights_np, dtype=torch.float32, device=device)
 
-def run_shuffle_control(
-    activations: np.ndarray,
-    beliefs: np.ndarray,
-    T: np.ndarray,
-    rev: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    n_shuffles: int = 100,
-    seed: int = 42,
-    show_progress: bool = True,
-) -> Dict:
-    """Run the geometric shuffle control experiment.
+    N = len(activations_np)
+    indices = np.arange(N)
+    fold_size = N // n_splits
+    kf = []
+    for i in range(n_splits):
+        test_start = i * fold_size
+        test_end = test_start + fold_size if i < n_splits - 1 else N
+        test_idx = indices[test_start:test_end]
+        train_idx = np.concatenate([indices[:test_start], indices[test_end:]])
+        kf.append((train_idx, test_idx))
 
-    Parameters
-    ----------
-    activations : ndarray, shape (N, d_features)
-        Neural network activations (e.g., residual stream at last token position).
-    beliefs : ndarray, shape (N, latent_dim)
-        Ground-truth belief states.
-    T : ndarray, shape (vocab_len, latent_dim, latent_dim)
-        GHMM transition matrices.
-    rev : ndarray, shape (latent_dim,) or (latent_dim, 1)
-        Right eigenvector of T.sum(axis=0).
-    weights : ndarray, shape (N,), optional
-        Probability weights for each sequence. Uniform if None.
-    n_shuffles : int
-        Number of random shuffles for the null distribution.
-    seed : int
-        Random seed for reproducibility.
-    show_progress : bool
-        Show progress bar.
+    result = run_activation_to_beliefs_regression_kf(
+        regression_analyzer=None,
+        activations=acts_t,
+        beliefs=bel_t,
+        probs=w_t,
+        kf=kf,
+        rcond_values=RCOND_SWEEP_LIST,
+    )
 
-    Returns
-    -------
-    results : dict with keys:
-        mse_original    : float — RMSE with true beliefs
-        mse_shuffled    : list[float] — RMSE for each shuffle
-        mse_shuffle_mean: float — mean shuffled RMSE
-        mse_shuffle_std : float — std of shuffled RMSE
-        effect_size     : float — (mean_shuffled - original) / original
-        p_value         : float — fraction of shuffles with RMSE <= original
-        var_parallel    : float — variance in next-token subspace
-        var_perp        : float — variance in beyond-next-token subspace
-        frac_beyond     : float — var_perp / (var_parallel + var_perp)
-        dim_kernel      : int — dimension of ker(E^T)
-        E               : ndarray — emission matrix
-        P_E             : ndarray — projection onto col(E)
-        P_E_perp        : ndarray — projection onto ker(E^T)
-    """
-    rng = np.random.default_rng(seed)
-
-    if weights is None:
-        weights = np.ones(len(beliefs)) / len(beliefs)
-
-    # Compute emission matrix and projections
-    E = compute_emission_matrix(T, rev)
-    P_E, P_E_perp = compute_projections(E)
-
-    rank_E = np.linalg.matrix_rank(E)
-    dim_kernel = beliefs.shape[1] - rank_E
-
-    # Decompose beliefs for variance diagnostics
-    b_mean, delta_par, delta_perp = decompose_beliefs(beliefs, P_E, P_E_perp)
-    var_par = np.var(delta_par)
-    var_perp = np.var(delta_perp)
-    var_total = var_par + var_perp
-
-    # Original regression
-    mse_original = _weighted_r2(activations, beliefs, weights)
-
-    # Shuffled regressions
-    mse_shuffled = []
-    iterator = range(n_shuffles)
-    if show_progress:
-        iterator = tqdm(iterator, desc="Shuffle control", leave=False)
-
-    for _ in iterator:
-        shuffled = geometric_shuffle(beliefs, P_E, P_E_perp, rng)
-        mse = _weighted_r2(activations, shuffled, weights)
-        mse_shuffled.append(mse)
-
-    mse_shuffled = np.array(mse_shuffled)
-
-    return {
-        "mse_original": mse_original,
-        "mse_shuffled": mse_shuffled.tolist(),
-        "mse_shuffle_mean": float(mse_shuffled.mean()),
-        "mse_shuffle_std": float(mse_shuffled.std()),
-        "effect_size": float((mse_shuffled.mean() - mse_original) / mse_original)
-            if mse_original > 0 else 0.0,
-        "p_value": float(np.mean(mse_shuffled <= mse_original)),
-        "var_parallel": float(var_par),
-        "var_perp": float(var_perp),
-        "frac_beyond": float(var_perp / var_total) if var_total > 0 else 0.0,
-        "dim_kernel": int(dim_kernel),
-        "E": E,
-        "P_E": P_E,
-        "P_E_perp": P_E_perp,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Direct perpendicular regression (supplementary test)
-# ---------------------------------------------------------------------------
-
-def run_perpendicular_regression(
-    activations: np.ndarray,
-    beliefs: np.ndarray,
-    T: np.ndarray,
-    rev: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    n_shuffles: int = 100,
-    seed: int = 42,
-) -> Dict:
-    """Directly regress activations onto the beyond-next-token component.
-
-    If the network encodes beyond-next-token structure, regression onto
-    delta_perp should achieve much lower RMSE than a shuffled baseline.
-
-    Parameters
-    ----------
-    activations, beliefs, T, rev, weights, n_shuffles, seed : same as run_shuffle_control
-
-    Returns
-    -------
-    results : dict with keys:
-        mse_perp_original : float — RMSE regressing to delta_perp
-        mse_perp_shuffled : list[float] — RMSE with shuffled delta_perp
-        effect_size : float
-        p_value : float
-    """
-    rng = np.random.default_rng(seed)
-
-    if weights is None:
-        weights = np.ones(len(beliefs)) / len(beliefs)
-
-    E = compute_emission_matrix(T, rev)
-    P_E, P_E_perp = compute_projections(E)
-    _, _, delta_perp = decompose_beliefs(beliefs, P_E, P_E_perp)
-
-    # Regress activations onto perpendicular component
-    mse_orig = _weighted_r2(activations, delta_perp, weights)
-
-    # Shuffled baseline
-    mse_shuffled = []
-    for _ in range(n_shuffles):
-        perm = rng.permutation(len(delta_perp))
-        mse = _weighted_r2(activations, delta_perp[perm], weights)
-        mse_shuffled.append(mse)
-
-    mse_shuffled = np.array(mse_shuffled)
-
-    return {
-        "mse_perp_original": float(mse_orig),
-        "mse_perp_shuffled": mse_shuffled.tolist(),
-        "effect_size": float((mse_shuffled.mean() - mse_orig) / mse_orig)
-            if mse_orig > 0 else 0.0,
-        "p_value": float(np.mean(mse_shuffled <= mse_orig)),
-    }
+    return float(result.get("norm_dist", float("inf")))
