@@ -129,43 +129,66 @@ def geometric_shuffle(
 # Regression (weighted least squares, matching the paper's procedure)
 # ---------------------------------------------------------------------------
 
-def _weighted_r2(X, Y, weights, rcond=1e-10):
-    """Weighted least-squares regression, returns R².
+def _weighted_r2(X, Y, weights, n_folds=5, rcond=1e-10):
+    """Cross-validated weighted R².
+
+    Fit on train folds, evaluate on held-out test fold, average across folds.
 
     Parameters
     ----------
     X : ndarray, shape (N, d_features)
     Y : ndarray, shape (N, d_targets)
     weights : ndarray, shape (N,)
+    n_folds : int
     rcond : float — regularization for lstsq
 
     Returns
     -------
-    r2 : float — weighted R² (coefficient of determination)
+    r2 : float — average held-out weighted R²
     """
     N = X.shape[0]
     w = weights / weights.sum()
-    sqrt_w = np.sqrt(w)[:, None]
 
-    # Add bias
-    X_bias = np.hstack([np.ones((N, 1)), X])
+    indices = np.arange(N)
+    fold_size = N // n_folds
+    fold_r2s = []
 
-    # Weighted regression
-    X_w = X_bias * sqrt_w
-    Y_w = Y * sqrt_w
+    for fold in range(n_folds):
+        test_start = fold * fold_size
+        test_end = test_start + fold_size if fold < n_folds - 1 else N
+        test_idx = indices[test_start:test_end]
+        train_idx = np.concatenate([indices[:test_start], indices[test_end:]])
 
-    # Solve
-    beta, _, _, _ = np.linalg.lstsq(X_w, Y_w, rcond=rcond)
+        X_train, Y_train = X[train_idx], Y[train_idx]
+        X_test, Y_test = X[test_idx], Y[test_idx]
+        w_train = w[train_idx]
+        w_test = w[test_idx]
 
-    # Predict (unweighted)
-    Y_pred = X_bias @ beta
+        # Standardize using train statistics
+        mean = X_train.mean(axis=0)
+        std = X_train.std(axis=0)
+        std[std < 1e-12] = 1.0
 
-    # Weighted R²
-    Y_mean = (Y * w[:, None]).sum(axis=0)  # weighted mean
-    ss_res = (w[:, None] * (Y - Y_pred) ** 2).sum()
-    ss_tot = (w[:, None] * (Y - Y_mean) ** 2).sum()
-    r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
-    return float(r2)
+        X_train_bias = np.hstack([np.ones((len(train_idx), 1)),
+                                   (X_train - mean) / std])
+        X_test_bias = np.hstack([np.ones((len(test_idx), 1)),
+                                  (X_test - mean) / std])
+
+        # Weighted train
+        sqrt_w_train = np.sqrt(w_train / w_train.sum())[:, None]
+        beta, _, _, _ = np.linalg.lstsq(
+            X_train_bias * sqrt_w_train, Y_train * sqrt_w_train, rcond=rcond
+        )
+
+        # Evaluate on test fold
+        Y_pred = X_test_bias @ beta
+        w_test_norm = w_test / w_test.sum()
+        Y_mean = (Y_test * w_test_norm[:, None]).sum(axis=0)
+        ss_res = (w_test_norm[:, None] * (Y_test - Y_pred) ** 2).sum()
+        ss_tot = (w_test_norm[:, None] * (Y_test - Y_mean) ** 2).sum()
+        fold_r2s.append(1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0)
+
+    return float(np.mean(fold_r2s))
 
 
 # ---------------------------------------------------------------------------
