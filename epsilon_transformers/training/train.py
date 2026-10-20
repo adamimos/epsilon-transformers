@@ -21,7 +21,6 @@ from epsilon_transformers.training.configs.training_configs import (
 # TODO: Use logger library for logging
 # TODO: Make Log into a singleton
 # TODO: Add TQDM to all of this
-# TODO: Generalize train_model so that it doesn't depend on the HookedTransformer internal loss function
 # TODO: move _check_if_action_batch asserts to a config validator
 # TODO: Add option to resume from checkpoint
 
@@ -61,6 +60,25 @@ def _check_if_action_batch(
     return (batch_idx + 1) % perform_action_every_n_batches == 0
 
 
+def _next_token_loss(
+    model: HookedTransformer,
+    input_data: torch.Tensor,
+    target_data: torch.Tensor,
+) -> torch.Tensor:
+    """Mean next-token cross entropy over all input positions.
+
+    ProcessDataset yields (input, target) pairs in which the target is the input shifted by one token, so
+    every input position, including the last, has a next-token target. TransformerLens's built-in loss,
+    model(input_data, return_type="loss"), instead predicts tokens 2..n_ctx from the input alone. It never
+    scores the prediction made at the last position, so the computation at that position is never trained
+    (its positional embedding receives no gradient at all), even though analyses read activations there.
+    """
+    logits = model(input_data)
+    return torch.nn.functional.cross_entropy(
+        logits.reshape(-1, logits.shape[-1]), target_data.reshape(-1)
+    )
+
+
 def _evaluate_model(
     model: HookedTransformer,
     eval_dataloader: DataLoader,
@@ -70,7 +88,7 @@ def _evaluate_model(
     with torch.no_grad():
         for input_data, target_data in tqdm(eval_dataloader, desc="Eval Loop"):
             input_data, target_data = input_data.to(device), target_data.to(device)
-            loss = model(input_data, return_type="loss")
+            loss = _next_token_loss(model, input_data, target_data)
             log.update_metrics("test", loss.item())
     return log
 
@@ -122,7 +140,7 @@ def train_model(config: TrainConfig) -> HookedTransformer:
         tqdm(train_dataloader, desc="Train Loop")
     ):
         input_data, target_data = input_data.to(device), target_data.to(device)
-        loss = model(input_data, return_type="loss")
+        loss = _next_token_loss(model, input_data, target_data)
         log.update_metrics(train_or_test="train", loss=loss.item())
 
         optimizer.zero_grad()

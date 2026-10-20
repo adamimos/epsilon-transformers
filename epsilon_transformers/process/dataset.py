@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from typing import Iterator
 from jaxtyping import Float
@@ -10,12 +11,21 @@ from epsilon_transformers.process.processes import PROCESS_REGISTRY
 # TODO: Assert they are in the correct vocabulary
 # TODO: Make the dataset parallel distributed (??)
 # TODO: Figure out the device allocation for batching
-# TODO: Test the ProcessDataset __iter__ for robustness against StopIter
 
 
 class ProcessDataset(IterableDataset):
-    samples: Iterator[int]
-    process_params: dict[str, float]
+    """Windows of sequence_length + 1 emitted tokens, yielded as (input, target) pairs shifted by one token.
+
+    Each window starts in a hidden state drawn independently from the process's stationary distribution, so
+    every window is a stationary sample of the process. (Cutting consecutive windows from one long emission
+    stream gives stationary windows only when the window length is not commensurate with a periodicity of
+    the process. For example, RRXOR emits two random bits and their XOR in a fixed cycle of three, so with
+    sequence_length = 20 every 21-token window would start at the same phase of the cycle and the training
+    data would be phase-locked.)
+    """
+
+    process: Process
+    stationary_distribution: np.ndarray
     sequence_length: int
     num_samples: int
 
@@ -33,11 +43,9 @@ class ProcessDataset(IterableDataset):
             raise ValueError(
                 f"{process_name} is not a recognized process. It must be one of the following {PROCESS_REGISTRY.keys()}"
             )
-        process: Process = process_class(**process_params)
-
-        self.samples = process.yield_emissions(
-            sequence_len=num_samples * (sequence_length + 1)
-        )
+        self.process = process_class(**process_params)
+        stationary = np.clip(self.process.steady_state_vector, 0.0, None)
+        self.stationary_distribution = stationary / stationary.sum()
         self.sequence_length = sequence_length
         self.num_samples = num_samples
 
@@ -46,9 +54,15 @@ class ProcessDataset(IterableDataset):
 
     def __iter__(self) -> Iterator[tuple[list[int], list[int]]]:
         for _ in range(self.num_samples):
-            process_history = [
-                next(self.samples) for _ in range(self.sequence_length + 1)
-            ]
+            start_state = np.random.choice(
+                self.process.num_states, p=self.stationary_distribution
+            )
+            process_history = list(
+                self.process.yield_emissions(
+                    sequence_len=self.sequence_length + 1,
+                    current_state_idx=start_state,
+                )
+            )
             yield (process_history[:-1], process_history[1:])
 
 

@@ -14,6 +14,11 @@ This project contains Python code for generating process data and training trans
 
 To install, alongside all dependencies, run `pip install -e .` from the repository folder
 
+## Training notes
+
+- `train_model` trains the next-token prediction at every input position, using the shifted targets from `ProcessDataset`. TransformerLens's built-in loss (`return_type="loss"`) never trains the last position.
+- `ProcessDataset` starts each window in a hidden state drawn from the stationary distribution. Consecutive windows cut from one stream are phase-locked for periodic processes (e.g. RRXOR with `n_ctx = 20`).
+
 ## Persistence
 
 This codebase provides functionality to persist models & other research artifact's to the S3 cloud provider. In order to use it, make sure that you have the `AWS_ACCESS_KEY_ID` `AWS_SECRET_ACCESS_KEY` environment variables set in a .env file.
