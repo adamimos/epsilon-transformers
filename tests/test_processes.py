@@ -56,6 +56,27 @@ def test_process_dataset():
         assert (data[:, 1:] == label[:, :-1]).all()
 
 
+def test_process_dataset_windows_are_not_phase_locked():
+    # RRXOR emits two random bits and then their XOR, in a fixed cycle of three tokens. With 21-token windows
+    # (sequence_length = 20) cut consecutively from one stream, every window would start at the same phase.
+    rng_state = np.random.get_state()
+    np.random.seed(0)
+    try:
+        dataset = ProcessDataset("RRXOR", {}, sequence_length=20, num_samples=600)
+        phase_counts = np.zeros(3)
+        for data, label in dataset:
+            window = data + label[-1:]
+            consistent = [
+                all(window[t] == window[t - 2] ^ window[t - 1] for t in range(p, 21, 3))
+                for p in (2, 3, 4)
+            ]
+            if sum(consistent) == 1:
+                phase_counts[consistent.index(True)] += 1
+    finally:
+        np.random.set_state(rng_state)
+    assert (phase_counts / phase_counts.sum() > 0.2).all()
+
+
 def test_yield_emission_histories():
     process = ZeroOneR()
     foo = process.yield_emission_histories(sequence_len=10, num_sequences=3)
