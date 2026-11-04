@@ -20,6 +20,7 @@ from epsilon_transformers.training.configs.model_configs import RawModelConfig
 from epsilon_transformers.training.train import (
     train_model,
     _check_if_action_batch,
+    _next_token_loss,
     _set_random_seed,
 )
 
@@ -58,6 +59,25 @@ def test_raw_model_config():
     assert output.shape == torch.Size(
         [1, 6, 2]
     )  # batch, pos, vocab (it returns logits)
+
+
+def test_next_token_loss_trains_last_position():
+    n_ctx = 6
+    model = RawModelConfig(
+        d_vocab=2, d_model=16, n_ctx=n_ctx, d_head=8, n_head=2, d_mlp=32, n_layers=2
+    ).to_hooked_transformer(seed=0, device="cpu")
+    dataset = ProcessDataset("RRXOR", {}, sequence_length=n_ctx, num_samples=32)
+    input_data, target_data = process_dataset_collate_fn(list(dataset))
+
+    loss = _next_token_loss(model, input_data, target_data)
+    loss.backward()
+    last_position_grad = model.pos_embed.W_pos.grad[-1]
+    assert last_position_grad.abs().sum() > 0
+
+    # TransformerLens's built-in loss scores positions 1..n_ctx-1 only: the last position gets no gradient.
+    model.zero_grad()
+    model(input_data, return_type="loss").backward()
+    assert model.pos_embed.W_pos.grad[-1].abs().sum() == 0
 
 
 def test_dataloader_raw_hooked_transformer_compatibility():
